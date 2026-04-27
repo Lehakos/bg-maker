@@ -46,11 +46,14 @@ body {
 }
 
 .project-actions-header,
-.project-actions-cell {
-  width: 92px;
+.project-actions-cell,
+.component-actions-header,
+.component-actions-cell {
+  width: 116px;
 }
 
-.project-row-actions {
+.project-row-actions,
+.component-row-actions {
   opacity: 0;
   pointer-events: none;
   transform: translateX(4px);
@@ -60,14 +63,21 @@ body {
 }
 
 .project-table-row:hover .project-row-actions,
-.project-table-row:focus-within .project-row-actions {
+.project-table-row:focus-within .project-row-actions,
+.component-table-row:hover .component-row-actions,
+.component-table-row:focus-within .component-row-actions {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
 }
 
+.component-table-row:hover {
+  background: rgba(15, 118, 110, 0.04);
+}
+
 @media (hover: none) {
-  .project-row-actions {
+  .project-row-actions,
+  .component-row-actions {
     opacity: 1;
     pointer-events: auto;
     transform: none;

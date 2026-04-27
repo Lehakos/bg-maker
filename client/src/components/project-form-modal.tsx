@@ -1,4 +1,14 @@
-import { Alert, Button, Group, Modal, Select, Stack, Text, Textarea, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Group,
+  Modal,
+  Select,
+  Stack,
+  Text,
+  Textarea,
+  TextInput
+} from "@mantine/core";
 import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { projectStatuses, type CreateGameProjectInput, type ProjectStatus } from "@bg-maker/shared";

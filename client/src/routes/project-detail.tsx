@@ -1,15 +1,20 @@
 import {
+  ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Container,
   Group,
   Paper,
+  Select,
   SimpleGrid,
   Stack,
   Tabs,
+  Table,
   Text,
   ThemeIcon,
+  Tooltip,
   Title
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
@@ -21,16 +26,27 @@ import {
   Activity,
   AlertTriangle,
   ArrowLeft,
+  Copy,
   Edit,
   FileText,
   Layers,
+  Plus,
   Trash2,
   Users
 } from "lucide-react";
-import { type GameProject, type ProjectStatus } from "@bg-maker/shared";
+import {
+  componentTypes,
+  type ComponentType,
+  type GameComponent,
+  type GameProject,
+  type ProjectStatus
+} from "@bg-maker/shared";
 import { deleteProject, getApiErrorMessage, getProject, updateProject } from "../api/client";
+import { ComponentFormModal } from "../components/component-form-modal";
+import { componentTypeLabels } from "../components/component-labels";
 import { ProjectFormModal, type ProjectFormValues } from "../components/project-form-modal";
 import { getProjectFormValues } from "../components/project-form-values";
+import { useProjectComponents } from "../hooks/use-project-components";
 
 const statusColors: Record<ProjectStatus, string> = {
   draft: "gray",
@@ -70,8 +86,13 @@ export function ProjectDetailRoute() {
     }
   });
 
+  const componentCatalog = useProjectComponents(projectId);
+
   const project = projectQuery.data;
-  const formValues = useMemo(() => (project ? getProjectFormValues(project) : undefined), [project]);
+  const formValues = useMemo(
+    () => (project ? getProjectFormValues(project) : undefined),
+    [project]
+  );
 
   if (projectQuery.isLoading) {
     return (
@@ -178,10 +199,21 @@ export function ProjectDetailRoute() {
             <ProjectOverview project={project} />
           </Tabs.Panel>
           <Tabs.Panel value="components" pt="md">
-            <EmptyProjectSection
-              icon={<Layers size={20} />}
-              title="Components"
-              description="Cards, decks, tokens, and counters arrive in the next phase."
+            <ProjectComponents
+              actionError={componentCatalog.actionError}
+              components={componentCatalog.components}
+              deletingComponentId={componentCatalog.deletingComponentId}
+              duplicatingComponentId={componentCatalog.duplicatingComponentId}
+              filter={componentCatalog.componentTypeFilter}
+              filteredComponents={componentCatalog.filteredComponents}
+              loading={componentCatalog.componentsQuery.isLoading}
+              queryError={componentCatalog.queryError}
+              getComponentDetails={componentCatalog.getComponentDetails}
+              onDeleteComponent={componentCatalog.requestDeleteComponent}
+              onDuplicateComponent={componentCatalog.duplicateComponent}
+              onEditComponent={componentCatalog.openEditComponent}
+              onFilterChange={componentCatalog.setComponentTypeFilter}
+              onNewComponent={componentCatalog.openNewComponent}
             />
           </Tabs.Panel>
           <Tabs.Panel value="layout" pt="md">
@@ -220,6 +252,16 @@ export function ProjectDetailRoute() {
         }}
         onSubmit={(values) => updateProjectMutation.mutate(values)}
       />
+      <ComponentFormModal
+        availableCards={componentCatalog.components}
+        component={componentCatalog.editingComponent}
+        error={componentCatalog.formError}
+        loading={componentCatalog.formIsPending}
+        mode={componentCatalog.componentModal?.mode ?? "create"}
+        opened={componentCatalog.componentModal !== null}
+        onClose={componentCatalog.closeComponentModal}
+        onSubmit={componentCatalog.submitComponentForm}
+      />
     </Container>
   );
 }
@@ -230,6 +272,7 @@ function ProjectOverview({ project }: { project: GameProject }) {
       <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }}>
         <ProjectFact label="Players" value={project.players || "-"} />
         <ProjectFact label="Status" value={project.status} />
+        <ProjectFact label="Components" value={String(project.componentCount)} />
         <ProjectFact label="Created" value={formatDate(project.createdAt)} />
         <ProjectFact label="Updated" value={formatDate(project.updatedAt)} />
       </SimpleGrid>
@@ -252,6 +295,239 @@ function ProjectOverview({ project }: { project: GameProject }) {
         </Text>
       </Paper>
     </Stack>
+  );
+}
+
+function ProjectComponents({
+  actionError,
+  components,
+  deletingComponentId,
+  duplicatingComponentId,
+  filter,
+  filteredComponents,
+  getComponentDetails,
+  loading,
+  onDeleteComponent,
+  onDuplicateComponent,
+  onEditComponent,
+  onFilterChange,
+  onNewComponent,
+  queryError
+}: {
+  actionError: string | null;
+  components: GameComponent[];
+  deletingComponentId: string | null;
+  duplicatingComponentId: string | null;
+  filter: ComponentType | "all";
+  filteredComponents: GameComponent[];
+  getComponentDetails: (component: GameComponent) => string;
+  loading: boolean;
+  onDeleteComponent: (component: GameComponent) => void;
+  onDuplicateComponent: (component: GameComponent) => void;
+  onEditComponent: (component: GameComponent) => void;
+  onFilterChange: (filter: ComponentType | "all") => void;
+  onNewComponent: () => void;
+  queryError: string | null;
+}) {
+  const filterOptions = [
+    { value: "all", label: "All types" },
+    ...componentTypes.map((type) => ({ value: type, label: componentTypeLabels[type] }))
+  ];
+
+  return (
+    <Stack gap="md">
+      <SimpleGrid cols={{ base: 2, sm: 3, md: 6 }}>
+        {componentTypes.map((type) => (
+          <Paper key={type} withBorder radius={8} p="md">
+            <Text size="sm" c="dimmed">
+              {componentTypeLabels[type]}
+            </Text>
+            <Title order={3} size="h3" mt={4}>
+              {components.filter((component) => component.type === type).length}
+            </Title>
+          </Paper>
+        ))}
+      </SimpleGrid>
+
+      <Paper withBorder radius={8} p="md">
+        <Stack gap="md">
+          <Group justify="space-between" align="flex-start">
+            <Group gap="sm">
+              <ThemeIcon color="teal" variant="light" radius={8}>
+                <Layers size={18} />
+              </ThemeIcon>
+              <Box>
+                <Title order={2} size="h3">
+                  Component catalog
+                </Title>
+                <Text c="dimmed" size="sm">
+                  {components.length} total
+                </Text>
+              </Box>
+            </Group>
+            <Group gap="sm">
+              <Select
+                allowDeselect={false}
+                aria-label="Filter components by type"
+                data={filterOptions}
+                value={filter}
+                w={170}
+                onChange={(value) => onFilterChange((value ?? "all") as ComponentType | "all")}
+              />
+              <Button leftSection={<Plus size={16} />} radius={8} onClick={onNewComponent}>
+                New component
+              </Button>
+            </Group>
+          </Group>
+
+          {queryError ? (
+            <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
+              {queryError}
+            </Alert>
+          ) : null}
+
+          {actionError ? (
+            <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
+              {actionError}
+            </Alert>
+          ) : null}
+
+          <ComponentTable
+            components={filteredComponents}
+            deletingComponentId={deletingComponentId}
+            duplicatingComponentId={duplicatingComponentId}
+            getComponentDetails={getComponentDetails}
+            loading={loading}
+            onDeleteComponent={onDeleteComponent}
+            onDuplicateComponent={onDuplicateComponent}
+            onEditComponent={onEditComponent}
+          />
+        </Stack>
+      </Paper>
+    </Stack>
+  );
+}
+
+function ComponentTable({
+  components,
+  deletingComponentId,
+  duplicatingComponentId,
+  getComponentDetails,
+  loading,
+  onDeleteComponent,
+  onDuplicateComponent,
+  onEditComponent
+}: {
+  components: GameComponent[];
+  deletingComponentId: string | null;
+  duplicatingComponentId: string | null;
+  getComponentDetails: (component: GameComponent) => string;
+  loading: boolean;
+  onDeleteComponent: (component: GameComponent) => void;
+  onDuplicateComponent: (component: GameComponent) => void;
+  onEditComponent: (component: GameComponent) => void;
+}) {
+  if (loading) {
+    return (
+      <Text c="dimmed" py="lg" ta="center">
+        Loading components
+      </Text>
+    );
+  }
+
+  if (components.length === 0) {
+    return (
+      <Text c="dimmed" py="lg" ta="center">
+        No components yet
+      </Text>
+    );
+  }
+
+  return (
+    <Table.ScrollContainer minWidth={760}>
+      <Table verticalSpacing="sm">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Name</Table.Th>
+            <Table.Th>Type</Table.Th>
+            <Table.Th>Qty</Table.Th>
+            <Table.Th>Details</Table.Th>
+            <Table.Th>Updated</Table.Th>
+            <Table.Th className="component-actions-header" aria-label="Actions" />
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {components.map((component) => (
+            <Table.Tr key={component.id} className="component-table-row">
+              <Table.Td fw={600}>{component.name}</Table.Td>
+              <Table.Td>
+                <Badge color="teal" radius={8} variant="light">
+                  {componentTypeLabels[component.type]}
+                </Badge>
+              </Table.Td>
+              <Table.Td>{component.quantity}</Table.Td>
+              <Table.Td>
+                <Stack gap={4}>
+                  <Text size="sm">{getComponentDetails(component)}</Text>
+                  {component.tags.length > 0 ? (
+                    <Group gap={4}>
+                      {component.tags.map((tag) => (
+                        <Badge key={tag} color="gray" radius={8} size="xs" variant="light">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </Group>
+                  ) : null}
+                </Stack>
+              </Table.Td>
+              <Table.Td>{formatDate(component.updatedAt)}</Table.Td>
+              <Table.Td className="component-actions-cell">
+                <Group
+                  gap={4}
+                  justify="flex-end"
+                  className="component-row-actions"
+                  data-testid={`component-actions-${component.id}`}
+                >
+                  <Tooltip label="Edit component" withArrow>
+                    <ActionIcon
+                      aria-label={`Edit ${component.name}`}
+                      radius={8}
+                      variant="subtle"
+                      onClick={() => onEditComponent(component)}
+                    >
+                      <Edit size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label="Duplicate component" withArrow>
+                    <ActionIcon
+                      aria-label={`Duplicate ${component.name}`}
+                      loading={duplicatingComponentId === component.id}
+                      radius={8}
+                      variant="subtle"
+                      onClick={() => onDuplicateComponent(component)}
+                    >
+                      <Copy size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label="Delete component" withArrow>
+                    <ActionIcon
+                      aria-label={`Delete ${component.name}`}
+                      color="red"
+                      loading={deletingComponentId === component.id}
+                      radius={8}
+                      variant="subtle"
+                      onClick={() => onDeleteComponent(component)}
+                    >
+                      <Trash2 size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
   );
 }
 

@@ -53,6 +53,7 @@ export function DashboardRoute() {
   });
 
   const projects = projectsQuery.data ?? [];
+  const componentCount = projects.reduce((total, project) => total + project.componentCount, 0);
 
   const editingProjectQuery = useQuery({
     queryKey: ["project", editingProjectId],
@@ -94,7 +95,9 @@ export function DashboardRoute() {
       : null;
   const editingProjectIsLoading =
     editingProjectId !== null && !editingProjectQuery.data && editingProjectQuery.isFetching;
-  const deletingProjectId = deleteProjectMutation.isPending ? deleteProjectMutation.variables : null;
+  const deletingProjectId = deleteProjectMutation.isPending
+    ? deleteProjectMutation.variables
+    : null;
   const projectActionIsPending = updateProjectMutation.isPending || deleteProjectMutation.isPending;
 
   function openProjectEditor(projectId: string) {
@@ -138,7 +141,7 @@ export function DashboardRoute() {
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <StatCard icon={<Dice5 size={18} />} label="Projects" value={projects.length} />
           <StatCard icon={<Users size={18} />} label="Playtests" value={0} />
-          <StatCard icon={<Layers size={18} />} label="Components" value={0} />
+          <StatCard icon={<Layers size={18} />} label="Components" value={componentCount} />
         </SimpleGrid>
 
         <Paper withBorder radius={8} p="md">
@@ -250,6 +253,7 @@ function ProjectTable({
             <Table.Th>Name</Table.Th>
             <Table.Th>Players</Table.Th>
             <Table.Th>Status</Table.Th>
+            <Table.Th>Components</Table.Th>
             <Table.Th>Updated</Table.Th>
             <Table.Th className="project-actions-header" aria-label="Actions" />
           </Table.Tr>
@@ -272,6 +276,7 @@ function ProjectTable({
                   {project.status}
                 </Badge>
               </Table.Td>
+              <Table.Td>{project.componentCount}</Table.Td>
               <Table.Td>{new Date(project.updatedAt).toLocaleDateString()}</Table.Td>
               <Table.Td className="project-actions-cell">
                 <Group

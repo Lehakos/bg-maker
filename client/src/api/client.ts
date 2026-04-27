@@ -1,10 +1,13 @@
 import axios from "axios";
 import {
   apiPaths,
+  type CreateGameComponentInput,
   type CreateGameProjectInput,
+  type GameComponent,
   type GameProject,
   type GameProjectSummary,
   type HealthResponse,
+  type UpdateGameComponentInput,
   type UpdateGameProjectInput
 } from "@bg-maker/shared";
 
@@ -39,6 +42,32 @@ export async function updateProject(projectId: string, input: UpdateGameProjectI
 
 export async function deleteProject(projectId: string) {
   await http.delete(apiPaths.project(projectId));
+}
+
+export async function getComponents(projectId: string) {
+  const response = await http.get<GameComponent[]>(apiPaths.components(projectId));
+  return response.data;
+}
+
+export async function createComponent(projectId: string, input: CreateGameComponentInput) {
+  const response = await http.post<GameComponent>(apiPaths.components(projectId), input);
+  return response.data;
+}
+
+export async function updateComponent(
+  projectId: string,
+  componentId: string,
+  input: UpdateGameComponentInput
+) {
+  const response = await http.patch<GameComponent>(
+    apiPaths.component(projectId, componentId),
+    input
+  );
+  return response.data;
+}
+
+export async function deleteComponent(projectId: string, componentId: string) {
+  await http.delete(apiPaths.component(projectId, componentId));
 }
 
 export function getApiErrorMessage(error: unknown) {

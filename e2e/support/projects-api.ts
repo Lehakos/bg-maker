@@ -17,6 +17,7 @@ export type TestProject = {
   players: string;
   status: ProjectStatus;
   notes: string;
+  componentCount: number;
   createdAt: string;
   updatedAt: string;
 };
