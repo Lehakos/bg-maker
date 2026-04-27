@@ -1,0 +1,27 @@
+{
+  "name": "bg-maker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @bg-maker/server --filter @bg-maker/client dev",
+    "dev:client": "pnpm --filter @bg-maker/client dev",
+    "dev:server": "pnpm --filter @bg-maker/server dev",
+    "build": "pnpm --filter @bg-maker/shared build && pnpm --filter @bg-maker/server build && pnpm --filter @bg-maker/client build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint . --ignore-pattern client && pnpm --filter @bg-maker/client lint",
+    "lint:fix": "eslint . --fix --ignore-pattern client && pnpm --filter @bg-maker/client lint:fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.2.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.5.0",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.0"
+  }
+}
