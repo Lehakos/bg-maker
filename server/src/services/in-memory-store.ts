@@ -1,4 +1,4 @@
-import type { GameComponent, GameProject } from "@bg-maker/shared";
+import type { CardTemplate, GameComponent, GameProject } from "@bg-maker/shared";
 
 export const seedProjects: GameProject[] = [
   {
@@ -33,10 +33,22 @@ export const projectComponents = new Map<string, GameComponent[]>(
   seedProjects.map((project) => [project.id, []])
 );
 
+export const projectCardTemplates = new Map<string, CardTemplate[]>(
+  seedProjects.map((project) => [project.id, []])
+);
+
 export function getProjectComponents(projectId: string) {
   return projectComponents.get(projectId) ?? [];
 }
 
 export function setProjectComponents(projectId: string, components: GameComponent[]) {
   projectComponents.set(projectId, components);
+}
+
+export function getProjectCardTemplates(projectId: string) {
+  return projectCardTemplates.get(projectId) ?? [];
+}
+
+export function setProjectCardTemplates(projectId: string, templates: CardTemplate[]) {
+  projectCardTemplates.set(projectId, templates);
 }

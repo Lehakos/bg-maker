@@ -1,12 +1,15 @@
 import axios from "axios";
 import {
   apiPaths,
+  type CardTemplate,
+  type CreateCardTemplateInput,
   type CreateGameComponentInput,
   type CreateGameProjectInput,
   type GameComponent,
   type GameProject,
   type GameProjectSummary,
   type HealthResponse,
+  type UpdateCardTemplateInput,
   type UpdateGameComponentInput,
   type UpdateGameProjectInput
 } from "@bg-maker/shared";
@@ -47,6 +50,32 @@ export async function deleteProject(projectId: string) {
 export async function getComponents(projectId: string) {
   const response = await http.get<GameComponent[]>(apiPaths.components(projectId));
   return response.data;
+}
+
+export async function getCardTemplates(projectId: string) {
+  const response = await http.get<CardTemplate[]>(apiPaths.cardTemplates(projectId));
+  return response.data;
+}
+
+export async function createCardTemplate(projectId: string, input: CreateCardTemplateInput) {
+  const response = await http.post<CardTemplate>(apiPaths.cardTemplates(projectId), input);
+  return response.data;
+}
+
+export async function updateCardTemplate(
+  projectId: string,
+  templateId: string,
+  input: UpdateCardTemplateInput
+) {
+  const response = await http.patch<CardTemplate>(
+    apiPaths.cardTemplate(projectId, templateId),
+    input
+  );
+  return response.data;
+}
+
+export async function deleteCardTemplate(projectId: string, templateId: string) {
+  await http.delete(apiPaths.cardTemplate(projectId, templateId));
 }
 
 export async function createComponent(projectId: string, input: CreateGameComponentInput) {

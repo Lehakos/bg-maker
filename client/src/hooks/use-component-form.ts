@@ -1,5 +1,12 @@
 import { useState } from "react";
 import {
+  createDefaultCardLayout,
+  getDefaultCardFieldValues,
+  getFirstCardSideText,
+  resolveCardLayout,
+  type CardFieldValues,
+  type CardLayout,
+  type CardTemplate,
   type ComponentType,
   type ComponentVisibility,
   type CreateGameComponentInput,
@@ -8,10 +15,24 @@ import {
   type UpdateGameComponentInput
 } from "@bg-maker/shared";
 
-export type ComponentFormSubmitValues = CreateGameComponentInput | UpdateGameComponentInput;
+export type ComponentFormType = ComponentType | "cardTemplate";
+
+export type ComponentFormSubmitValues =
+  | {
+      kind: "component";
+      component: CreateGameComponentInput | UpdateGameComponentInput;
+    }
+  | {
+      kind: "cardTemplate";
+      cardTemplate: {
+        id?: string;
+        layout: CardLayout;
+        name: string;
+      };
+    };
 
 export type ComponentFormValues = {
-  type: ComponentType;
+  type: ComponentFormType;
   name: string;
   quantity: number;
   description: string;
@@ -19,6 +40,10 @@ export type ComponentFormValues = {
   notes: string;
   frontText: string;
   backText: string;
+  cardTemplateId: string;
+  cardTemplateName: string;
+  cardFieldValues: CardFieldValues;
+  layout: CardLayout;
   defaultVisibility: ComponentVisibility;
   deckCards: DeckCardEntry[];
   shuffleOnSetup: boolean;
@@ -39,6 +64,10 @@ const defaultValues: ComponentFormValues = {
   notes: "",
   frontText: "",
   backText: "",
+  cardTemplateId: "",
+  cardTemplateName: "Default card",
+  cardFieldValues: {},
+  layout: createDefaultCardLayout(),
   defaultVisibility: "visible",
   deckCards: [],
   shuffleOnSetup: true,
@@ -50,9 +79,14 @@ const defaultValues: ComponentFormValues = {
   valueLabel: ""
 };
 
-export function useComponentForm(component?: GameComponent) {
+export function useComponentForm(
+  component?: GameComponent,
+  cardTemplates: CardTemplate[] = [],
+  cardTemplate?: CardTemplate,
+  formKind: "cardTemplate" | "component" = "component"
+) {
   const [values, setValues] = useState<ComponentFormValues>(() =>
-    getComponentFormValues(component)
+    getComponentFormValues(component, cardTemplates, cardTemplate, formKind)
   );
   const nameIsEmpty = values.name.trim().length === 0;
 
@@ -61,15 +95,37 @@ export function useComponentForm(component?: GameComponent) {
       return null;
     }
 
+    if (values.type === "cardTemplate") {
+      return {
+        kind: "cardTemplate",
+        cardTemplate: {
+          id: values.cardTemplateId || undefined,
+          name: values.name.trim(),
+          layout: values.layout
+        }
+      };
+    }
+
+    if (values.type === "card" && !values.cardTemplateId) {
+      return null;
+    }
+
     const payload = buildComponentPayload(values);
 
     if (mode === "edit") {
       const { type, ...updatePayload } = payload;
       void type;
-      return updatePayload;
+
+      return {
+        kind: "component",
+        component: updatePayload
+      };
     }
 
-    return payload;
+    return {
+      kind: "component",
+      component: payload
+    };
   }
 
   function updateDeckCard(index: number, patch: Partial<DeckCardEntry>) {
@@ -115,9 +171,47 @@ export function readNumber(value: number | string, fallback: number) {
   return Number.isFinite(parsedValue) ? parsedValue : fallback;
 }
 
-function getComponentFormValues(component?: GameComponent): ComponentFormValues {
+function getComponentFormValues(
+  component?: GameComponent,
+  cardTemplates: CardTemplate[] = [],
+  cardTemplate?: CardTemplate,
+  formKind: "cardTemplate" | "component" = "component"
+): ComponentFormValues {
+  if (cardTemplate) {
+    return {
+      ...defaultValues,
+      type: "cardTemplate",
+      name: cardTemplate.name,
+      cardTemplateId: cardTemplate.id,
+      cardTemplateName: cardTemplate.name,
+      layout: cardTemplate.layout
+    };
+  }
+
+  if (formKind === "cardTemplate") {
+    return {
+      ...defaultValues,
+      type: "cardTemplate",
+      name: "",
+      cardTemplateId: "",
+      cardTemplateName: "",
+      cardFieldValues: {},
+      layout: createDefaultCardLayout()
+    };
+  }
+
   if (!component) {
-    return defaultValues;
+    const template = cardTemplates[0];
+
+    return template
+      ? {
+          ...defaultValues,
+          cardTemplateId: template.id,
+          cardTemplateName: template.name,
+          cardFieldValues: getDefaultCardFieldValues(template.layout),
+          layout: template.layout
+        }
+      : defaultValues;
   }
 
   const common = {
@@ -131,13 +225,30 @@ function getComponentFormValues(component?: GameComponent): ComponentFormValues 
   };
 
   switch (component.type) {
-    case "card":
+    case "card": {
+      const template = cardTemplates.find((item) => item.id === component.templateId);
+      const layout =
+        template?.layout ??
+        component.layout ??
+        createDefaultCardLayout({
+          frontText: component.frontText,
+          backText: component.backText
+        });
+
       return {
         ...common,
         frontText: component.frontText,
         backText: component.backText,
+        cardTemplateId: component.templateId,
+        cardTemplateName: template?.name ?? "Default card",
+        cardFieldValues: {
+          ...getDefaultCardFieldValues(layout),
+          ...component.fieldValues
+        },
+        layout,
         defaultVisibility: component.defaultVisibility
       };
+    }
 
     case "deck":
       return {
@@ -177,7 +288,6 @@ function getComponentFormValues(component?: GameComponent): ComponentFormValues 
 
 function buildComponentPayload(values: ComponentFormValues): CreateGameComponentInput {
   const base = {
-    type: values.type,
     name: values.name.trim(),
     quantity: values.quantity,
     description: values.description.trim(),
@@ -186,14 +296,19 @@ function buildComponentPayload(values: ComponentFormValues): CreateGameComponent
   };
 
   switch (values.type) {
-    case "card":
+    case "card": {
+      const resolvedLayout = resolveCardLayout(values.layout, values.cardFieldValues);
+
       return {
         ...base,
         type: "card",
-        frontText: values.frontText.trim(),
-        backText: values.backText.trim(),
+        frontText: getFirstCardSideText(resolvedLayout.sides.front),
+        backText: getFirstCardSideText(resolvedLayout.sides.back),
+        templateId: values.cardTemplateId,
+        fieldValues: values.cardFieldValues,
         defaultVisibility: values.defaultVisibility
       };
+    }
 
     case "deck":
       return {
@@ -233,6 +348,9 @@ function buildComponentPayload(values: ComponentFormValues): CreateGameComponent
         stackable: values.stackable,
         valueLabel: values.valueLabel.trim()
       };
+
+    case "cardTemplate":
+      throw new Error("Card templates are submitted through the card template API");
   }
 }
 
