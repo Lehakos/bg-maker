@@ -1,5 +1,12 @@
 import axios from "axios";
-import { apiPaths, type GamePrototypeSummary, type HealthResponse } from "@bg-maker/shared";
+import {
+  apiPaths,
+  type CreateGameProjectInput,
+  type GameProject,
+  type GameProjectSummary,
+  type HealthResponse,
+  type UpdateGameProjectInput
+} from "@bg-maker/shared";
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? ""
@@ -10,7 +17,41 @@ export async function getHealth() {
   return response.data;
 }
 
-export async function getPrototypes() {
-  const response = await http.get<GamePrototypeSummary[]>(apiPaths.prototypes);
+export async function getProjects() {
+  const response = await http.get<GameProjectSummary[]>(apiPaths.projects);
   return response.data;
+}
+
+export async function createProject(input: CreateGameProjectInput) {
+  const response = await http.post<GameProject>(apiPaths.projects, input);
+  return response.data;
+}
+
+export async function getProject(projectId: string) {
+  const response = await http.get<GameProject>(apiPaths.project(projectId));
+  return response.data;
+}
+
+export async function updateProject(projectId: string, input: UpdateGameProjectInput) {
+  const response = await http.patch<GameProject>(apiPaths.project(projectId), input);
+  return response.data;
+}
+
+export async function deleteProject(projectId: string) {
+  await http.delete(apiPaths.project(projectId));
+}
+
+export function getApiErrorMessage(error: unknown) {
+  if (
+    axios.isAxiosError<{ error?: string }>(error) &&
+    typeof error.response?.data?.error === "string"
+  ) {
+    return error.response.data.error;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Something went wrong";
 }

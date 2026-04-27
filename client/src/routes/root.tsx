@@ -1,9 +1,26 @@
 import { AppShell, Button, Group, ThemeIcon, Title } from "@mantine/core";
-import { Link, Outlet } from "@tanstack/react-router";
+import { useDisclosure } from "@mantine/hooks";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { APP_NAME } from "@bg-maker/shared";
 import { Boxes, Plus } from "lucide-react";
+import { createProject, getApiErrorMessage } from "../api/client";
+import { ProjectFormModal } from "../components/project-form-modal";
 
 export function RootLayout() {
+  const [projectModalOpened, { close: closeProjectModal, open: openProjectModal }] =
+    useDisclosure(false);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const createProjectMutation = useMutation({
+    mutationFn: createProject,
+    onSuccess: async (project) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      closeProjectModal();
+      void navigate({ to: "/projects/$projectId", params: { projectId: project.id } });
+    }
+  });
+
   return (
     <AppShell header={{ height: 64 }} padding="md">
       <AppShell.Header>
@@ -18,8 +35,8 @@ export function RootLayout() {
             <Link to="/" className="nav-link">
               Workspace
             </Link>
-            <Button leftSection={<Plus size={16} />} radius={8}>
-              New prototype
+            <Button leftSection={<Plus size={16} />} radius={8} onClick={openProjectModal}>
+              New project
             </Button>
           </Group>
         </Group>
@@ -27,6 +44,17 @@ export function RootLayout() {
       <AppShell.Main>
         <Outlet />
       </AppShell.Main>
+      <ProjectFormModal
+        opened={projectModalOpened}
+        mode="create"
+        loading={createProjectMutation.isPending}
+        error={createProjectMutation.error ? getApiErrorMessage(createProjectMutation.error) : null}
+        onClose={() => {
+          createProjectMutation.reset();
+          closeProjectModal();
+        }}
+        onSubmit={(values) => createProjectMutation.mutate(values)}
+      />
     </AppShell>
   );
 }
