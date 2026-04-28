@@ -6,7 +6,13 @@ import {
   type ProjectStatus,
   type UpdateGameProjectInput
 } from "@bg-maker/shared";
-import { projectComponents, projects } from "./in-memory-store.js";
+import {
+  projectCardTemplates,
+  projectCollections,
+  projectComponents,
+  projectPieceTemplates,
+  projects
+} from "./in-memory-store.js";
 import { fail, ok, type ServiceResult } from "./service-result.js";
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -51,6 +57,9 @@ export function createProject(value: unknown): ServiceResult<GameProject> {
 
   projects.set(project.id, project);
   projectComponents.set(project.id, []);
+  projectCardTemplates.set(project.id, []);
+  projectPieceTemplates.set(project.id, []);
+  projectCollections.set(project.id, []);
 
   return ok(project);
 }
@@ -96,6 +105,9 @@ export function deleteProject(projectId: string): ServiceResult<undefined> {
 
   projects.delete(projectId);
   projectComponents.delete(projectId);
+  projectCardTemplates.delete(projectId);
+  projectPieceTemplates.delete(projectId);
+  projectCollections.delete(projectId);
 
   return ok(undefined);
 }

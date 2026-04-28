@@ -58,30 +58,37 @@ export function ProjectFormModal({
   return (
     <Modal
       centered
+      classNames={{
+        body: "app-form-modal-body",
+        content: "app-form-modal-content",
+        header: "app-form-modal-header"
+      }}
       opened={opened}
       onClose={onClose}
       radius={8}
       title={mode === "create" ? "New project" : "Edit project"}
     >
       {opened && isWaitingForEditValues ? (
-        <Stack gap="md">
+        <div className="app-form-modal-form">
+          <Stack className="app-form-modal-scroll" gap="md">
+            {error ? (
+              <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
+                {error}
+              </Alert>
+            ) : (
+              <Text c="dimmed" py="lg" ta="center">
+                Loading project
+              </Text>
+            )}
+          </Stack>
           {error ? (
-            <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
-              {error}
-            </Alert>
-          ) : (
-            <Text c="dimmed" py="lg" ta="center">
-              Loading project
-            </Text>
-          )}
-          {error ? (
-            <Group justify="flex-end">
+            <Group className="app-form-modal-footer" justify="flex-end">
               <Button type="button" variant="subtle" color="gray" onClick={onClose}>
                 Close
               </Button>
             </Group>
           ) : null}
-        </Stack>
+        </div>
       ) : opened ? (
         <ProjectFormContent
           mode={mode}
@@ -109,6 +116,7 @@ function ProjectFormContent({
 
   return (
     <form
+      className="app-form-modal-form"
       onSubmit={(event) => {
         event.preventDefault();
 
@@ -125,7 +133,7 @@ function ProjectFormContent({
         });
       }}
     >
-      <Stack gap="md">
+      <Stack className="app-form-modal-scroll" gap="md">
         {error ? (
           <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
             {error}
@@ -181,15 +189,15 @@ function ProjectFormContent({
           onChange={(event) => setValues({ ...values, notes: event.currentTarget.value })}
         />
 
-        <Group justify="flex-end">
-          <Button type="button" variant="subtle" color="gray" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={loading} disabled={nameIsEmpty} radius={8}>
-            {mode === "create" ? "Create project" : "Save changes"}
-          </Button>
-        </Group>
       </Stack>
+      <Group className="app-form-modal-footer" justify="flex-end">
+        <Button type="button" variant="subtle" color="gray" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" loading={loading} disabled={nameIsEmpty} radius={8}>
+          {mode === "create" ? "Create project" : "Save changes"}
+        </Button>
+      </Group>
     </form>
   );
 }

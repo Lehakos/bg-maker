@@ -1,21 +1,35 @@
 import { useState } from "react";
 import {
   createDefaultCardLayout,
+  createDefaultPieceLayout,
   getDefaultCardFieldValues,
+  getDefaultPieceFieldValues,
   getFirstCardSideText,
+  getFirstPieceFaceText,
   resolveCardLayout,
-  type CardFieldValues,
+  resolvePieceLayout,
+  type TemplateFieldValues,
   type CardLayout,
   type CardTemplate,
+  type ComponentCollection,
+  type ComponentCollectionItem,
   type ComponentType,
-  type ComponentVisibility,
+  type CreateComponentCollectionInput,
   type CreateGameComponentInput,
-  type DeckCardEntry,
+  type CreatePieceTemplateInput,
   type GameComponent,
-  type UpdateGameComponentInput
+  type PieceAppearance,
+  type PieceFormFactor,
+  type PieceLayout,
+  type PieceShape,
+  type PieceTemplate,
+  type TileShape,
+  type UpdateComponentCollectionInput,
+  type UpdateGameComponentInput,
+  type UpdatePieceTemplateInput
 } from "@bg-maker/shared";
 
-export type ComponentFormType = ComponentType | "cardTemplate";
+export type ComponentFormType = ComponentType | "cardTemplate" | "pieceTemplate" | "collection";
 
 export type ComponentFormSubmitValues =
   | {
@@ -29,6 +43,21 @@ export type ComponentFormSubmitValues =
         layout: CardLayout;
         name: string;
       };
+    }
+  | {
+      kind: "pieceTemplate";
+      pieceTemplate: (CreatePieceTemplateInput | UpdatePieceTemplateInput) & {
+        id?: string;
+        layout: PieceLayout;
+        name: string;
+      };
+    }
+  | {
+      collection: (CreateComponentCollectionInput | UpdateComponentCollectionInput) & {
+        id?: string;
+        name: string;
+      };
+      kind: "collection";
     };
 
 export type ComponentFormValues = {
@@ -42,18 +71,29 @@ export type ComponentFormValues = {
   backText: string;
   cardTemplateId: string;
   cardTemplateName: string;
-  cardFieldValues: CardFieldValues;
+  cardFieldValues: TemplateFieldValues;
   layout: CardLayout;
-  defaultVisibility: ComponentVisibility;
-  deckCards: DeckCardEntry[];
-  shuffleOnSetup: boolean;
+  pieceTemplateId: string;
+  pieceTemplateName: string;
+  pieceFieldValues: TemplateFieldValues;
+  pieceAppearance: PieceAppearance;
+  pieceLayout: PieceLayout;
+  pieceFormFactor: PieceFormFactor;
+  pieceShape: PieceShape;
+  pieceWidthMm: number;
+  pieceHeightMm: number;
+  pieceDepthMm: number;
+  pieceTwoSided: boolean;
+  pieceFaceText: string;
+  tileShape: TileShape;
+  tileFaceLabel: string;
+  tileColor: string;
+  tileEdgeLabelsText: string;
+  collectionItems: ComponentCollectionItem[];
   sides: number;
-  headsLabel: string;
-  tailsLabel: string;
-  usage: string;
-  stackable: boolean;
-  valueLabel: string;
 };
+
+const defaultPieceLayout = createDefaultPieceLayout();
 
 const defaultValues: ComponentFormValues = {
   type: "card",
@@ -68,25 +108,45 @@ const defaultValues: ComponentFormValues = {
   cardTemplateName: "Default card",
   cardFieldValues: {},
   layout: createDefaultCardLayout(),
-  defaultVisibility: "visible",
-  deckCards: [],
-  shuffleOnSetup: true,
-  sides: 6,
-  headsLabel: "Heads",
-  tailsLabel: "Tails",
-  usage: "",
-  stackable: true,
-  valueLabel: ""
+  pieceTemplateId: "",
+  pieceTemplateName: "Default piece",
+  pieceFieldValues: {},
+  pieceAppearance: defaultPieceLayout.appearance,
+  pieceLayout: defaultPieceLayout,
+  pieceFormFactor: defaultPieceLayout.formFactor,
+  pieceShape: defaultPieceLayout.shape,
+  pieceWidthMm: defaultPieceLayout.sizeMm.widthMm,
+  pieceHeightMm: defaultPieceLayout.sizeMm.heightMm,
+  pieceDepthMm: defaultPieceLayout.sizeMm.depthMm,
+  pieceTwoSided: defaultPieceLayout.faces.length > 1,
+  pieceFaceText: "",
+  tileShape: "square",
+  tileFaceLabel: "",
+  tileColor: "#e2e8f0",
+  tileEdgeLabelsText: "",
+  collectionItems: [],
+  sides: 6
 };
 
 export function useComponentForm(
   component?: GameComponent,
   cardTemplates: CardTemplate[] = [],
+  pieceTemplates: PieceTemplate[] = [],
   cardTemplate?: CardTemplate,
-  formKind: "cardTemplate" | "component" = "component"
+  pieceTemplate?: PieceTemplate,
+  collection?: ComponentCollection,
+  formKind: "cardTemplate" | "collection" | "component" | "pieceTemplate" = "component"
 ) {
   const [values, setValues] = useState<ComponentFormValues>(() =>
-    getComponentFormValues(component, cardTemplates, cardTemplate, formKind)
+    getComponentFormValues(
+      component,
+      cardTemplates,
+      pieceTemplates,
+      cardTemplate,
+      pieceTemplate,
+      collection,
+      formKind
+    )
   );
   const nameIsEmpty = values.name.trim().length === 0;
 
@@ -106,7 +166,36 @@ export function useComponentForm(
       };
     }
 
+    if (values.type === "pieceTemplate") {
+      return {
+        kind: "pieceTemplate",
+        pieceTemplate: {
+          id: values.pieceTemplateId || undefined,
+          name: values.name.trim(),
+          layout: buildPieceTemplateLayout(values)
+        }
+      };
+    }
+
+    if (values.type === "collection") {
+      return {
+        kind: "collection",
+        collection: {
+          id: collection?.id,
+          name: values.name.trim(),
+          description: values.description.trim(),
+          tags: parseTags(values.tagsText),
+          notes: values.notes.trim(),
+          items: values.collectionItems.filter((item) => item.componentId.length > 0)
+        }
+      };
+    }
+
     if (values.type === "card" && !values.cardTemplateId) {
+      return null;
+    }
+
+    if (values.type === "piece" && !values.pieceTemplateId) {
       return null;
     }
 
@@ -128,19 +217,21 @@ export function useComponentForm(
     };
   }
 
-  function updateDeckCard(index: number, patch: Partial<DeckCardEntry>) {
+  function updateCollectionItem(index: number, patch: Partial<ComponentCollectionItem>) {
     setValues((currentValues) => ({
       ...currentValues,
-      deckCards: currentValues.deckCards.map((entry, entryIndex) =>
+      collectionItems: currentValues.collectionItems.map((entry, entryIndex) =>
         entryIndex === index ? { ...entry, ...patch } : entry
       )
     }));
   }
 
-  function removeDeckCard(index: number) {
+  function removeCollectionItem(index: number) {
     setValues((currentValues) => ({
       ...currentValues,
-      deckCards: currentValues.deckCards.filter((_entry, entryIndex) => entryIndex !== index)
+      collectionItems: currentValues.collectionItems.filter(
+        (_entry, entryIndex) => entryIndex !== index
+      )
     }));
   }
 
@@ -154,10 +245,10 @@ export function useComponentForm(
   return {
     buildSubmitValues,
     nameIsEmpty,
-    removeDeckCard,
+    removeCollectionItem,
     setDieSides,
     setValues,
-    updateDeckCard,
+    updateCollectionItem,
     values
   };
 }
@@ -174,8 +265,11 @@ export function readNumber(value: number | string, fallback: number) {
 function getComponentFormValues(
   component?: GameComponent,
   cardTemplates: CardTemplate[] = [],
+  pieceTemplates: PieceTemplate[] = [],
   cardTemplate?: CardTemplate,
-  formKind: "cardTemplate" | "component" = "component"
+  pieceTemplate?: PieceTemplate,
+  collection?: ComponentCollection,
+  formKind: "cardTemplate" | "collection" | "component" | "pieceTemplate" = "component"
 ): ComponentFormValues {
   if (cardTemplate) {
     return {
@@ -185,6 +279,29 @@ function getComponentFormValues(
       cardTemplateId: cardTemplate.id,
       cardTemplateName: cardTemplate.name,
       layout: cardTemplate.layout
+    };
+  }
+
+  if (pieceTemplate) {
+    return {
+      ...defaultValues,
+      type: "pieceTemplate",
+      name: pieceTemplate.name,
+      pieceTemplateId: pieceTemplate.id,
+      pieceTemplateName: pieceTemplate.name,
+      ...getPieceTemplateFormFields(pieceTemplate.layout)
+    };
+  }
+
+  if (collection) {
+    return {
+      ...defaultValues,
+      type: "collection",
+      name: collection.name,
+      description: collection.description,
+      tagsText: collection.tags.join(", "),
+      notes: collection.notes,
+      collectionItems: collection.items
     };
   }
 
@@ -200,18 +317,56 @@ function getComponentFormValues(
     };
   }
 
+  if (formKind === "pieceTemplate") {
+    const layout = createDefaultPieceLayout();
+
+    return {
+      ...defaultValues,
+      type: "pieceTemplate",
+      name: "",
+      pieceTemplateId: "",
+      pieceTemplateName: "",
+      pieceFieldValues: {},
+      ...getPieceTemplateFormFields(layout)
+    };
+  }
+
+  if (formKind === "collection") {
+    return {
+      ...defaultValues,
+      type: "collection",
+      name: "",
+      collectionItems: []
+    };
+  }
+
   if (!component) {
     const template = cardTemplates[0];
 
-    return template
-      ? {
-          ...defaultValues,
-          cardTemplateId: template.id,
-          cardTemplateName: template.name,
-          cardFieldValues: getDefaultCardFieldValues(template.layout),
-          layout: template.layout
-        }
-      : defaultValues;
+    if (template) {
+      return {
+        ...defaultValues,
+        cardTemplateId: template.id,
+        cardTemplateName: template.name,
+        cardFieldValues: getDefaultCardFieldValues(template.layout),
+        layout: template.layout
+      };
+    }
+
+    const piece = pieceTemplates[0];
+
+    if (piece) {
+      return {
+        ...defaultValues,
+        type: "piece",
+        pieceTemplateId: piece.id,
+        pieceTemplateName: piece.name,
+        pieceFieldValues: getDefaultPieceFieldValues(piece.layout),
+        ...getPieceTemplateFormFields(piece.layout)
+      };
+    }
+
+    return defaultValues;
   }
 
   const common = {
@@ -245,43 +400,44 @@ function getComponentFormValues(
           ...getDefaultCardFieldValues(layout),
           ...component.fieldValues
         },
-        layout,
-        defaultVisibility: component.defaultVisibility
+        layout
       };
     }
 
-    case "deck":
+    case "tile":
       return {
         ...common,
-        defaultVisibility: component.defaultVisibility,
-        deckCards: component.cards,
-        shuffleOnSetup: component.shuffleOnSetup
+        tileShape: component.shape,
+        tileFaceLabel: component.faceLabel,
+        tileColor: component.color,
+        tileEdgeLabelsText: component.edgeLabels.join(", ")
       };
+
+    case "piece": {
+      const template = pieceTemplates.find((item) => item.id === component.templateId);
+      const layout = template?.layout ?? component.layout ?? createDefaultPieceLayout();
+      const appearance = {
+        ...layout.appearance,
+        ...(component.appearance ?? {})
+      };
+
+      return {
+        ...common,
+        pieceTemplateId: component.templateId,
+        pieceTemplateName: template?.name ?? "Default piece",
+        pieceFieldValues: {
+          ...getDefaultPieceFieldValues(layout),
+          ...component.fieldValues
+        },
+        pieceAppearance: appearance,
+        pieceLayout: layout
+      };
+    }
 
     case "die":
       return {
         ...common,
         sides: component.sides
-      };
-
-    case "coin":
-      return {
-        ...common,
-        headsLabel: component.headsLabel,
-        tailsLabel: component.tailsLabel
-      };
-
-    case "marker":
-      return {
-        ...common,
-        usage: component.usage
-      };
-
-    case "token":
-      return {
-        ...common,
-        stackable: component.stackable,
-        valueLabel: component.valueLabel
       };
   }
 }
@@ -305,19 +461,36 @@ function buildComponentPayload(values: ComponentFormValues): CreateGameComponent
         frontText: getFirstCardSideText(resolvedLayout.sides.front),
         backText: getFirstCardSideText(resolvedLayout.sides.back),
         templateId: values.cardTemplateId,
-        fieldValues: values.cardFieldValues,
-        defaultVisibility: values.defaultVisibility
+        fieldValues: values.cardFieldValues
       };
     }
 
-    case "deck":
+    case "tile":
       return {
         ...base,
-        type: "deck",
-        cards: values.deckCards.filter((entry) => entry.cardId.length > 0),
-        shuffleOnSetup: values.shuffleOnSetup,
-        defaultVisibility: values.defaultVisibility
+        type: "tile",
+        shape: values.tileShape,
+        faceLabel: values.tileFaceLabel.trim(),
+        color: values.tileColor,
+        edgeLabels: parseTileEdgeLabels(values.tileEdgeLabelsText, values.tileShape)
       };
+
+    case "piece": {
+      const resolvedLayout = resolvePieceLayout(
+        values.pieceLayout,
+        values.pieceFieldValues,
+        values.pieceAppearance
+      );
+
+      return {
+        ...base,
+        type: "piece",
+        labelText: getFirstPieceFaceText(resolvedLayout),
+        templateId: values.pieceTemplateId,
+        appearance: values.pieceAppearance,
+        fieldValues: values.pieceFieldValues
+      };
+    }
 
     case "die":
       return {
@@ -326,32 +499,71 @@ function buildComponentPayload(values: ComponentFormValues): CreateGameComponent
         sides: values.sides
       };
 
-    case "coin":
-      return {
-        ...base,
-        type: "coin",
-        headsLabel: values.headsLabel.trim(),
-        tailsLabel: values.tailsLabel.trim()
-      };
-
-    case "marker":
-      return {
-        ...base,
-        type: "marker",
-        usage: values.usage.trim()
-      };
-
-    case "token":
-      return {
-        ...base,
-        type: "token",
-        stackable: values.stackable,
-        valueLabel: values.valueLabel.trim()
-      };
-
     case "cardTemplate":
-      throw new Error("Card templates are submitted through the card template API");
+    case "collection":
+    case "pieceTemplate":
+      throw new Error("Non-component form values are submitted through their own APIs");
   }
+}
+
+function buildPieceTemplateLayout(values: ComponentFormValues): PieceLayout {
+  const fallbackLayout = createDefaultPieceLayout({
+    faceText: values.pieceFaceText,
+    formFactor: values.pieceFormFactor,
+    shape: values.pieceShape,
+    twoSided: values.pieceTwoSided && values.pieceFormFactor !== "solid"
+  });
+  const allowTwoSided = values.pieceFormFactor !== "solid" && values.pieceTwoSided;
+  const faces = values.pieceLayout.faces.length > 0 ? values.pieceLayout.faces : fallbackLayout.faces;
+
+  return {
+    ...values.pieceLayout,
+    formFactor: values.pieceFormFactor,
+    shape: values.pieceShape,
+    sizeMm: {
+      widthMm: values.pieceWidthMm,
+      heightMm: values.pieceHeightMm,
+      depthMm: values.pieceDepthMm
+    },
+    appearance: { ...values.pieceLayout.appearance },
+    customShape:
+      values.pieceShape === "custom" && values.pieceLayout.customShape
+        ? {
+            points: values.pieceLayout.customShape.points.map((point) => ({ ...point }))
+          }
+        : undefined,
+    faces: (allowTwoSided ? faces.slice(0, 2) : faces.slice(0, 1)).map((face) => ({
+      ...face,
+      zones: face.zones.map((zone) => ({
+        ...zone,
+        content: { ...zone.content, source: zone.content.source ? { ...zone.content.source } : undefined }
+      }))
+    }))
+  };
+}
+
+function getPieceTemplateFormFields(layout: PieceLayout) {
+  return {
+    pieceLayout: layout,
+    pieceAppearance: { ...layout.appearance },
+    pieceFormFactor: layout.formFactor,
+    pieceShape: layout.shape,
+    pieceWidthMm: layout.sizeMm.widthMm,
+    pieceHeightMm: layout.sizeMm.heightMm,
+    pieceDepthMm: layout.sizeMm.depthMm,
+    pieceTwoSided: layout.faces.length > 1,
+    pieceFaceText: getFirstPieceFaceText(layout)
+  };
+}
+
+function parseTileEdgeLabels(value: string, shape: TileShape) {
+  const expectedCount = shape === "square" ? 4 : 6;
+  const labels = value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  return Array.from({ length: expectedCount }, (_item, index) => labels[index] ?? "");
 }
 
 function parseTags(value: string) {

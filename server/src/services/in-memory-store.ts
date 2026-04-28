@@ -1,4 +1,10 @@
-import type { CardTemplate, GameComponent, GameProject } from "@bg-maker/shared";
+import type {
+  CardTemplate,
+  ComponentCollection,
+  GameComponent,
+  GameProject,
+  PieceTemplate
+} from "@bg-maker/shared";
 
 export const seedProjects: GameProject[] = [
   {
@@ -37,6 +43,14 @@ export const projectCardTemplates = new Map<string, CardTemplate[]>(
   seedProjects.map((project) => [project.id, []])
 );
 
+export const projectPieceTemplates = new Map<string, PieceTemplate[]>(
+  seedProjects.map((project) => [project.id, []])
+);
+
+export const projectCollections = new Map<string, ComponentCollection[]>(
+  seedProjects.map((project) => [project.id, []])
+);
+
 export function getProjectComponents(projectId: string) {
   return projectComponents.get(projectId) ?? [];
 }
@@ -51,4 +65,20 @@ export function getProjectCardTemplates(projectId: string) {
 
 export function setProjectCardTemplates(projectId: string, templates: CardTemplate[]) {
   projectCardTemplates.set(projectId, templates);
+}
+
+export function getProjectPieceTemplates(projectId: string) {
+  return projectPieceTemplates.get(projectId) ?? [];
+}
+
+export function setProjectPieceTemplates(projectId: string, templates: PieceTemplate[]) {
+  projectPieceTemplates.set(projectId, templates);
+}
+
+export function getProjectCollections(projectId: string) {
+  return projectCollections.get(projectId) ?? [];
+}
+
+export function setProjectCollections(projectId: string, collections: ComponentCollection[]) {
+  projectCollections.set(projectId, collections);
 }

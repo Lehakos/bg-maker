@@ -31,6 +31,16 @@ export class ProjectDetailPage {
     return this.componentForm;
   }
 
+  async openNewPieceTemplateForm() {
+    await this.page.getByRole("button", { name: "New piece template" }).click();
+    return this.componentForm;
+  }
+
+  async openNewCollectionForm() {
+    await this.page.getByRole("button", { name: "New collection" }).click();
+    return this.componentForm;
+  }
+
   componentRow(name: string) {
     return this.page
       .getByRole("row")
@@ -42,6 +52,20 @@ export class ProjectDetailPage {
       .getByRole("row")
       .filter({ has: this.page.getByRole("cell", { name, exact: true }) })
       .filter({ has: this.page.getByRole("button", { name: `Edit card template ${name}` }) });
+  }
+
+  pieceTemplateRow(name: string) {
+    return this.page
+      .getByRole("row")
+      .filter({ has: this.page.getByRole("cell", { name, exact: true }) })
+      .filter({ has: this.page.getByRole("button", { name: `Edit piece template ${name}` }) });
+  }
+
+  collectionRow(name: string) {
+    return this.page
+      .getByRole("row")
+      .filter({ has: this.page.getByRole("cell", { name, exact: true }) })
+      .filter({ has: this.page.getByRole("button", { name: `Edit collection ${name}` }) });
   }
 
   async duplicateComponent(name: string) {
@@ -60,9 +84,21 @@ export class ProjectDetailPage {
   async openCardTemplateEditor(name: string) {
     const row = this.cardTemplateRow(name);
     await row.hover();
-    await row
-      .getByRole("button", { name: `Edit card template ${name}` })
-      .click({ force: true });
+    await row.getByRole("button", { name: `Edit card template ${name}` }).click({ force: true });
+    return this.componentForm;
+  }
+
+  async openPieceTemplateEditor(name: string) {
+    const row = this.pieceTemplateRow(name);
+    await row.hover();
+    await row.getByRole("button", { name: `Edit piece template ${name}` }).click({ force: true });
+    return this.componentForm;
+  }
+
+  async openCollectionEditor(name: string) {
+    const row = this.collectionRow(name);
+    await row.hover();
+    await row.getByRole("button", { name: `Edit collection ${name}` }).click({ force: true });
     return this.componentForm;
   }
 
@@ -75,9 +111,19 @@ export class ProjectDetailPage {
   async deleteCardTemplate(name: string) {
     const row = this.cardTemplateRow(name);
     await row.hover();
-    await row
-      .getByRole("button", { name: `Delete card template ${name}` })
-      .click({ force: true });
+    await row.getByRole("button", { name: `Delete card template ${name}` }).click({ force: true });
+  }
+
+  async deletePieceTemplate(name: string) {
+    const row = this.pieceTemplateRow(name);
+    await row.hover();
+    await row.getByRole("button", { name: `Delete piece template ${name}` }).click({ force: true });
+  }
+
+  async deleteCollection(name: string) {
+    const row = this.collectionRow(name);
+    await row.hover();
+    await row.getByRole("button", { name: `Delete collection ${name}` }).click({ force: true });
   }
 
   acceptNextDeleteConfirmation(name: string) {
@@ -94,6 +140,20 @@ export class ProjectDetailPage {
     });
   }
 
+  acceptNextDeletePieceTemplateConfirmation(name: string) {
+    this.page.once("dialog", async (dialog) => {
+      expect(dialog.message()).toBe(`Delete piece template "${name}"?`);
+      await dialog.accept();
+    });
+  }
+
+  acceptNextDeleteCollectionConfirmation(name: string) {
+    this.page.once("dialog", async (dialog) => {
+      expect(dialog.message()).toBe(`Delete collection "${name}"?`);
+      await dialog.accept();
+    });
+  }
+
   apiError(message: string) {
     return this.page.getByText(message);
   }
@@ -104,7 +164,7 @@ class ComponentFormObject {
 
   get dialog() {
     return this.page.getByRole("dialog", {
-      name: /^(New component|Edit component|New card template|Edit card template)$/
+      name: /^(New component|Edit component|New card template|Edit card template|New piece template|Edit piece template|New collection|Edit collection)$/
     });
   }
 
@@ -121,7 +181,7 @@ class ComponentFormObject {
   }) {
     if (values.name !== undefined) {
       await this.dialog
-        .getByRole("textbox", { name: /^(Name|Template name)$/ })
+        .getByRole("textbox", { name: /^(Name|Template name|Collection name)$/ })
         .fill(values.name);
     }
 
@@ -130,7 +190,20 @@ class ComponentFormObject {
     }
 
     if (values.tags !== undefined) {
-      await this.dialog.getByRole("textbox", { name: "Tags" }).fill(values.tags);
+      const tagsInput = this.dialog.getByRole("combobox", { name: "Tags" });
+      await tagsInput.click();
+      const existing = await this.dialog.locator(".mantine-Pill-root").count();
+      for (let index = 0; index < existing; index += 1) {
+        await tagsInput.press("Backspace");
+      }
+      const tags = values.tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0);
+      for (const tag of tags) {
+        await tagsInput.fill(tag);
+        await tagsInput.press("Enter");
+      }
     }
 
     if (values.description !== undefined) {
@@ -163,12 +236,7 @@ class ComponentFormObject {
     await this.page.getByRole("option", { name: size }).click();
   }
 
-  async fillCardPadding(values: {
-    bottom?: string;
-    left?: string;
-    right?: string;
-    top?: string;
-  }) {
+  async fillCardPadding(values: { bottom?: string; left?: string; right?: string; top?: string }) {
     if (values.top !== undefined) {
       await this.dialog.getByLabel("Padding top").fill(values.top);
     }
@@ -186,7 +254,22 @@ class ComponentFormObject {
     }
   }
 
+  async openZonesTab() {
+    const tab = this.dialog.getByRole("tab", { name: /^(Zones|Label)$/ });
+    if ((await tab.count()) > 0) {
+      await tab.first().click();
+    }
+  }
+
+  async openPhysicalTab() {
+    const tab = this.dialog.getByRole("tab", { name: "Physical" });
+    if ((await tab.count()) > 0) {
+      await tab.click();
+    }
+  }
+
   async selectZoneTemplate(template: string) {
+    await this.openZonesTab();
     await this.dialog.getByLabel("Zone template").click();
     await this.page.getByRole("option", { name: template }).click();
   }
@@ -196,11 +279,13 @@ class ComponentFormObject {
   }
 
   async addTextElement(text: string) {
+    await this.openZonesTab();
     await this.selectZoneContentType("Text");
     await this.dialog.getByLabel("Text content").fill(text);
   }
 
   async addIconElement(icon: string) {
+    await this.openZonesTab();
     await this.selectZoneContentType("Visual");
     await this.selectVisualType("Icon");
     await this.dialog.getByRole("combobox", { name: "Icon" }).click();
@@ -208,6 +293,7 @@ class ComponentFormObject {
   }
 
   async addImageElement(file: { buffer: Buffer; mimeType: string; name: string }) {
+    await this.openZonesTab();
     await this.selectZoneContentType("Visual");
     await this.selectVisualType("Image");
 
@@ -218,12 +304,13 @@ class ComponentFormObject {
     await fileChooser.setFiles(file);
   }
 
-  async selectElementContentSource(source: string) {
-    await this.dialog.getByLabel("Content source").click();
-    await this.page.getByRole("option", { name: source }).click();
+  async selectElementContentSource(source: "Fixed" | "Per-component") {
+    await this.openZonesTab();
+    await this.dialog.locator("label").filter({ hasText: source }).click();
   }
 
   async fillFieldKey(fieldKey: string) {
+    await this.openZonesTab();
     await this.dialog.getByLabel("Field key").fill(fieldKey);
   }
 
@@ -261,7 +348,8 @@ class ComponentFormObject {
   }
 
   async zoneNumberValue(label: string) {
-    return Number(await this.dialog.getByLabel(label).inputValue());
+    await this.openZonesTab();
+    return Number.parseFloat(await this.dialog.getByLabel(label).inputValue());
   }
 
   selectedZoneInput() {
@@ -269,21 +357,28 @@ class ComponentFormObject {
   }
 
   async selectZoneContentType(type: "Text" | "Visual") {
+    await this.openZonesTab();
+    if ((await this.dialog.getByLabel("Content type").count()) === 0) {
+      await this.dialog.getByRole("button", { name: "Add zone" }).click();
+    }
     await this.dialog.getByLabel("Content type").click();
     await this.page.getByRole("option", { name: type }).click();
   }
 
   async selectVisualType(type: "Icon" | "Image") {
+    await this.openZonesTab();
     await this.dialog.getByLabel("Visual type").click();
     await this.page.getByRole("option", { name: type }).click();
   }
 
   async selectVisualHorizontalPosition(position: "Center" | "Left" | "Right") {
+    await this.openZonesTab();
     await this.dialog.getByLabel("Horizontal position").click();
     await this.page.getByRole("option", { name: position }).click();
   }
 
   async selectVisualVerticalPosition(position: "Bottom" | "Center" | "Top") {
+    await this.openZonesTab();
     await this.dialog.getByLabel("Vertical position").click();
     await this.page.getByRole("option", { name: position }).click();
   }
@@ -308,17 +403,70 @@ class ComponentFormObject {
     await this.page.mouse.up();
   }
 
-  async addDeckCard(quantity: string) {
-    await this.dialog.getByRole("button", { name: "Add card" }).click();
-    await this.dialog.getByLabel("Card quantity").fill(quantity);
+  async selectPieceTemplate(name: string) {
+    await this.dialog.getByLabel("Piece template").click();
+    await this.page.getByRole("option", { name }).click();
   }
 
-  async fillDeck(values: { cardName: string; cardQuantity: string; name: string }) {
+  async fillPieceTemplate(values: {
+    faceText?: string;
+    formFactor?: "Flat" | "Solid" | "Standee";
+    shape?: string;
+  }) {
+    if (values.formFactor !== undefined) {
+      await this.openPhysicalTab();
+      await this.dialog.getByLabel("Form factor").click();
+      await this.page.getByRole("option", { name: values.formFactor }).click();
+    }
+
+    if (values.shape !== undefined) {
+      await this.openPhysicalTab();
+      await this.dialog.getByRole("button", { name: `Select ${values.shape} shape` }).click();
+    }
+
+    if (values.faceText !== undefined) {
+      await this.openZonesTab();
+      const faceTextInput = this.dialog.getByRole("textbox", { name: "Face text" });
+
+      if ((await faceTextInput.count()) > 0) {
+        await faceTextInput.fill(values.faceText);
+      } else {
+        if ((await this.dialog.getByLabel("Text content").count()) === 0) {
+          await this.dialog.getByRole("button", { name: "Add zone" }).click();
+        }
+        await this.dialog.getByLabel("Text content").fill(values.faceText);
+      }
+    }
+
+    if (values.shape === "Custom") {
+      await this.openPhysicalTab();
+    }
+  }
+
+  async fillTile(values: { edgeLabels?: string; faceLabel?: string; shape?: "Hex" | "Square" }) {
+    if (values.shape !== undefined) {
+      await this.dialog.getByLabel("Shape").click();
+      await this.page.getByRole("option", { name: values.shape }).click();
+    }
+
+    if (values.faceLabel !== undefined) {
+      await this.dialog.getByRole("textbox", { name: "Face label" }).fill(values.faceLabel);
+    }
+
+    if (values.edgeLabels !== undefined) {
+      await this.dialog.getByRole("textbox", { name: "Edge labels" }).fill(values.edgeLabels);
+    }
+  }
+
+  async addCollectionItem(componentName: string, quantity: string) {
+    await this.dialog.getByRole("button", { name: "Add item" }).click();
+    await expect(this.dialog.getByLabel("Component")).toHaveValue(new RegExp(componentName));
+    await this.dialog.getByLabel("Quantity").fill(quantity);
+  }
+
+  async fillCollection(values: { componentName: string; name: string; quantity: string }) {
+    await this.addCollectionItem(values.componentName, values.quantity);
     await this.fillCommon({ name: values.name });
-    await this.dialog.getByRole("button", { name: "Add card" }).click();
-    await this.dialog.getByLabel("Card", { exact: true }).click();
-    await this.page.getByRole("option", { name: values.cardName }).click();
-    await this.dialog.getByLabel("Card quantity").fill(values.cardQuantity);
   }
 
   async fillDie(values: { name?: string; sides: string }) {
@@ -327,7 +475,9 @@ class ComponentFormObject {
   }
 
   async saveCreate() {
-    await this.dialog.getByRole("button", { name: /Create (component|template)/ }).click();
+    await this.dialog
+      .getByRole("button", { name: /Create (collection|component|template)/ })
+      .click();
   }
 
   async saveEdit() {

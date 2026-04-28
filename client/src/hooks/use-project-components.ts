@@ -2,31 +2,52 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   createCardTemplate,
+  createCollection,
   createComponent,
+  createPieceTemplate,
   deleteCardTemplate,
+  deleteCollection,
   deleteComponent,
+  deletePieceTemplate,
   getApiErrorMessage,
   getCardTemplates,
+  getCollections,
   getComponents,
+  getPieceTemplates,
   updateCardTemplate,
-  updateComponent
+  updateCollection,
+  updateComponent,
+  updatePieceTemplate
 } from "../api/client";
 import type { ComponentFormSubmitValues } from "./use-component-form";
 import {
   createDefaultCardLayout,
+  createDefaultPieceLayout,
   getFirstCardSideText,
+  getFirstPieceFaceText,
   type CardLayout,
   type CardTemplate,
+  type ComponentCollection,
   type ComponentType,
+  type CreateComponentCollectionInput,
   type CreateGameComponentInput,
+  type CreatePieceTemplateInput,
   type GameComponent,
-  type UpdateGameComponentInput
+  type PieceLayout,
+  type PieceTemplate,
+  type UpdateComponentCollectionInput,
+  type UpdateGameComponentInput,
+  type UpdatePieceTemplateInput
 } from "@bg-maker/shared";
 
 export type ComponentModalState =
   | { mode: "create" }
+  | { mode: "createCollection" }
+  | { mode: "createPieceTemplate" }
   | { mode: "createTemplate" }
+  | { collection: ComponentCollection; mode: "editCollection" }
   | { component: GameComponent; mode: "edit" }
+  | { mode: "editPieceTemplate"; template: PieceTemplate }
   | { mode: "editTemplate"; template: CardTemplate }
   | null;
 
@@ -47,12 +68,23 @@ export function useProjectComponents(projectId: string) {
     enabled: projectId.length > 0,
     retry: false
   });
+  const pieceTemplatesQuery = useQuery({
+    queryKey: ["piece-templates", projectId],
+    queryFn: () => getPieceTemplates(projectId),
+    enabled: projectId.length > 0,
+    retry: false
+  });
+  const collectionsQuery = useQuery({
+    queryKey: ["collections", projectId],
+    queryFn: () => getCollections(projectId),
+    enabled: projectId.length > 0,
+    retry: false
+  });
 
   const components = useMemo(() => componentsQuery.data ?? [], [componentsQuery.data]);
-  const cardTemplates = useMemo(
-    () => cardTemplatesQuery.data ?? [],
-    [cardTemplatesQuery.data]
-  );
+  const cardTemplates = useMemo(() => cardTemplatesQuery.data ?? [], [cardTemplatesQuery.data]);
+  const pieceTemplates = useMemo(() => pieceTemplatesQuery.data ?? [], [pieceTemplatesQuery.data]);
+  const collections = useMemo(() => collectionsQuery.data ?? [], [collectionsQuery.data]);
   const filteredComponents = useMemo(
     () =>
       componentTypeFilter === "all"
@@ -67,11 +99,17 @@ export function useProjectComponents(projectId: string) {
   const editingComponent = componentModal?.mode === "edit" ? componentModal.component : undefined;
   const editingCardTemplate =
     componentModal?.mode === "editTemplate" ? componentModal.template : undefined;
+  const editingPieceTemplate =
+    componentModal?.mode === "editPieceTemplate" ? componentModal.template : undefined;
+  const editingCollection =
+    componentModal?.mode === "editCollection" ? componentModal.collection : undefined;
 
   async function refreshProjectComponents() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["components", projectId] }),
       queryClient.invalidateQueries({ queryKey: ["card-templates", projectId] }),
+      queryClient.invalidateQueries({ queryKey: ["piece-templates", projectId] }),
+      queryClient.invalidateQueries({ queryKey: ["collections", projectId] }),
       queryClient.invalidateQueries({ queryKey: ["project", projectId] }),
       queryClient.invalidateQueries({ queryKey: ["projects"] })
     ]);
@@ -84,15 +122,6 @@ export function useProjectComponents(projectId: string) {
       setComponentModal(null);
     }
   });
-  const createCardTemplateMutation = useMutation({
-    mutationFn: (values: { layout: CardLayout; name: string }) =>
-      createCardTemplate(projectId, values)
-  });
-  const updateCardTemplateMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: { layout: CardLayout; name: string } }) =>
-      updateCardTemplate(projectId, id, values)
-  });
-
   const updateComponentMutation = useMutation({
     mutationFn: ({
       componentId,
@@ -106,19 +135,50 @@ export function useProjectComponents(projectId: string) {
       setComponentModal(null);
     }
   });
-
   const duplicateComponentMutation = useMutation({
     mutationFn: (component: GameComponent) =>
       createComponent(projectId, toDuplicateInput(component)),
     onSuccess: refreshProjectComponents
   });
-
   const deleteComponentMutation = useMutation({
     mutationFn: (componentId: string) => deleteComponent(projectId, componentId),
     onSuccess: refreshProjectComponents
   });
+
+  const createCardTemplateMutation = useMutation({
+    mutationFn: (values: { layout: CardLayout; name: string }) =>
+      createCardTemplate(projectId, values)
+  });
+  const updateCardTemplateMutation = useMutation({
+    mutationFn: ({ id, values }: { id: string; values: { layout: CardLayout; name: string } }) =>
+      updateCardTemplate(projectId, id, values)
+  });
   const deleteCardTemplateMutation = useMutation({
     mutationFn: (templateId: string) => deleteCardTemplate(projectId, templateId),
+    onSuccess: refreshProjectComponents
+  });
+
+  const createPieceTemplateMutation = useMutation({
+    mutationFn: (values: CreatePieceTemplateInput) => createPieceTemplate(projectId, values)
+  });
+  const updatePieceTemplateMutation = useMutation({
+    mutationFn: ({ id, values }: { id: string; values: UpdatePieceTemplateInput }) =>
+      updatePieceTemplate(projectId, id, values)
+  });
+  const deletePieceTemplateMutation = useMutation({
+    mutationFn: (templateId: string) => deletePieceTemplate(projectId, templateId),
+    onSuccess: refreshProjectComponents
+  });
+
+  const createCollectionMutation = useMutation({
+    mutationFn: (values: CreateComponentCollectionInput) => createCollection(projectId, values)
+  });
+  const updateCollectionMutation = useMutation({
+    mutationFn: ({ id, values }: { id: string; values: UpdateComponentCollectionInput }) =>
+      updateCollection(projectId, id, values)
+  });
+  const deleteCollectionMutation = useMutation({
+    mutationFn: (collectionId: string) => deleteCollection(projectId, collectionId),
     onSuccess: refreshProjectComponents
   });
 
@@ -133,6 +193,18 @@ export function useProjectComponents(projectId: string) {
     setComponentModal({ mode: "createTemplate" });
   }
 
+  function openNewPieceTemplate() {
+    createPieceTemplateMutation.reset();
+    updatePieceTemplateMutation.reset();
+    setComponentModal({ mode: "createPieceTemplate" });
+  }
+
+  function openNewCollection() {
+    createCollectionMutation.reset();
+    updateCollectionMutation.reset();
+    setComponentModal({ mode: "createCollection" });
+  }
+
   function openEditComponent(component: GameComponent) {
     updateComponentMutation.reset();
     setComponentModal({ mode: "edit", component });
@@ -143,11 +215,25 @@ export function useProjectComponents(projectId: string) {
     setComponentModal({ mode: "editTemplate", template });
   }
 
+  function openEditPieceTemplate(template: PieceTemplate) {
+    updatePieceTemplateMutation.reset();
+    setComponentModal({ mode: "editPieceTemplate", template });
+  }
+
+  function openEditCollection(collection: ComponentCollection) {
+    updateCollectionMutation.reset();
+    setComponentModal({ mode: "editCollection", collection });
+  }
+
   function closeComponentModal() {
     createComponentMutation.reset();
     updateComponentMutation.reset();
     createCardTemplateMutation.reset();
     updateCardTemplateMutation.reset();
+    createPieceTemplateMutation.reset();
+    updatePieceTemplateMutation.reset();
+    createCollectionMutation.reset();
+    updateCollectionMutation.reset();
     setComponentModal(null);
   }
 
@@ -170,6 +256,42 @@ export function useProjectComponents(projectId: string) {
           name: values.cardTemplate.name,
           layout: values.cardTemplate.layout
         });
+      }
+
+      await refreshProjectComponents();
+      setComponentModal(null);
+      return;
+    }
+
+    if (values.kind === "pieceTemplate") {
+      if (values.pieceTemplate.id) {
+        await updatePieceTemplateMutation.mutateAsync({
+          id: values.pieceTemplate.id,
+          values: {
+            name: values.pieceTemplate.name,
+            layout: values.pieceTemplate.layout
+          }
+        });
+      } else {
+        await createPieceTemplateMutation.mutateAsync({
+          name: values.pieceTemplate.name,
+          layout: values.pieceTemplate.layout
+        });
+      }
+
+      await refreshProjectComponents();
+      setComponentModal(null);
+      return;
+    }
+
+    if (values.kind === "collection") {
+      if (values.collection.id) {
+        await updateCollectionMutation.mutateAsync({
+          id: values.collection.id,
+          values: values.collection
+        });
+      } else {
+        await createCollectionMutation.mutateAsync(values.collection);
       }
 
       await refreshProjectComponents();
@@ -209,103 +331,163 @@ export function useProjectComponents(projectId: string) {
     }
   }
 
-  const formError =
-    createCardTemplateMutation.error
-      ? getApiErrorMessage(createCardTemplateMutation.error)
-      : updateCardTemplateMutation.error
-        ? getApiErrorMessage(updateCardTemplateMutation.error)
-        : componentModal?.mode === "create" && createComponentMutation.error
-      ? getApiErrorMessage(createComponentMutation.error)
-      : componentModal?.mode === "edit" && updateComponentMutation.error
-        ? getApiErrorMessage(updateComponentMutation.error)
-        : null;
-  const actionError = deleteComponentMutation.error
-    ? getApiErrorMessage(deleteComponentMutation.error)
-    : deleteCardTemplateMutation.error
-      ? getApiErrorMessage(deleteCardTemplateMutation.error)
-    : duplicateComponentMutation.error
-      ? getApiErrorMessage(duplicateComponentMutation.error)
-      : null;
+  function requestDeletePieceTemplate(template: PieceTemplate) {
+    deletePieceTemplateMutation.reset();
+
+    if (window.confirm(`Delete piece template "${template.name}"?`)) {
+      deletePieceTemplateMutation.mutate(template.id);
+    }
+  }
+
+  function requestDeleteCollection(collection: ComponentCollection) {
+    deleteCollectionMutation.reset();
+
+    if (window.confirm(`Delete collection "${collection.name}"?`)) {
+      deleteCollectionMutation.mutate(collection.id);
+    }
+  }
+
+  const formError = getFirstError(
+    createCardTemplateMutation.error,
+    updateCardTemplateMutation.error,
+    createPieceTemplateMutation.error,
+    updatePieceTemplateMutation.error,
+    createCollectionMutation.error,
+    updateCollectionMutation.error,
+    componentModal?.mode === "create" ? createComponentMutation.error : null,
+    componentModal?.mode === "edit" ? updateComponentMutation.error : null
+  );
+  const actionError = getFirstError(
+    deleteComponentMutation.error,
+    deleteCardTemplateMutation.error,
+    deletePieceTemplateMutation.error,
+    deleteCollectionMutation.error,
+    duplicateComponentMutation.error
+  );
 
   return {
     actionError,
+    cardTemplates,
+    cardTemplatesQuery,
     closeComponentModal,
+    collections,
+    collectionsQuery,
     componentModal,
     componentTypeFilter,
     components,
     componentsById,
     componentsQuery,
-    deletingComponentId: deleteComponentMutation.isPending
-      ? (deleteComponentMutation.variables ?? null)
-      : null,
-    duplicatingComponentId: duplicateComponentMutation.isPending
-      ? (duplicateComponentMutation.variables?.id ?? null)
-      : null,
     deletingCardTemplateId: deleteCardTemplateMutation.isPending
       ? (deleteCardTemplateMutation.variables ?? null)
       : null,
+    deletingCollectionId: deleteCollectionMutation.isPending
+      ? (deleteCollectionMutation.variables ?? null)
+      : null,
+    deletingComponentId: deleteComponentMutation.isPending
+      ? (deleteComponentMutation.variables ?? null)
+      : null,
+    deletingPieceTemplateId: deletePieceTemplateMutation.isPending
+      ? (deletePieceTemplateMutation.variables ?? null)
+      : null,
     duplicateComponent,
-    editingComponent,
+    duplicatingComponentId: duplicateComponentMutation.isPending
+      ? (duplicateComponentMutation.variables?.id ?? null)
+      : null,
     editingCardTemplate,
+    editingCollection,
+    editingComponent,
+    editingPieceTemplate,
     filteredComponents,
     formError,
     formIsPending:
       createComponentMutation.isPending ||
       updateComponentMutation.isPending ||
       createCardTemplateMutation.isPending ||
-      updateCardTemplateMutation.isPending,
-    getComponentDetails: (component: GameComponent) =>
-      getComponentDetails(component, componentsById),
-    cardTemplates,
-    cardTemplatesQuery,
-    openEditComponent,
+      updateCardTemplateMutation.isPending ||
+      createPieceTemplateMutation.isPending ||
+      updatePieceTemplateMutation.isPending ||
+      createCollectionMutation.isPending ||
+      updateCollectionMutation.isPending,
+    getCollectionDetails: (collection: ComponentCollection) =>
+      getCollectionDetails(collection, componentsById),
+    getComponentDetails,
     openEditCardTemplate,
+    openEditCollection,
+    openEditComponent,
+    openEditPieceTemplate,
     openNewCardTemplate,
+    openNewCollection,
     openNewComponent,
-    queryError: componentsQuery.error ? getApiErrorMessage(componentsQuery.error) : null,
+    openNewPieceTemplate,
+    pieceTemplates,
+    pieceTemplatesQuery,
+    queryError: getFirstError(
+      componentsQuery.error,
+      cardTemplatesQuery.error,
+      pieceTemplatesQuery.error,
+      collectionsQuery.error
+    ),
     requestDeleteCardTemplate,
+    requestDeleteCollection,
     requestDeleteComponent,
+    requestDeletePieceTemplate,
     setComponentTypeFilter,
     submitComponentForm
   };
 }
 
-function getComponentDetails(component: GameComponent, componentsById: Map<string, GameComponent>) {
+function getFirstError(...errors: unknown[]) {
+  const error = errors.find(Boolean);
+  return error ? getApiErrorMessage(error) : null;
+}
+
+function getComponentDetails(component: GameComponent) {
   switch (component.type) {
     case "card":
       return [
         formatCardSize(component.layout),
-        getFirstCardSideText(component.layout.sides.front) ||
-          component.frontText ||
-          component.defaultVisibility
-      ].join(" - ");
+        getFirstCardSideText(component.layout.sides.front) || component.frontText
+      ]
+        .filter(Boolean)
+        .join(" - ");
 
-    case "deck": {
-      const totalCards = component.cards.reduce((total, entry) => total + entry.quantity, 0);
-      const cardNames = component.cards
-        .map((entry) => {
-          const card = componentsById.get(entry.cardId);
-          return card ? `${card.name} x${entry.quantity}` : `Missing card x${entry.quantity}`;
-        })
-        .join(", ");
+    case "tile":
+      return [
+        `${component.shape} tile`,
+        component.faceLabel,
+        component.edgeLabels.filter(Boolean).join(" / ")
+      ]
+        .filter(Boolean)
+        .join(" - ");
 
-      return cardNames || `${totalCards} cards`;
-    }
+    case "piece":
+      return [
+        `${component.layout.formFactor} ${component.layout.shape}`,
+        formatPieceSize(component.layout),
+        getFirstPieceFaceText(component.layout) || component.labelText
+      ]
+        .filter(Boolean)
+        .join(" - ");
 
     case "die":
       return `${component.sides} sides`;
-
-    case "coin":
-      return `${component.headsLabel} / ${component.tailsLabel}`;
-
-    case "marker":
-      return component.usage || "Marker";
-
-    case "token":
-      return [component.stackable ? "Stackable" : "Single", component.valueLabel]
-        .filter(Boolean)
-        .join(" - ");
   }
+}
+
+function getCollectionDetails(
+  collection: ComponentCollection,
+  componentsById: Map<string, GameComponent>
+) {
+  return (
+    collection.items
+      .map((entry) => {
+        const component = componentsById.get(entry.componentId);
+        return component
+          ? `${component.name} x${entry.quantity}`
+          : `Missing component x${entry.quantity}`;
+      })
+      .join(", ") || "Empty collection"
+  );
 }
 
 function toDuplicateInput(component: GameComponent): CreateGameComponentInput {
@@ -325,7 +507,6 @@ function toDuplicateInput(component: GameComponent): CreateGameComponentInput {
         type: "card",
         frontText: component.frontText,
         backText: component.backText,
-        defaultVisibility: component.defaultVisibility,
         templateId: component.templateId,
         fieldValues: { ...component.fieldValues },
         layout: cloneCardLayout(
@@ -337,13 +518,25 @@ function toDuplicateInput(component: GameComponent): CreateGameComponentInput {
         )
       };
 
-    case "deck":
+    case "tile":
       return {
         ...base,
-        type: "deck",
-        cards: component.cards.map((entry) => ({ ...entry })),
-        shuffleOnSetup: component.shuffleOnSetup,
-        defaultVisibility: component.defaultVisibility
+        type: "tile",
+        shape: component.shape,
+        faceLabel: component.faceLabel,
+        color: component.color,
+        edgeLabels: [...component.edgeLabels]
+      };
+
+    case "piece":
+      return {
+        ...base,
+        type: "piece",
+        labelText: component.labelText,
+        templateId: component.templateId,
+        appearance: { ...component.appearance },
+        fieldValues: { ...component.fieldValues },
+        layout: clonePieceLayout(component.layout ?? createDefaultPieceLayout())
       };
 
     case "die":
@@ -352,29 +545,6 @@ function toDuplicateInput(component: GameComponent): CreateGameComponentInput {
         type: "die",
         sides: component.sides
       };
-
-    case "coin":
-      return {
-        ...base,
-        type: "coin",
-        headsLabel: component.headsLabel,
-        tailsLabel: component.tailsLabel
-      };
-
-    case "marker":
-      return {
-        ...base,
-        type: "marker",
-        usage: component.usage
-      };
-
-    case "token":
-      return {
-        ...base,
-        type: "token",
-        stackable: component.stackable,
-        valueLabel: component.valueLabel
-      };
   }
 }
 
@@ -382,6 +552,14 @@ function formatCardSize(layout: CardLayout) {
   return `${layout.size.widthMm} x ${layout.size.heightMm} mm`;
 }
 
+function formatPieceSize(layout: PieceLayout) {
+  return `${layout.sizeMm.widthMm} x ${layout.sizeMm.heightMm} x ${layout.sizeMm.depthMm} mm`;
+}
+
 function cloneCardLayout(layout: CardLayout) {
   return JSON.parse(JSON.stringify(layout)) as CardLayout;
+}
+
+function clonePieceLayout(layout: PieceLayout) {
+  return JSON.parse(JSON.stringify(layout)) as PieceLayout;
 }

@@ -2,7 +2,10 @@ import { expect, test } from "./fixtures/projects-test";
 import { ProjectDetailPage } from "./page-objects/project-detail-page";
 
 test.describe("project components", () => {
-  test("creates cards, decks, dice, and duplicates components", async ({ page, projectsApi }) => {
+  test("creates cards, pieces, tiles, collections, dice, and duplicates components", async ({
+    page,
+    projectsApi
+  }) => {
     const project = await projectsApi.create({
       name: "Components UI Project",
       players: "2",
@@ -29,14 +32,43 @@ test.describe("project components", () => {
     await expect(detailPage.componentRow("Strike")).toContainText("Deal 1 damage");
     await expect(detailPage.componentRow("Strike")).toContainText("starter");
 
-    form = await detailPage.openNewComponentForm();
-    await form.selectType("Deck");
-    await form.fillCommon({ name: "Player deck" });
-    await form.addDeckCard("12");
+    form = await detailPage.openNewPieceTemplateForm();
+    await form.fillCommon({ name: "Coin piece template" });
+    for (const shape of ["Circle", "Square", "Rectangle", "Hex", "Meeple", "Pawn", "Custom"]) {
+      await expect(form.dialog.getByRole("button", { name: `Select ${shape} shape` })).toBeVisible();
+    }
+    await form.fillPieceTemplate({ faceText: "1 coin", shape: "Circle" });
     await form.saveCreate();
 
     await expect(form.dialog).toBeHidden();
-    await expect(detailPage.componentRow("Player deck")).toContainText("Strike x12");
+    await expect(detailPage.pieceTemplateRow("Coin piece template")).toContainText("flat circle");
+
+    form = await detailPage.openNewComponentForm();
+    await form.selectType("Piece");
+    await form.fillCommon({ name: "Coin", quantity: "20", tags: "resource" });
+    await form.selectPieceTemplate("Coin piece template");
+    await expect(form.dialog.locator(".piece-preview").getByText("1 coin")).toBeVisible();
+    await form.saveCreate();
+
+    await expect(form.dialog).toBeHidden();
+    await expect(detailPage.componentRow("Coin")).toContainText("flat circle");
+
+    form = await detailPage.openNewComponentForm();
+    await form.selectType("Tile");
+    await form.fillCommon({ name: "Forest hex", quantity: "19" });
+    await form.fillTile({ shape: "Hex", faceLabel: "Forest", edgeLabels: "n, ne, se, s, sw, nw" });
+    await form.saveCreate();
+
+    await expect(form.dialog).toBeHidden();
+    await expect(detailPage.componentRow("Forest hex")).toContainText("hex tile");
+    await expect(detailPage.componentRow("Forest hex")).toContainText("Forest");
+
+    form = await detailPage.openNewCollectionForm();
+    await form.fillCollection({ name: "Player deck", componentName: "Strike", quantity: "12" });
+    await form.saveCreate();
+
+    await expect(form.dialog).toBeHidden();
+    await expect(detailPage.collectionRow("Player deck")).toContainText("Strike x12");
 
     form = await detailPage.openNewComponentForm();
     await form.selectType("Die");
@@ -69,7 +101,7 @@ test.describe("project components", () => {
     await form.selectCardSize("Tarot (70 x 121 mm)");
     await form.fillCardPadding({ top: "6", right: "5", bottom: "6", left: "5" });
     await form.openCardSide("Back");
-    await expect(form.dialog.getByLabel("Padding top")).toHaveValue("0");
+    await expect(form.dialog.getByLabel("Padding top")).toHaveValue("0 mm");
     await form.fillCardPadding({ top: "3", right: "3", bottom: "3", left: "3" });
     await form.openCardSide("Front");
     await form.selectZoneTemplate("Split");
@@ -89,7 +121,7 @@ test.describe("project components", () => {
     await expect.poll(() => form.zoneNumberValue("Zone Y")).toBeGreaterThan(initialZoneY);
 
     await form.addTextElement("Deal 3 damage");
-    await form.selectElementContentSource("Per card field");
+    await form.selectElementContentSource("Per-component");
     await form.fillFieldKey("rules");
 
     await form.selectPreviewZone("Right");
@@ -118,6 +150,7 @@ test.describe("project components", () => {
     await form.fillCommon({ name: "Firebolt", quantity: "8", tags: "spell, attack" });
     await form.selectCardTemplate("Spell card template");
     await form.fillPerCardValue("Rules", "Deal 3 damage");
+    await expect(form.dialog.locator(".card-final-preview").getByText("Deal 3 damage")).toBeVisible();
     await form.saveCreate();
 
     await expect(form.dialog).toBeHidden();
@@ -135,19 +168,19 @@ test.describe("project components", () => {
     await expect(templateEditForm.dialog.getByLabel("Card size")).toHaveValue(
       "Tarot (70 x 121 mm)"
     );
-    await expect(templateEditForm.dialog.getByLabel("Padding top")).toHaveValue("6");
-    await expect(templateEditForm.dialog.getByLabel("Padding right")).toHaveValue("5");
-    await expect(templateEditForm.dialog.getByLabel("Padding bottom")).toHaveValue("6");
-    await expect(templateEditForm.dialog.getByLabel("Padding left")).toHaveValue("5");
+    await expect(templateEditForm.dialog.getByLabel("Padding top")).toHaveValue("6 mm");
+    await expect(templateEditForm.dialog.getByLabel("Padding right")).toHaveValue("5 mm");
+    await expect(templateEditForm.dialog.getByLabel("Padding bottom")).toHaveValue("6 mm");
+    await expect(templateEditForm.dialog.getByLabel("Padding left")).toHaveValue("5 mm");
     await templateEditForm.openCardSide("Back");
-    await expect(templateEditForm.dialog.getByLabel("Padding top")).toHaveValue("3");
-    await expect(templateEditForm.dialog.getByLabel("Padding right")).toHaveValue("3");
+    await expect(templateEditForm.dialog.getByLabel("Padding top")).toHaveValue("3 mm");
+    await expect(templateEditForm.dialog.getByLabel("Padding right")).toHaveValue("3 mm");
     await templateEditForm.openCardSide("Front");
     await templateEditForm.selectPreviewZone("Left");
     await expect(templateEditForm.dialog.getByLabel("Content type")).toHaveValue("Text");
-    await expect(templateEditForm.dialog.getByLabel("Content source")).toHaveValue(
-      "Per card field"
-    );
+    await expect(
+      templateEditForm.dialog.getByRole("radio", { name: "Per-component" })
+    ).toBeChecked();
     await expect(templateEditForm.dialog.getByLabel("Field key")).toHaveValue("rules");
     await expect(templateEditForm.dialog.getByLabel("Text content")).toHaveValue("Deal 3 damage");
     await templateEditForm.selectPreviewZone("Top");
@@ -186,7 +219,68 @@ test.describe("project components", () => {
     await expect(detailPage.cardTemplateRow("Unused card template")).toHaveCount(0);
   });
 
-  test("edits, deletes, and blocks deleting cards used by decks", async ({
+  test("creates flat and standee piece templates with visual faces and final previews", async ({
+    page,
+    projectsApi
+  }) => {
+    const project = await projectsApi.create({
+      name: "Visual Pieces Project",
+      players: "2",
+      status: "draft"
+    });
+    const detailPage = new ProjectDetailPage(page);
+
+    await detailPage.goto(project.id);
+    await detailPage.openComponents();
+
+    let form = await detailPage.openNewPieceTemplateForm();
+    await form.fillCommon({ name: "Artifact token template" });
+    await form.fillPieceTemplate({ faceText: "Artifact", shape: "Custom" });
+    await expect(form.dialog.getByLabel("Custom shape editor")).toBeVisible();
+    await form.selectElementContentSource("Per-component");
+    await form.fillFieldKey("label");
+    await form.dialog.getByLabel("Two-sided").check();
+    await form.openCardSide("Back");
+    await form.addImageElement({
+      name: "piece.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X8Y9sAAAAASUVORK5CYII=",
+        "base64"
+      )
+    });
+    await expect(form.dialog.getByText("piece.png").last()).toBeVisible();
+    await form.saveCreate();
+
+    await expect(form.dialog).toBeHidden();
+    await expect(detailPage.pieceTemplateRow("Artifact token template")).toContainText("flat custom");
+
+    form = await detailPage.openNewPieceTemplateForm();
+    await form.fillCommon({ name: "Hero standee template" });
+    await form.fillPieceTemplate({ faceText: "Hero", formFactor: "Standee", shape: "Pawn" });
+    await form.dialog.getByLabel("Two-sided").check();
+    await form.openCardSide("Back");
+    await form.addIconElement("Star");
+    await form.saveCreate();
+
+    await expect(form.dialog).toBeHidden();
+    await expect(detailPage.pieceTemplateRow("Hero standee template")).toContainText(
+      "standee pawn"
+    );
+
+    form = await detailPage.openNewComponentForm();
+    await form.selectType("Piece");
+    await form.fillCommon({ name: "Ancient key", quantity: "1" });
+    await form.selectPieceTemplate("Artifact token template");
+    await form.fillPerCardValue("Label", "Ancient Key");
+    await expect(form.dialog.locator(".piece-preview").getByText("Ancient Key")).toBeVisible();
+    await form.saveCreate();
+
+    await expect(form.dialog).toBeHidden();
+    await expect(detailPage.componentRow("Ancient key")).toContainText("Ancient Key");
+  });
+
+  test("edits, deletes, and blocks deleting components used by collections", async ({
     page,
     projectsApi,
     request
@@ -201,14 +295,13 @@ test.describe("project components", () => {
     });
     expect(cardResponse.status()).toBe(201);
     const card = (await cardResponse.json()) as { id: string };
-    const deckResponse = await request.post(`/api/projects/${project.id}/components`, {
+    const collectionResponse = await request.post(`/api/projects/${project.id}/collections`, {
       data: {
-        type: "deck",
         name: "Defense deck",
-        cards: [{ cardId: card.id, quantity: 3 }]
+        items: [{ componentId: card.id, quantity: 3 }]
       }
     });
-    expect(deckResponse.status()).toBe(201);
+    expect(collectionResponse.status()).toBe(201);
 
     const detailPage = new ProjectDetailPage(page);
 
@@ -225,12 +318,12 @@ test.describe("project components", () => {
     detailPage.acceptNextDeleteConfirmation("Shield Guard");
     await detailPage.deleteComponent("Shield Guard");
 
-    await expect(page.getByText("Card is used by a deck")).toBeVisible();
+    await expect(page.getByText("Component is used by a collection")).toBeVisible();
     await expect(detailPage.componentRow("Shield Guard")).toBeVisible();
 
-    detailPage.acceptNextDeleteConfirmation("Defense deck");
-    await detailPage.deleteComponent("Defense deck");
-    await expect(detailPage.componentRow("Defense deck")).toHaveCount(0);
+    detailPage.acceptNextDeleteCollectionConfirmation("Defense deck");
+    await detailPage.deleteCollection("Defense deck");
+    await expect(detailPage.collectionRow("Defense deck")).toHaveCount(0);
 
     detailPage.acceptNextDeleteConfirmation("Shield Guard");
     await detailPage.deleteComponent("Shield Guard");
@@ -262,33 +355,162 @@ test.describe("project components", () => {
     expect(invalidDie.status()).toBe(400);
     await expect(invalidDie.json()).resolves.toEqual({ error: "Die sides must be at least 2" });
 
-    const tokenResponse = await request.post(`/api/projects/${project.id}/components`, {
-      data: { type: "token", name: "Coin token" }
+    for (const type of ["deck", "coin", "marker", "token"]) {
+      const oldTypeResponse = await request.post(`/api/projects/${project.id}/components`, {
+        data: { type, name: `${type} component` }
+      });
+      expect(oldTypeResponse.status()).toBe(400);
+      await expect(oldTypeResponse.json()).resolves.toEqual({
+        error: "Component type is invalid"
+      });
+    }
+
+    const cardResponse = await request.post(`/api/projects/${project.id}/components`, {
+      data: { type: "card", name: "Valid card", frontText: "Draw 1" }
     });
-    expect(tokenResponse.status()).toBe(201);
-    const token = (await tokenResponse.json()) as { id: string };
-    const nonCardDeck = await request.post(`/api/projects/${project.id}/components`, {
+    expect(cardResponse.status()).toBe(201);
+    const card = (await cardResponse.json()) as { id: string };
+
+    const duplicateCollectionItem = await request.post(`/api/projects/${project.id}/collections`, {
       data: {
-        type: "deck",
-        name: "Bad deck",
-        cards: [{ cardId: token.id, quantity: 1 }]
+        name: "Duplicate collection",
+        items: [
+          { componentId: card.id, quantity: 1 },
+          { componentId: card.id, quantity: 2 }
+        ]
       }
     });
-    expect(nonCardDeck.status()).toBe(400);
-    await expect(nonCardDeck.json()).resolves.toEqual({
-      error: "Deck cards must reference cards in the same project"
+    expect(duplicateCollectionItem.status()).toBe(400);
+    await expect(duplicateCollectionItem.json()).resolves.toEqual({
+      error: "Collection cannot include the same component twice"
     });
 
-    const missingCardDeck = await request.post(`/api/projects/${project.id}/components`, {
+    const missingCollectionItem = await request.post(`/api/projects/${project.id}/collections`, {
       data: {
-        type: "deck",
-        name: "Missing card deck",
-        cards: [{ cardId: "missing-card", quantity: 1 }]
+        name: "Missing item collection",
+        items: [{ componentId: "missing-component", quantity: 1 }]
       }
     });
-    expect(missingCardDeck.status()).toBe(400);
-    await expect(missingCardDeck.json()).resolves.toEqual({
-      error: "Deck cards must reference cards in the same project"
+    expect(missingCollectionItem.status()).toBe(400);
+    await expect(missingCollectionItem.json()).resolves.toEqual({
+      error: "Collection items must reference components in the same project"
+    });
+  });
+
+  test("creates piece templates for coin, marker, and solid pieces through the API", async ({
+    projectsApi,
+    request
+  }) => {
+    const project = await projectsApi.create({
+      name: "Piece Template API Project",
+      players: "2",
+      status: "draft"
+    });
+
+    const cases = [
+      { name: "Coin template", layout: validPieceLayout("flat", "circle", true, "Heads") },
+      { name: "Marker template", layout: validPieceLayout("flat", "hex", false, "Start") },
+      { name: "Standee template", layout: validPieceLayout("standee", "pawn", true, "Hero") },
+      { name: "Solid template", layout: validPieceLayout("solid", "square", false, "Block") },
+      { name: "Custom template", layout: validPieceLayout("flat", "custom", false, "Shard") },
+      {
+        name: "Icon template",
+        layout: withPieceFrontZoneContent(
+          validPieceLayout("flat", "circle", false, ""),
+          validCardLayout("icon").sides.front.zones[0].content
+        )
+      },
+      {
+        name: "Image standee template",
+        layout: withPieceFrontZoneContent(
+          validPieceLayout("standee", "pawn", true, ""),
+          validCardLayout("image").sides.front.zones[0].content
+        )
+      }
+    ];
+
+    for (const item of cases) {
+      const templateResponse = await request.post(`/api/projects/${project.id}/piece-templates`, {
+        data: item
+      });
+      expect(templateResponse.status()).toBe(201);
+      const template = (await templateResponse.json()) as { id: string; layout: unknown };
+
+      const pieceResponse = await request.post(`/api/projects/${project.id}/components`, {
+        data: {
+          type: "piece",
+          name: item.name.replace("template", "piece"),
+          templateId: template.id
+        }
+      });
+      expect(pieceResponse.status()).toBe(201);
+      await expect(pieceResponse.json()).resolves.toMatchObject({
+        type: "piece",
+        templateId: template.id
+      });
+    }
+
+    const colorTemplateResponse = await request.post(`/api/projects/${project.id}/piece-templates`, {
+      data: {
+        name: "Meeple color template",
+        layout: validPieceLayout("solid", "meeple", false, "Meeple")
+      }
+    });
+    expect(colorTemplateResponse.status()).toBe(201);
+    const colorTemplate = (await colorTemplateResponse.json()) as { id: string };
+    const coloredPieceResponse = await request.post(`/api/projects/${project.id}/components`, {
+      data: {
+        type: "piece",
+        name: "Green meeples",
+        quantity: 10,
+        templateId: colorTemplate.id,
+        appearance: {
+          fillColor: "#16a34a",
+          strokeColor: "#14532d"
+        }
+      }
+    });
+    expect(coloredPieceResponse.status()).toBe(201);
+    await expect(coloredPieceResponse.json()).resolves.toMatchObject({
+      appearance: {
+        fillColor: "#16a34a",
+        strokeColor: "#14532d"
+      },
+      layout: {
+        appearance: {
+          fillColor: "#16a34a",
+          strokeColor: "#14532d"
+        }
+      }
+    });
+
+    for (const shape of ["disc", "cube", "train", "road"]) {
+      const response = await request.post(`/api/projects/${project.id}/piece-templates`, {
+        data: {
+          name: `Invalid ${shape}`,
+          layout: {
+            ...validPieceLayout("flat", "circle", false, "Invalid"),
+            shape
+          }
+        }
+      });
+
+      expect(response.status()).toBe(400);
+      await expect(response.json()).resolves.toEqual({ error: "Piece shape is invalid" });
+    }
+
+    const invalidCustomShape = await request.post(`/api/projects/${project.id}/piece-templates`, {
+      data: {
+        name: "Invalid custom shape",
+        layout: {
+          ...validPieceLayout("flat", "custom", false, "Bad"),
+          customShape: { points: [{ x: 50, y: 10 }, { x: 90, y: 90 }] }
+        }
+      }
+    });
+    expect(invalidCustomShape.status()).toBe(400);
+    await expect(invalidCustomShape.json()).resolves.toEqual({
+      error: "Piece custom shape must include at least 3 points"
     });
   });
 
@@ -521,6 +743,76 @@ function validCardLayout(elementType: "icon" | "image" | "text" = "text") {
   };
 }
 
+function validPieceLayout(
+  formFactor: "flat" | "solid" | "standee",
+  shape:
+    | "circle"
+    | "custom"
+    | "hex"
+    | "meeple"
+    | "pawn"
+    | "rectangle"
+    | "square",
+  twoSided: boolean,
+  text: string
+) {
+  const face = (id: string, name: string, faceText: string) => ({
+    id,
+    name,
+    zones: faceText
+      ? [
+          {
+            id: `${id}-label`,
+            name: "Label",
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 100,
+            content: {
+              type: "text",
+              source: { mode: "static" },
+              text: faceText,
+              fontSize: 14,
+              bold: false,
+              align: "center",
+              color: "#1f2937"
+            }
+          }
+        ]
+      : []
+  });
+
+  return {
+    version: 1,
+    formFactor,
+    shape,
+    sizeMm: {
+      widthMm: 20,
+      heightMm: 20,
+      depthMm: formFactor === "solid" ? 10 : 2
+    },
+    appearance: {
+      fillColor: "#f8fafc",
+      strokeColor: "#0f766e"
+    },
+    customShape:
+      shape === "custom"
+        ? {
+            points: [
+              { x: 50, y: 6 },
+              { x: 90, y: 35 },
+              { x: 74, y: 92 },
+              { x: 26, y: 92 },
+              { x: 10, y: 35 }
+            ]
+          }
+        : undefined,
+    faces: twoSided
+      ? [face("front", "Front", text), face("back", "Back", "Tails")]
+      : [face("front", "Front", text)]
+  };
+}
+
 function withFrontZoneContent(
   layout: ReturnType<typeof validCardLayout>,
   patch: Record<string, unknown>
@@ -542,5 +834,24 @@ function withFrontZoneContent(
         ]
       }
     }
+  };
+}
+
+function withPieceFrontZoneContent(
+  layout: ReturnType<typeof validPieceLayout>,
+  content: Record<string, unknown>
+) {
+  return {
+    ...layout,
+    faces: layout.faces.map((face, faceIndex) =>
+      faceIndex === 0
+        ? {
+            ...face,
+            zones: face.zones.map((zone, zoneIndex) =>
+              zoneIndex === 0 ? { ...zone, content } : zone
+            )
+          }
+        : face
+    )
   };
 }

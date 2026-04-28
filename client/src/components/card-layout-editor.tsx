@@ -30,7 +30,6 @@ import {
   Star,
   Sword,
   Trash2,
-  Type,
   Zap,
   type LucideIcon
 } from "lucide-react";
@@ -44,27 +43,28 @@ import {
   cardVisualHorizontalAlignments,
   cardVisualVerticalAlignments,
   resolveCardLayout,
-  type CardContentSource,
-  type CardFieldValues,
+  type LayoutContentSource,
+  type TemplateFieldValues,
   type CardIconId,
   type CardImageFit,
   type CardLayout,
   type CardLayoutPadding,
   type CardLayoutSide,
   type CardLayoutSize,
-  type CardLayoutZone,
+  type LayoutZone,
   type CardSideLayout,
   type CardTextAlignment,
-  type CardTextZoneContent,
+  type TextZoneContent,
   type CardVisualHorizontalAlignment,
   type CardVisualVerticalAlignment,
-  type CardVisualZoneContent,
-  type CardZoneContent
+  type VisualZoneContent,
+  type LayoutZoneContent
 } from "@bg-maker/shared";
+import { createId, createTextContent, createVisualContent, createZone } from "./layout-zone-utils";
 
 type CardLayoutEditorProps = {
   disabled?: boolean;
-  fieldValues?: CardFieldValues;
+  fieldValues?: TemplateFieldValues;
   layout: CardLayout;
   onChange: (layout: CardLayout) => void;
 };
@@ -94,6 +94,22 @@ const zoneTemplateOptions: { value: CardZoneTemplateId; label: string }[] = [
 const zoneContentTypeOptions = [
   { value: "text", label: "Text" },
   { value: "visual", label: "Visual" }
+];
+
+const contentSourceOptions = [
+  { value: "static", label: "Fixed" },
+  { value: "field", label: "Per-component" }
+];
+
+const colorSwatchPalette = [
+  "#1f2937",
+  "#0f766e",
+  "#0ea5e9",
+  "#9333ea",
+  "#dc2626",
+  "#f59e0b",
+  "#16a34a",
+  "#f8fafc"
 ];
 
 const visualTypeOptions = [
@@ -147,6 +163,7 @@ export function CardLayoutEditor({
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [zoneTemplate, setZoneTemplate] = useState<CardZoneTemplateId>("classic");
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [controlsTab, setControlsTab] = useState<"layout" | "zones">("layout");
 
   const sideLayout = layout.sides[selectedSide];
   const selectedZone = sideLayout.zones.find((zone) => zone.id === selectedZoneId);
@@ -231,7 +248,7 @@ export function CardLayoutEditor({
   }
 
   function addZone() {
-    const zone: CardLayoutZone = {
+    const zone: LayoutZone = {
       id: createId(`${selectedSide}-zone`),
       name: "Custom zone",
       x: 0,
@@ -249,7 +266,7 @@ export function CardLayoutEditor({
     setZoneTemplate("custom");
   }
 
-  function updateZone(zoneId: string, patch: Partial<CardLayoutZone>) {
+  function updateZone(zoneId: string, patch: Partial<LayoutZone>) {
     updateSide((currentSide) => ({
       ...currentSide,
       zones: currentSide.zones.map((zone) => (zone.id === zoneId ? { ...zone, ...patch } : zone))
@@ -257,7 +274,7 @@ export function CardLayoutEditor({
     setZoneTemplate("custom");
   }
 
-  function updateZoneContent(zoneId: string, content: CardZoneContent) {
+  function updateZoneContent(zoneId: string, content: LayoutZoneContent) {
     updateZone(zoneId, { content });
   }
 
@@ -277,46 +294,202 @@ export function CardLayoutEditor({
   }
 
   return (
-    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-      <Stack gap="md">
-        <Select
-          allowDeselect={false}
-          data={sizeOptions}
-          disabled={disabled}
-          label="Card size"
-          value={layout.size.preset}
-          onChange={updateSizePreset}
-        />
+    <SimpleGrid className="template-editor-shell" cols={{ base: 1, md: 2 }} spacing="lg">
+      <Stack className="template-editor-controls" gap="lg">
+        <Tabs
+          radius={8}
+          value={controlsTab}
+          onChange={(value) => setControlsTab((value ?? "layout") as "layout" | "zones")}
+        >
+          <Tabs.List grow>
+            <Tabs.Tab value="layout">Layout</Tabs.Tab>
+            <Tabs.Tab value="zones">Zones</Tabs.Tab>
+          </Tabs.List>
 
-        {layout.size.preset === "custom" ? (
-          <Group grow align="flex-start">
-            <NumberInput
-              allowDecimal
-              allowNegative={false}
-              disabled={disabled}
-              label="Width (mm)"
-              max={300}
-              min={20}
-              value={layout.size.widthMm}
-              onChange={(value) =>
-                updateCustomSize({ widthMm: readFormNumber(value, layout.size.widthMm) })
-              }
-            />
-            <NumberInput
-              allowDecimal
-              allowNegative={false}
-              disabled={disabled}
-              label="Height (mm)"
-              max={300}
-              min={20}
-              value={layout.size.heightMm}
-              onChange={(value) =>
-                updateCustomSize({ heightMm: readFormNumber(value, layout.size.heightMm) })
-              }
-            />
-          </Group>
-        ) : null}
+          <Tabs.Panel value="layout" pt="md">
+            <Stack gap="lg">
+              <Stack className="template-editor-section" gap="sm">
+                <Text className="template-editor-section-title">Card</Text>
+                <Select
+                  allowDeselect={false}
+                  data={sizeOptions}
+                  disabled={disabled}
+                  label="Card size"
+                  value={layout.size.preset}
+                  onChange={updateSizePreset}
+                />
 
+                {layout.size.preset === "custom" ? (
+                  <Group grow align="flex-start">
+                    <NumberInput
+                      allowDecimal
+                      allowNegative={false}
+                      disabled={disabled}
+                      label="Width"
+                      max={300}
+                      min={20}
+                      suffix=" mm"
+                      value={layout.size.widthMm}
+                      onChange={(value) =>
+                        updateCustomSize({ widthMm: readFormNumber(value, layout.size.widthMm) })
+                      }
+                    />
+                    <NumberInput
+                      allowDecimal
+                      allowNegative={false}
+                      disabled={disabled}
+                      label="Height"
+                      max={300}
+                      min={20}
+                      suffix=" mm"
+                      value={layout.size.heightMm}
+                      onChange={(value) =>
+                        updateCustomSize({ heightMm: readFormNumber(value, layout.size.heightMm) })
+                      }
+                    />
+                  </Group>
+                ) : null}
+              </Stack>
+
+              <Stack className="template-editor-section" gap="sm">
+                <Text className="template-editor-section-title">{titleCase(selectedSide)} side</Text>
+                <Stack gap="xs">
+                  <Text size="sm" fw={500}>
+                    Padding
+                  </Text>
+                  <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+                    <NumberInput
+                      allowDecimal
+                      allowNegative={false}
+                      aria-label="Padding top"
+                      disabled={disabled}
+                      label="Top"
+                      min={0}
+                      suffix=" mm"
+                      value={sideLayout.paddingMm.topMm}
+                      onChange={(value) =>
+                        updatePadding({ topMm: readFormNumber(value, sideLayout.paddingMm.topMm) })
+                      }
+                    />
+                    <NumberInput
+                      allowDecimal
+                      allowNegative={false}
+                      aria-label="Padding right"
+                      disabled={disabled}
+                      label="Right"
+                      min={0}
+                      suffix=" mm"
+                      value={sideLayout.paddingMm.rightMm}
+                      onChange={(value) =>
+                        updatePadding({ rightMm: readFormNumber(value, sideLayout.paddingMm.rightMm) })
+                      }
+                    />
+                    <NumberInput
+                      allowDecimal
+                      allowNegative={false}
+                      aria-label="Padding bottom"
+                      disabled={disabled}
+                      label="Bottom"
+                      min={0}
+                      suffix=" mm"
+                      value={sideLayout.paddingMm.bottomMm}
+                      onChange={(value) =>
+                        updatePadding({
+                          bottomMm: readFormNumber(value, sideLayout.paddingMm.bottomMm)
+                        })
+                      }
+                    />
+                    <NumberInput
+                      allowDecimal
+                      allowNegative={false}
+                      aria-label="Padding left"
+                      disabled={disabled}
+                      label="Left"
+                      min={0}
+                      suffix=" mm"
+                      value={sideLayout.paddingMm.leftMm}
+                      onChange={(value) =>
+                        updatePadding({
+                          leftMm: readFormNumber(value, sideLayout.paddingMm.leftMm)
+                        })
+                      }
+                    />
+                  </SimpleGrid>
+                </Stack>
+              </Stack>
+            </Stack>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="zones" pt="md">
+            <Stack gap="lg">
+              <Stack className="template-editor-section" gap="sm">
+                <Group align="flex-end" wrap="nowrap">
+                  <Select
+                    allowDeselect={false}
+                    data={zoneTemplateOptions}
+                    disabled={disabled}
+                    label="Zone template"
+                    value={zoneTemplate}
+                    onChange={(value) =>
+                      applyZoneTemplate((value ?? "classic") as CardZoneTemplateId)
+                    }
+                  />
+                  <Button
+                    disabled={disabled}
+                    leftSection={<Plus size={14} />}
+                    radius={8}
+                    variant="light"
+                    onClick={addZone}
+                  >
+                    Add zone
+                  </Button>
+                </Group>
+              </Stack>
+
+              <Stack className="template-editor-section" gap="sm">
+                <Text className="template-editor-section-title">Selected zone</Text>
+                <Group align="flex-end" wrap="nowrap">
+                  <Select
+                    allowDeselect={false}
+                    data={zoneOptions}
+                    disabled={disabled || zoneOptions.length === 0}
+                    label="Selected zone"
+                    value={activeZone?.id ?? null}
+                    onChange={(value) => setSelectedZoneId(value)}
+                  />
+                  <Tooltip label="Remove zone" withArrow>
+                    <ActionIcon
+                      aria-label="Remove zone"
+                      color="red"
+                      disabled={disabled || !activeZone || sideLayout.zones.length <= 1}
+                      mb={2}
+                      radius={8}
+                      size={36}
+                      variant="subtle"
+                      onClick={() => activeZone && removeZone(activeZone.id)}
+                    >
+                      <Trash2 size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+
+                {activeZone ? (
+                  <ZoneControls
+                    disabled={disabled}
+                    uploadError={uploadError}
+                    zone={activeZone}
+                    onChange={(patch) => updateZone(activeZone.id, patch)}
+                    onContentChange={(content) => updateZoneContent(activeZone.id, content)}
+                    onUploadError={setUploadError}
+                  />
+                ) : null}
+              </Stack>
+            </Stack>
+          </Tabs.Panel>
+        </Tabs>
+      </Stack>
+
+      <Stack className="template-editor-preview-rail" gap="md">
         <Tabs
           radius={8}
           value={selectedSide}
@@ -331,133 +504,24 @@ export function CardLayoutEditor({
             <Tabs.Tab value="back">Back</Tabs.Tab>
           </Tabs.List>
         </Tabs>
-
-        <Stack gap="xs">
-          <Text size="sm" fw={500}>
-            {titleCase(selectedSide)} padding (mm)
-          </Text>
-          <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
-            <NumberInput
-              allowDecimal
-              allowNegative={false}
-              aria-label="Padding top"
-              disabled={disabled}
-              label="Top"
-              min={0}
-              value={sideLayout.paddingMm.topMm}
-              onChange={(value) =>
-                updatePadding({ topMm: readFormNumber(value, sideLayout.paddingMm.topMm) })
-              }
-            />
-            <NumberInput
-              allowDecimal
-              allowNegative={false}
-              aria-label="Padding right"
-              disabled={disabled}
-              label="Right"
-              min={0}
-              value={sideLayout.paddingMm.rightMm}
-              onChange={(value) =>
-                updatePadding({ rightMm: readFormNumber(value, sideLayout.paddingMm.rightMm) })
-              }
-            />
-            <NumberInput
-              allowDecimal
-              allowNegative={false}
-              aria-label="Padding bottom"
-              disabled={disabled}
-              label="Bottom"
-              min={0}
-              value={sideLayout.paddingMm.bottomMm}
-              onChange={(value) =>
-                updatePadding({ bottomMm: readFormNumber(value, sideLayout.paddingMm.bottomMm) })
-              }
-            />
-            <NumberInput
-              allowDecimal
-              allowNegative={false}
-              aria-label="Padding left"
-              disabled={disabled}
-              label="Left"
-              min={0}
-              value={sideLayout.paddingMm.leftMm}
-              onChange={(value) =>
-                updatePadding({ leftMm: readFormNumber(value, sideLayout.paddingMm.leftMm) })
-              }
-            />
-          </SimpleGrid>
-        </Stack>
-
-        <Group grow align="flex-end">
-          <Select
-            allowDeselect={false}
-            data={zoneTemplateOptions}
-            disabled={disabled}
-            label="Zone template"
-            value={zoneTemplate}
-            onChange={(value) => applyZoneTemplate((value ?? "classic") as CardZoneTemplateId)}
-          />
-          <Button
-            disabled={disabled}
-            leftSection={<Plus size={14} />}
-            radius={8}
-            variant="light"
-            onClick={addZone}
-          >
-            Add zone
-          </Button>
-        </Group>
-
-        <Group grow align="flex-end">
-          <Select
-            allowDeselect={false}
-            data={zoneOptions}
-            disabled={disabled || zoneOptions.length === 0}
-            label="Selected zone"
-            value={activeZone?.id ?? null}
-            onChange={(value) => setSelectedZoneId(value)}
-          />
-          <Tooltip label="Remove zone" withArrow>
-            <ActionIcon
-              aria-label="Remove zone"
-              color="red"
-              disabled={disabled || !activeZone || sideLayout.zones.length <= 1}
-              radius={8}
-              size={36}
-              variant="subtle"
-              onClick={() => activeZone && removeZone(activeZone.id)}
-            >
-              <Trash2 size={16} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
-
-        {activeZone ? (
-          <ZoneControls
-            disabled={disabled}
-            uploadError={uploadError}
-            zone={activeZone}
-            onChange={(patch) => updateZone(activeZone.id, patch)}
-            onContentChange={(content) => updateZoneContent(activeZone.id, content)}
-            onUploadError={setUploadError}
-          />
-        ) : null}
+        <InteractiveCardPreview
+          disabled={disabled}
+          fieldValues={fieldValues}
+          layout={layout}
+          selectedZoneId={activeZone?.id ?? null}
+          side={selectedSide}
+          onSelectZone={(zoneId) => {
+            setSelectedZoneId(zoneId);
+            setControlsTab("zones");
+          }}
+          onUpdateZone={updateZone}
+        />
       </Stack>
-
-      <CardPreview
-        disabled={disabled}
-        fieldValues={fieldValues}
-        layout={layout}
-        selectedZoneId={activeZone?.id ?? null}
-        side={selectedSide}
-        onSelectZone={(zoneId) => setSelectedZoneId(zoneId)}
-        onUpdateZone={updateZone}
-      />
     </SimpleGrid>
   );
 }
 
-function ZoneControls({
+export function ZoneControls({
   disabled,
   onChange,
   onContentChange,
@@ -466,11 +530,11 @@ function ZoneControls({
   zone
 }: {
   disabled: boolean;
-  onChange: (patch: Partial<CardLayoutZone>) => void;
-  onContentChange: (content: CardZoneContent) => void;
+  onChange: (patch: Partial<LayoutZone>) => void;
+  onContentChange: (content: LayoutZoneContent) => void;
   onUploadError: (error: string | null) => void;
   uploadError: string | null;
-  zone: CardLayoutZone;
+  zone: LayoutZone;
 }) {
   function setContentType(type: "text" | "visual") {
     onContentChange(
@@ -478,9 +542,11 @@ function ZoneControls({
     );
   }
 
-  function updateContentSource(source: CardContentSource) {
-    onContentChange({ ...zone.content, source } as CardZoneContent);
+  function updateContentSource(source: LayoutContentSource) {
+    onContentChange({ ...zone.content, source } as LayoutZoneContent);
   }
+
+  const sourceMode = zone.content.source?.mode ?? "static";
 
   return (
     <Stack gap="md">
@@ -506,6 +572,7 @@ function ZoneControls({
           label="Zone X"
           max={100}
           min={0}
+          suffix=" %"
           value={zone.x}
           onChange={(value) => onChange({ x: readFormNumber(value, 0) })}
         />
@@ -516,6 +583,7 @@ function ZoneControls({
           label="Zone Y"
           max={100}
           min={0}
+          suffix=" %"
           value={zone.y}
           onChange={(value) => onChange({ y: readFormNumber(value, 0) })}
         />
@@ -526,6 +594,7 @@ function ZoneControls({
           label="Zone width"
           max={100}
           min={1}
+          suffix=" %"
           value={zone.width}
           onChange={(value) => onChange({ width: readFormNumber(value, 1) })}
         />
@@ -536,21 +605,22 @@ function ZoneControls({
           label="Zone height"
           max={100}
           min={1}
+          suffix=" %"
           value={zone.height}
           onChange={(value) => onChange({ height: readFormNumber(value, 1) })}
         />
       </SimpleGrid>
 
-      <Group grow align="flex-start">
-        <Select
-          allowDeselect={false}
-          data={[
-            { value: "static", label: "Static" },
-            { value: "field", label: "Per card field" }
-          ]}
+      <Stack gap="xs">
+        <Text size="sm" fw={500}>
+          Content source
+        </Text>
+        <SegmentedControl
+          aria-label="Content source"
+          data={contentSourceOptions}
           disabled={disabled}
-          label="Content source"
-          value={zone.content.source?.mode ?? "static"}
+          fullWidth
+          value={sourceMode}
           onChange={(value) =>
             updateContentSource(
               value === "field"
@@ -565,6 +635,11 @@ function ZoneControls({
             )
           }
         />
+        <Text c="dimmed" size="xs">
+          {sourceMode === "field"
+            ? "Each component using this template fills this in."
+            : "The same value is used on every component."}
+        </Text>
         {zone.content.source?.mode === "field" ? (
           <TextInput
             disabled={disabled}
@@ -578,7 +653,7 @@ function ZoneControls({
             }
           />
         ) : null}
-      </Group>
+      </Stack>
 
       {zone.content.type === "text" ? (
         <TextContentControls
@@ -609,9 +684,9 @@ function TextContentControls({
   disabled,
   onChange
 }: {
-  content: CardTextZoneContent;
+  content: TextZoneContent;
   disabled: boolean;
-  onChange: (content: CardTextZoneContent) => void;
+  onChange: (content: TextZoneContent) => void;
 }) {
   return (
     <Stack gap="sm">
@@ -630,6 +705,7 @@ function TextContentControls({
           label="Font size"
           max={72}
           min={8}
+          suffix=" px"
           value={content.fontSize}
           onChange={(value) => onChange({ ...content, fontSize: readFormNumber(value, content.fontSize) })}
         />
@@ -637,6 +713,7 @@ function TextContentControls({
           disabled={disabled}
           format="hex"
           label="Text color"
+          swatches={colorSwatchPalette}
           value={content.color}
           onChange={(value) => onChange({ ...content, color: value })}
         />
@@ -665,9 +742,9 @@ function VisualContentControls({
   onChange,
   onUploadError
 }: {
-  content: CardVisualZoneContent;
+  content: VisualZoneContent;
   disabled: boolean;
-  onChange: (content: CardVisualZoneContent) => void;
+  onChange: (content: VisualZoneContent) => void;
   onUploadError: (error: string | null) => void;
 }) {
   return (
@@ -731,9 +808,9 @@ function ImageContentControls({
   onChange,
   onUploadError
 }: {
-  content: CardVisualZoneContent;
+  content: VisualZoneContent;
   disabled: boolean;
-  onChange: (content: CardVisualZoneContent) => void;
+  onChange: (content: VisualZoneContent) => void;
   onUploadError: (error: string | null) => void;
 }) {
   function uploadImage(file: File | null) {
@@ -799,9 +876,9 @@ function IconContentControls({
   disabled,
   onChange
 }: {
-  content: CardVisualZoneContent;
+  content: VisualZoneContent;
   disabled: boolean;
-  onChange: (content: CardVisualZoneContent) => void;
+  onChange: (content: VisualZoneContent) => void;
 }) {
   return (
     <Group grow align="flex-start">
@@ -820,6 +897,7 @@ function IconContentControls({
         label="Icon size"
         max={96}
         min={8}
+        suffix=" px"
         value={content.size}
         onChange={(value) => onChange({ ...content, size: readFormNumber(value, content.size) })}
       />
@@ -827,6 +905,7 @@ function IconContentControls({
         disabled={disabled}
         format="hex"
         label="Icon color"
+        swatches={colorSwatchPalette}
         value={content.color}
         onChange={(value) => onChange({ ...content, color: value })}
       />
@@ -834,7 +913,7 @@ function IconContentControls({
   );
 }
 
-function CardPreview({
+function InteractiveCardPreview({
   disabled,
   fieldValues,
   layout,
@@ -844,12 +923,12 @@ function CardPreview({
   side
 }: {
   disabled: boolean;
-  fieldValues: CardFieldValues;
+  fieldValues: TemplateFieldValues;
   layout: CardLayout;
   selectedZoneId: string | null;
   side: CardLayoutSide;
   onSelectZone: (zoneId: string) => void;
-  onUpdateZone: (zoneId: string, patch: Partial<CardLayoutZone>) => void;
+  onUpdateZone: (zoneId: string, patch: Partial<LayoutZone>) => void;
 }) {
   const previewRef = useRef<HTMLDivElement | null>(null);
   const previewLayout = useMemo(
@@ -860,7 +939,7 @@ function CardPreview({
 
   function startZoneInteraction(
     event: ReactPointerEvent<HTMLElement>,
-    zone: CardLayoutZone,
+    zone: LayoutZone,
     mode: "move" | "resize"
   ) {
     if (disabled) {
@@ -942,7 +1021,7 @@ function CardPreview({
     return getZoneAtPoint(point);
   }
 
-  function pointIsInsideZone(point: { x: number; y: number }, zone: CardLayoutZone) {
+  function pointIsInsideZone(point: { x: number; y: number }, zone: LayoutZone) {
     return (
       point.x >= zone.x &&
       point.x <= zone.x + zone.width &&
@@ -951,7 +1030,7 @@ function CardPreview({
     );
   }
 
-  function pointIsInResizeCorner(point: { x: number; y: number }, zone: CardLayoutZone) {
+  function pointIsInResizeCorner(point: { x: number; y: number }, zone: LayoutZone) {
     const rect = previewRef.current?.getBoundingClientRect();
 
     if (!rect || rect.width === 0 || rect.height === 0) {
@@ -968,7 +1047,7 @@ function CardPreview({
   }
 
   function updateZoneFromDelta(
-    zone: CardLayoutZone,
+    zone: LayoutZone,
     mode: "move" | "resize",
     deltaX: number,
     deltaY: number
@@ -1044,7 +1123,7 @@ function CardPreview({
               >
                 <Text className="card-preview-zone-label">{zone.name}</Text>
                 <Box className="card-preview-content">
-                  <PreviewZoneContent content={zone.content} />
+                  <LayoutZoneContentPreview content={zone.content} />
                 </Box>
                 <Box aria-hidden className="card-preview-zone-resize-handle" />
               </Box>
@@ -1056,7 +1135,66 @@ function CardPreview({
   );
 }
 
-function PreviewZoneContent({ content }: { content: CardZoneContent }) {
+export function CardPreview({
+  compact = false,
+  fieldValues = {},
+  layout,
+  side = "front",
+  title = "Final preview"
+}: {
+  compact?: boolean;
+  fieldValues?: TemplateFieldValues;
+  layout: CardLayout;
+  side?: CardLayoutSide;
+  title?: string;
+}) {
+  const previewLayout = useMemo(
+    () => resolveCardLayout(layout, fieldValues),
+    [fieldValues, layout]
+  );
+  const sideLayout = previewLayout.sides[side];
+
+  return (
+    <Stack gap="sm">
+      <Group justify="space-between" align="center">
+        <Text fw={600}>{title}</Text>
+        <Text c="dimmed" size="sm">
+          {layout.size.widthMm} x {layout.size.heightMm} mm
+        </Text>
+      </Group>
+      <Box className={`card-preview-shell${compact ? " card-preview-shell--compact" : ""}`}>
+        <Box
+          className="card-preview card-final-preview"
+          style={{ aspectRatio: `${layout.size.widthMm} / ${layout.size.heightMm}` }}
+        >
+          <Box
+            className="card-preview-safe-area card-preview-safe-area-readonly"
+            style={getPaddingAreaStyle(layout.size, sideLayout.paddingMm)}
+          >
+            {sideLayout.zones.map((zone) => (
+              <Box
+                key={zone.id}
+                className="layout-preview-zone"
+                style={{
+                  left: `${zone.x}%`,
+                  top: `${zone.y}%`,
+                  width: `${zone.width}%`,
+                  height: `${zone.height}%`
+                }}
+              >
+                <Box className="card-preview-content card-final-preview-content">
+                  <LayoutZoneContentPreview content={zone.content} />
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      </Box>
+    </Stack>
+  );
+}
+
+export function LayoutZoneContentPreview({ content }: { content: LayoutZoneContent }) {
   if (content.type === "text") {
     return (
       <Text
@@ -1107,7 +1245,7 @@ function PreviewZoneContent({ content }: { content: CardZoneContent }) {
   );
 }
 
-function buildTemplateZones(side: CardLayoutSide, templateId: CardZoneTemplateId): CardLayoutZone[] {
+function buildTemplateZones(side: CardLayoutSide, templateId: CardZoneTemplateId): LayoutZone[] {
   switch (templateId) {
     case "classic":
       return [
@@ -1135,46 +1273,6 @@ function buildTemplateZones(side: CardLayoutSide, templateId: CardZoneTemplateId
     case "custom":
       return [createZone(`${side}-custom`, "Custom", 0, 0, 100, 100, createTextContent(""))];
   }
-}
-
-function createZone(
-  id: string,
-  name: string,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  content: CardZoneContent
-): CardLayoutZone {
-  return { id, name, x, y, width, height, content };
-}
-
-function createTextContent(text: string): CardTextZoneContent {
-  return {
-    type: "text",
-    source: { mode: "static" },
-    text,
-    fontSize: 14,
-    bold: false,
-    align: "center",
-    color: "#1f2937"
-  };
-}
-
-function createVisualContent(visualType: "image" | "icon"): CardVisualZoneContent {
-  return {
-    type: "visual",
-    source: { mode: "static" },
-    visualType,
-    dataUrl: "",
-    fileName: "",
-    fit: "contain",
-    iconId: "sword",
-    size: 28,
-    color: "#0f766e",
-    horizontalAlign: "center",
-    verticalAlign: "center"
-  };
 }
 
 function getVisualJustifyContent(alignment: CardVisualHorizontalAlignment) {
@@ -1269,7 +1367,7 @@ function roundMm(value: number) {
   return Math.round(value * 10) / 10;
 }
 
-function getZoneContentLabel(content: CardZoneContent) {
+function getZoneContentLabel(content: LayoutZoneContent) {
   return content.type === "text" ? "Text" : titleCase(content.visualType);
 }
 
@@ -1281,10 +1379,6 @@ function normalizeFieldKey(value: string) {
     .toLowerCase();
 
   return /^[a-z]/.test(normalized) ? normalized : `field_${normalized || "value"}`;
-}
-
-function createId(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function readFormNumber(value: number | string, fallback: number) {

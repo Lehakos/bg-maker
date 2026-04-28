@@ -9,22 +9,29 @@ import {
   cardVisualHorizontalAlignments,
   cardVisualVerticalAlignments,
   componentTypes,
-  componentVisibilities,
   createDefaultCardLayout,
+  createDefaultPieceLayout,
   getCardTemplateFields,
-  getFirstCardSideText,
   getDefaultCardFieldValues,
+  getDefaultPieceFieldValues,
+  getFirstCardSideText,
+  getFirstPieceFaceText,
+  getPieceTemplateFields,
+  pieceFormFactors,
+  pieceShapes,
   resolveCardLayout,
-  type CardContentSource,
-  type CardFieldValue,
-  type CardFieldValues,
-  type CardImageFieldValue,
+  resolvePieceLayout,
+  tileShapes,
+  type LayoutContentSource,
+  type TemplateFieldValue,
+  type TemplateFieldValues,
+  type TemplateImageFieldValue,
   type CardImageFit,
   type CardLayout,
   type CardLayoutPadding,
   type CardLayoutSide,
   type CardLayoutSize,
-  type CardLayoutZone,
+  type LayoutZone,
   type CardSideLayout,
   type CardTemplate,
   type CardTemplateFieldType,
@@ -32,18 +39,30 @@ import {
   type CardIconId,
   type CardVisualHorizontalAlignment,
   type CardVisualVerticalAlignment,
-  type CardZoneContent,
+  type LayoutZoneContent,
   type CreateGameComponentInput,
-  type DeckCardEntry,
   type GameComponent,
+  type PieceFormFactor,
+  type PieceAppearance,
+  type PieceCustomShape,
+  type PieceLayout,
+  type PieceLayoutFace,
+  type PieceLayoutSize,
+  type PieceShapePoint,
+  type PieceShape,
+  type PieceTemplate,
+  type TileShape,
   type UpdateGameComponentInput
 } from "@bg-maker/shared";
 import {
   getProjectCardTemplates,
+  getProjectCollections,
   getProjectComponents,
+  getProjectPieceTemplates,
   projects,
   setProjectCardTemplates,
-  setProjectComponents
+  setProjectComponents,
+  setProjectPieceTemplates
 } from "./in-memory-store.js";
 import { touchProject } from "./project-service.js";
 import { fail, ok, type ServiceResult } from "./service-result.js";
@@ -63,16 +82,16 @@ type CommonComponentFields = Partial<CommonComponentInput>;
 type CardFields = {
   frontText: string;
   backText: string;
-  defaultVisibility: NonNullable<CreateGameComponentInput["defaultVisibility"]>;
   templateId: string;
-  fieldValues: CardFieldValues;
+  fieldValues: TemplateFieldValues;
   layout: CardLayout;
 };
 
-type DeckFields = {
-  cards: DeckCardEntry[];
-  shuffleOnSetup: boolean;
-  defaultVisibility: NonNullable<CreateGameComponentInput["defaultVisibility"]>;
+type TileFields = {
+  shape: TileShape;
+  faceLabel: string;
+  color: string;
+  edgeLabels: string[];
 };
 
 type DieFields = {
@@ -80,18 +99,12 @@ type DieFields = {
   faceLabels: string[];
 };
 
-type CoinFields = {
-  headsLabel: string;
-  tailsLabel: string;
-};
-
-type MarkerFields = {
-  usage: string;
-};
-
-type TokenFields = {
-  stackable: boolean;
-  valueLabel: string;
+type PieceFields = {
+  labelText: string;
+  templateId: string;
+  appearance: PieceAppearance;
+  fieldValues: TemplateFieldValues;
+  layout: PieceLayout;
 };
 
 export function listComponents(projectId: string): ServiceResult<GameComponent[]> {
@@ -127,6 +140,20 @@ export function createComponent(projectId: string, value: unknown): ServiceResul
     }
 
     componentInput = resolveCardInput(cardInput);
+  }
+
+  if (componentInput.type === "piece") {
+    const pieceInput = componentInput as typeof componentInput & {
+      layout: PieceLayout;
+      type: "piece";
+    };
+
+    if (!pieceInput.templateId) {
+      const template = createFallbackPieceTemplate(projectId, pieceInput.name, pieceInput.layout);
+      pieceInput.templateId = template.id;
+    }
+
+    componentInput = resolvePieceInput(pieceInput);
   }
 
   const timestamp = new Date().toISOString();
@@ -167,7 +194,11 @@ export function updateComponent(
   }
 
   const resolvedInput =
-    currentComponent.type === "card" ? resolveCardUpdateInput(currentComponent, input.value) : input.value;
+    currentComponent.type === "card"
+      ? resolveCardUpdateInput(currentComponent, input.value)
+      : currentComponent.type === "piece"
+        ? resolvePieceUpdateInput(currentComponent, input.value)
+        : input.value;
 
   const updatedComponent: GameComponent = {
     ...currentComponent,
@@ -199,12 +230,11 @@ export function deleteComponent(projectId: string, componentId: string): Service
   }
 
   if (
-    component.type === "card" &&
-    components.some(
-      (item) => item.type === "deck" && item.cards.some((entry) => entry.cardId === component.id)
+    getProjectCollections(projectId).some((collection) =>
+      collection.items.some((entry) => entry.componentId === component.id)
     )
   ) {
-    return fail(400, "Card is used by a deck");
+    return fail(400, "Component is used by a collection");
   }
 
   setProjectComponents(
@@ -217,11 +247,15 @@ export function deleteComponent(projectId: string, componentId: string): Service
 }
 
 export function resolveComponentForRead(component: GameComponent): GameComponent {
-  if (component.type !== "card") {
-    return component;
+  if (component.type === "card") {
+    return resolveStoredCard(component);
   }
 
-  return resolveStoredCard(component);
+  if (component.type === "piece") {
+    return resolveStoredPiece(component);
+  }
+
+  return component;
 }
 
 export function resolveStoredCard(
@@ -240,6 +274,26 @@ export function resolveStoredCard(
   };
 }
 
+export function resolveStoredPiece(
+  component: Extract<GameComponent, { type: "piece" }>
+): Extract<GameComponent, { type: "piece" }> {
+  const template = getProjectPieceTemplates(component.projectId).find(
+    (item) => item.id === component.templateId
+  );
+  const layout = resolvePieceLayout(
+    template?.layout ?? component.layout,
+    component.fieldValues,
+    component.appearance ?? component.layout.appearance
+  );
+
+  return {
+    ...component,
+    appearance: layout.appearance,
+    layout,
+    labelText: getFirstPieceFaceText(layout)
+  };
+}
+
 function createFallbackCardTemplate(projectId: string, cardName: string, layout: CardLayout) {
   const timestamp = new Date().toISOString();
   const template: CardTemplate = {
@@ -253,6 +307,23 @@ function createFallbackCardTemplate(projectId: string, cardName: string, layout:
   };
 
   setProjectCardTemplates(projectId, [...getProjectCardTemplates(projectId), template]);
+
+  return template;
+}
+
+function createFallbackPieceTemplate(projectId: string, pieceName: string, layout: PieceLayout) {
+  const timestamp = new Date().toISOString();
+  const template: PieceTemplate = {
+    id: randomUUID(),
+    projectId,
+    name: `${pieceName} template`,
+    layout,
+    fields: getPieceTemplateFields(layout),
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+
+  setProjectPieceTemplates(projectId, [...getProjectPieceTemplates(projectId), template]);
 
   return template;
 }
@@ -279,7 +350,10 @@ function resolveCardUpdateInput(
     (item) => item.id === (input.templateId ?? currentComponent.templateId)
   );
   const fieldValues = input.fieldValues ?? currentComponent.fieldValues;
-  const layout = resolveCardLayout(input.layout ?? template?.layout ?? currentComponent.layout, fieldValues);
+  const layout = resolveCardLayout(
+    (input.layout as CardLayout | undefined) ?? template?.layout ?? currentComponent.layout,
+    fieldValues
+  );
 
   return {
     ...input,
@@ -287,6 +361,47 @@ function resolveCardUpdateInput(
     layout,
     frontText: getFirstCardSideText(layout.sides.front),
     backText: getFirstCardSideText(layout.sides.back)
+  };
+}
+
+function resolvePieceInput<
+  T extends CreateGameComponentInput & CommonComponentInput & { layout: PieceLayout; type: "piece" }
+>(input: T): T {
+  const layout = resolvePieceLayout(
+    input.layout ?? createDefaultPieceLayout(),
+    input.fieldValues,
+    input.appearance
+  );
+
+  return {
+    ...input,
+    appearance: layout.appearance,
+    fieldValues: input.fieldValues ?? {},
+    layout,
+    labelText: getFirstPieceFaceText(layout)
+  };
+}
+
+function resolvePieceUpdateInput(
+  currentComponent: Extract<GameComponent, { type: "piece" }>,
+  input: UpdateGameComponentInput
+): UpdateGameComponentInput {
+  const template = getProjectPieceTemplates(currentComponent.projectId).find(
+    (item) => item.id === (input.templateId ?? currentComponent.templateId)
+  );
+  const fieldValues = input.fieldValues ?? currentComponent.fieldValues;
+  const layout = resolvePieceLayout(
+    (input.layout as PieceLayout | undefined) ?? template?.layout ?? currentComponent.layout,
+    fieldValues,
+    input.appearance ?? currentComponent.appearance ?? currentComponent.layout.appearance
+  );
+
+  return {
+    ...input,
+    appearance: layout.appearance,
+    fieldValues,
+    layout,
+    labelText: getFirstPieceFaceText(layout)
   };
 }
 
@@ -326,29 +441,19 @@ function parseCreateComponentInput(
       return card.ok ? { ok: true, value: { ...base, type: "card", ...card.value } } : card;
     }
 
-    case "deck": {
-      const deck = parseDeckFields(value, projectId);
-      return deck.ok ? { ok: true, value: { ...base, type: "deck", ...deck.value } } : deck;
+    case "tile": {
+      const tile = parseTileFields(value);
+      return tile.ok ? { ok: true, value: { ...base, type: "tile", ...tile.value } } : tile;
+    }
+
+    case "piece": {
+      const piece = parsePieceFields(value, projectId);
+      return piece.ok ? { ok: true, value: { ...base, type: "piece", ...piece.value } } : piece;
     }
 
     case "die": {
       const die = parseDieFields(value);
       return die.ok ? { ok: true, value: { ...base, type: "die", ...die.value } } : die;
-    }
-
-    case "coin": {
-      const coin = parseCoinFields(value);
-      return coin.ok ? { ok: true, value: { ...base, type: "coin", ...coin.value } } : coin;
-    }
-
-    case "marker": {
-      const marker = parseMarkerFields(value);
-      return marker.ok ? { ok: true, value: { ...base, type: "marker", ...marker.value } } : marker;
-    }
-
-    case "token": {
-      const token = parseTokenFields(value);
-      return token.ok ? { ok: true, value: { ...base, type: "token", ...token.value } } : token;
     }
   }
 }
@@ -400,29 +505,19 @@ function parseUpdateComponentInput(
       return card.ok ? { ok: true, value: { ...input, ...card.value } } : card;
     }
 
-    case "deck": {
-      const deck = parseDeckFields(value, projectId, currentComponent);
-      return deck.ok ? { ok: true, value: { ...input, ...deck.value } } : deck;
+    case "tile": {
+      const tile = parseTileFields(value, currentComponent);
+      return tile.ok ? { ok: true, value: { ...input, ...tile.value } } : tile;
+    }
+
+    case "piece": {
+      const piece = parsePieceFields(value, projectId, currentComponent);
+      return piece.ok ? { ok: true, value: { ...input, ...piece.value } } : piece;
     }
 
     case "die": {
       const die = parseDieFields(value, currentComponent);
       return die.ok ? { ok: true, value: { ...input, ...die.value } } : die;
-    }
-
-    case "coin": {
-      const coin = parseCoinFields(value, currentComponent);
-      return coin.ok ? { ok: true, value: { ...input, ...coin.value } } : coin;
-    }
-
-    case "marker": {
-      const marker = parseMarkerFields(value, currentComponent);
-      return marker.ok ? { ok: true, value: { ...input, ...marker.value } } : marker;
-    }
-
-    case "token": {
-      const token = parseTokenFields(value, currentComponent);
-      return token.ok ? { ok: true, value: { ...input, ...token.value } } : token;
     }
   }
 }
@@ -467,13 +562,8 @@ function parseCardFields(
 ): ParseResult<CardFields> {
   const frontText = readOptionalString(value.frontText);
   const backText = readOptionalString(value.backText);
-  const defaultVisibility = readOptionalVisibility(value.defaultVisibility);
   const layout = parseOptionalCardLayout(value.layout);
   const templateId = readOptionalString(value.templateId);
-
-  if (!defaultVisibility.ok) {
-    return defaultVisibility;
-  }
 
   if (!layout.ok) {
     return layout;
@@ -525,7 +615,6 @@ function parseCardFields(
           : value.backText === undefined
             ? (currentComponent?.backText ?? "")
             : (backText ?? ""),
-      defaultVisibility: defaultVisibility.value ?? currentComponent?.defaultVisibility ?? "visible",
       templateId: selectedTemplateId ?? currentComponent?.templateId ?? "",
       fieldValues: resolvedFieldValues,
       layout: resolvedLayout
@@ -540,7 +629,7 @@ const cardSizeRange = { min: 20, max: 300 };
 function parseOptionalCardFieldValues(
   value: unknown,
   layout: CardLayout
-): ParseResult<CardFieldValues | undefined> {
+): ParseResult<TemplateFieldValues | undefined> {
   if (value === undefined) {
     return { ok: true, value: undefined };
   }
@@ -550,7 +639,7 @@ function parseOptionalCardFieldValues(
   }
 
   const fields = getCardTemplateFields(layout);
-  const values: CardFieldValues = {};
+  const values: TemplateFieldValues = {};
 
   for (const field of fields) {
     const fieldValue = value[field.key];
@@ -571,11 +660,45 @@ function parseOptionalCardFieldValues(
   return { ok: true, value: { ...getDefaultCardFieldValues(layout), ...values } };
 }
 
+function parseOptionalPieceFieldValues(
+  value: unknown,
+  layout: PieceLayout
+): ParseResult<TemplateFieldValues | undefined> {
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  if (!isRecord(value)) {
+    return { ok: false, error: "Piece field values must be an object" };
+  }
+
+  const fields = getPieceTemplateFields(layout);
+  const values: TemplateFieldValues = {};
+
+  for (const field of fields) {
+    const fieldValue = value[field.key];
+
+    if (fieldValue === undefined) {
+      continue;
+    }
+
+    const parsedValue = parseCardFieldValue(field.type, fieldValue, field.label);
+
+    if (!parsedValue.ok) {
+      return parsedValue;
+    }
+
+    values[field.key] = parsedValue.value;
+  }
+
+  return { ok: true, value: { ...getDefaultPieceFieldValues(layout), ...values } };
+}
+
 function parseCardFieldValue(
   type: CardTemplateFieldType,
   value: unknown,
   label: string
-): ParseResult<CardFieldValue> {
+): ParseResult<TemplateFieldValue> {
   switch (type) {
     case "text": {
       const text = readRequiredString(value, `Card field ${label}`, {
@@ -600,7 +723,7 @@ function parseCardFieldValue(
   }
 }
 
-function parseCardImageFieldValue(value: unknown): ParseResult<CardImageFieldValue> {
+function parseCardImageFieldValue(value: unknown): ParseResult<TemplateImageFieldValue> {
   if (!isRecord(value)) {
     return { ok: false, error: "Card image field value must be an object" };
   }
@@ -685,6 +808,71 @@ export function parseCardLayout(value: unknown): ParseResult<CardLayout> {
   };
 }
 
+export function parseOptionalPieceLayout(value: unknown): ParseResult<PieceLayout | undefined> {
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  return parsePieceLayout(value);
+}
+
+export function parsePieceLayout(value: unknown): ParseResult<PieceLayout> {
+  if (!isRecord(value)) {
+    return { ok: false, error: "Piece layout must be an object" };
+  }
+
+  if (value.version !== 1) {
+    return { ok: false, error: "Piece layout version is invalid" };
+  }
+
+  const formFactor = readRequiredPieceFormFactor(value.formFactor);
+  const shape = readRequiredPieceShape(value.shape);
+  const sizeMm = parsePieceLayoutSize(value.sizeMm);
+  const appearance = parsePieceAppearance(value.appearance);
+  const customShape =
+    value.shape === "custom"
+      ? parseRequiredPieceCustomShape(value.customShape)
+      : parseOptionalPresetPieceCustomShape(value.customShape);
+  const faces = parsePieceLayoutFaces(value.faces);
+
+  if (!formFactor.ok) {
+    return formFactor;
+  }
+
+  if (!shape.ok) {
+    return shape;
+  }
+
+  if (!sizeMm.ok) {
+    return sizeMm;
+  }
+
+  if (!appearance.ok) {
+    return appearance;
+  }
+
+  if (!customShape.ok) {
+    return customShape;
+  }
+
+  if (!faces.ok) {
+    return faces;
+  }
+
+  return {
+    ok: true,
+    value: {
+      version: 1,
+      formFactor: formFactor.value,
+      shape: shape.value,
+      sizeMm: sizeMm.value,
+      appearance: appearance.value,
+      customShape: customShape.value,
+      faces: faces.value
+    }
+  };
+}
+
 function parseCardLayoutSize(value: unknown): ParseResult<CardLayoutSize> {
   if (!isRecord(value)) {
     return { ok: false, error: "Card size must be an object" };
@@ -723,6 +911,198 @@ function parseCardLayoutSize(value: unknown): ParseResult<CardLayoutSize> {
       heightMm: height.value
     }
   };
+}
+
+function parsePieceLayoutSize(value: unknown): ParseResult<PieceLayoutSize> {
+  if (!isRecord(value)) {
+    return { ok: false, error: "Piece size must be an object" };
+  }
+
+  const width = readRequiredNumber(value.widthMm, "Piece width", { min: 1, max: 300 });
+  const height = readRequiredNumber(value.heightMm, "Piece height", { min: 1, max: 300 });
+  const depth = readRequiredNumber(value.depthMm, "Piece depth", { min: 0, max: 300 });
+
+  if (!width.ok) {
+    return width;
+  }
+
+  if (!height.ok) {
+    return height;
+  }
+
+  if (!depth.ok) {
+    return depth;
+  }
+
+  return {
+    ok: true,
+    value: {
+      widthMm: width.value,
+      heightMm: height.value,
+      depthMm: depth.value
+    }
+  };
+}
+
+function parsePieceAppearance(value: unknown): ParseResult<PieceAppearance> {
+  if (!isRecord(value)) {
+    return { ok: false, error: "Piece appearance must be an object" };
+  }
+
+  const fillColor = readRequiredHexColor(value.fillColor, "Piece fill color");
+  const strokeColor = readRequiredHexColor(value.strokeColor, "Piece stroke color");
+
+  if (!fillColor.ok) {
+    return fillColor;
+  }
+
+  if (!strokeColor.ok) {
+    return strokeColor;
+  }
+
+  return {
+    ok: true,
+    value: {
+      fillColor: fillColor.value,
+      strokeColor: strokeColor.value
+    }
+  };
+}
+
+function parseOptionalPieceAppearance(
+  value: unknown
+): ParseResult<Partial<PieceAppearance> | undefined> {
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  if (!isRecord(value)) {
+    return { ok: false, error: "Piece appearance must be an object" };
+  }
+
+  const appearance: Partial<PieceAppearance> = {};
+
+  if (value.fillColor !== undefined) {
+    const fillColor = readRequiredHexColor(value.fillColor, "Piece fill color");
+
+    if (!fillColor.ok) {
+      return fillColor;
+    }
+
+    appearance.fillColor = fillColor.value;
+  }
+
+  if (value.strokeColor !== undefined) {
+    const strokeColor = readRequiredHexColor(value.strokeColor, "Piece stroke color");
+
+    if (!strokeColor.ok) {
+      return strokeColor;
+    }
+
+    appearance.strokeColor = strokeColor.value;
+  }
+
+  return { ok: true, value: appearance };
+}
+
+function parseOptionalPresetPieceCustomShape(value: unknown): ParseResult<undefined> {
+  if (value !== undefined) {
+    return { ok: false, error: "Piece custom shape can only be used with custom shape" };
+  }
+
+  return { ok: true, value: undefined };
+}
+
+function parseRequiredPieceCustomShape(value: unknown): ParseResult<PieceCustomShape> {
+  if (!isRecord(value)) {
+    return { ok: false, error: "Piece custom shape must be an object" };
+  }
+
+  if (!Array.isArray(value.points)) {
+    return { ok: false, error: "Piece custom shape points must be an array" };
+  }
+
+  if (value.points.length < 3) {
+    return { ok: false, error: "Piece custom shape must include at least 3 points" };
+  }
+
+  if (value.points.length > 64) {
+    return { ok: false, error: "Piece custom shape can include at most 64 points" };
+  }
+
+  const points: PieceShapePoint[] = [];
+
+  for (const item of value.points) {
+    if (!isRecord(item)) {
+      return { ok: false, error: "Piece custom shape points must be objects" };
+    }
+
+    const x = readRequiredNumber(item.x, "Piece custom shape point x", { min: 0, max: 100 });
+    const y = readRequiredNumber(item.y, "Piece custom shape point y", { min: 0, max: 100 });
+
+    if (!x.ok) {
+      return x;
+    }
+
+    if (!y.ok) {
+      return y;
+    }
+
+    points.push({ x: x.value, y: y.value });
+  }
+
+  return { ok: true, value: { points } };
+}
+
+function parsePieceLayoutFaces(value: unknown): ParseResult<PieceLayoutFace[]> {
+  if (!Array.isArray(value)) {
+    return { ok: false, error: "Piece layout faces must be an array" };
+  }
+
+  if (value.length < 1 || value.length > 2) {
+    return { ok: false, error: "Piece layout must include one or two faces" };
+  }
+
+  const faces: PieceLayoutFace[] = [];
+  const faceIds = new Set<string>();
+
+  for (const item of value) {
+    if (!isRecord(item)) {
+      return { ok: false, error: "Piece layout faces must be objects" };
+    }
+
+    const id = readRequiredString(item.id, "Piece face id");
+    const name = readRequiredString(item.name, "Piece face name");
+    const zones = parseCardZones(item.zones, {
+      allowEmpty: true,
+      label: "Piece layout"
+    });
+
+    if (!id.ok) {
+      return id;
+    }
+
+    if (!name.ok) {
+      return name;
+    }
+
+    if (!zones.ok) {
+      return zones;
+    }
+
+    if (faceIds.has(id.value)) {
+      return { ok: false, error: "Piece layout face ids must be unique" };
+    }
+
+    faceIds.add(id.value);
+    faces.push({
+      id: id.value,
+      name: name.value,
+      zones: zones.value
+    });
+  }
+
+  return { ok: true, value: faces };
 }
 
 function parseCardLayoutPadding(
@@ -773,10 +1153,7 @@ function parseCardLayoutPadding(
   };
 }
 
-function parseCardSideLayout(
-  value: unknown,
-  size: CardLayoutSize
-): ParseResult<CardSideLayout> {
+function parseCardSideLayout(value: unknown, size: CardLayoutSize): ParseResult<CardSideLayout> {
   if (!isRecord(value)) {
     return { ok: false, error: "Card side layout must be an object" };
   }
@@ -802,20 +1179,25 @@ function parseCardSideLayout(
   };
 }
 
-function parseCardZones(value: unknown): ParseResult<CardLayoutZone[]> {
+function parseCardZones(
+  value: unknown,
+  options: { allowEmpty?: boolean; label?: string } = {}
+): ParseResult<LayoutZone[]> {
+  const label = options.label ?? "Card layout";
+
   if (!Array.isArray(value)) {
-    return { ok: false, error: "Card layout zones must be an array" };
+    return { ok: false, error: `${label} zones must be an array` };
   }
 
-  if (value.length === 0) {
+  if (!options.allowEmpty && value.length === 0) {
     return { ok: false, error: "Card layout must include at least one zone per side" };
   }
 
   if (value.length > maxCardLayoutZones) {
-    return { ok: false, error: `Card layout can include at most ${maxCardLayoutZones} zones` };
+    return { ok: false, error: `${label} can include at most ${maxCardLayoutZones} zones` };
   }
 
-  const zones: CardLayoutZone[] = [];
+  const zones: LayoutZone[] = [];
   const zoneIds = new Set<string>();
 
   for (const item of value) {
@@ -882,7 +1264,7 @@ function parseCardZones(value: unknown): ParseResult<CardLayoutZone[]> {
   return { ok: true, value: zones };
 }
 
-function parseCardZoneContent(value: unknown): ParseResult<CardZoneContent> {
+function parseCardZoneContent(value: unknown): ParseResult<LayoutZoneContent> {
   if (!isRecord(value)) {
     return { ok: false, error: "Card zone content must be an object" };
   }
@@ -1009,7 +1391,9 @@ function parseCardZoneContent(value: unknown): ParseResult<CardZoneContent> {
   }
 }
 
-function parseOptionalCardContentSource(value: unknown): ParseResult<CardContentSource | undefined> {
+function parseOptionalCardContentSource(
+  value: unknown
+): ParseResult<LayoutContentSource | undefined> {
   if (value === undefined) {
     return { ok: true, value: undefined };
   }
@@ -1040,37 +1424,6 @@ function parseOptionalCardContentSource(value: unknown): ParseResult<CardContent
   }
 
   return { ok: true, value: { mode: "field", fieldKey: fieldKey.value } };
-}
-
-function parseDeckFields(
-  value: Record<string, unknown>,
-  projectId: string,
-  currentComponent?: Extract<GameComponent, { type: "deck" }>
-): ParseResult<DeckFields> {
-  const cards = readOptionalDeckCards(value.cards, projectId);
-  const shuffleOnSetup = readOptionalBoolean(value.shuffleOnSetup, "Shuffle on setup");
-  const defaultVisibility = readOptionalVisibility(value.defaultVisibility);
-
-  if (!cards.ok) {
-    return cards;
-  }
-
-  if (!shuffleOnSetup.ok) {
-    return shuffleOnSetup;
-  }
-
-  if (!defaultVisibility.ok) {
-    return defaultVisibility;
-  }
-
-  return {
-    ok: true,
-    value: {
-      cards: cards.value ?? currentComponent?.cards ?? [],
-      shuffleOnSetup: shuffleOnSetup.value ?? currentComponent?.shuffleOnSetup ?? true,
-      defaultVisibility: defaultVisibility.value ?? currentComponent?.defaultVisibility ?? "hidden"
-    }
-  };
 }
 
 function parseDieFields(
@@ -1107,110 +1460,116 @@ function parseDieFields(
   };
 }
 
-function parseCoinFields(
+function parseTileFields(
   value: Record<string, unknown>,
-  currentComponent?: Extract<GameComponent, { type: "coin" }>
-): ParseResult<CoinFields> {
-  const headsLabel = readOptionalString(value.headsLabel);
-  const tailsLabel = readOptionalString(value.tailsLabel);
+  currentComponent?: Extract<GameComponent, { type: "tile" }>
+): ParseResult<TileFields> {
+  const shape = readOptionalTileShape(value.shape);
+  const faceLabel = readOptionalString(value.faceLabel);
+  const color =
+    value.color === undefined ? undefined : readRequiredHexColor(value.color, "Tile color");
+  const edgeLabels = readOptionalStringArray(value.edgeLabels, "Tile edge labels");
 
-  return {
-    ok: true,
-    value: {
-      headsLabel:
-        value.headsLabel === undefined
-          ? (currentComponent?.headsLabel ?? "Heads")
-          : (headsLabel ?? ""),
-      tailsLabel:
-        value.tailsLabel === undefined
-          ? (currentComponent?.tailsLabel ?? "Tails")
-          : (tailsLabel ?? "")
-    }
-  };
-}
+  if (!shape.ok) {
+    return shape;
+  }
 
-function parseMarkerFields(
-  value: Record<string, unknown>,
-  currentComponent?: Extract<GameComponent, { type: "marker" }>
-): ParseResult<MarkerFields> {
-  const usage = readOptionalString(value.usage);
+  if (color && !color.ok) {
+    return color;
+  }
 
-  return {
-    ok: true,
-    value: {
-      usage: value.usage === undefined ? (currentComponent?.usage ?? "") : (usage ?? "")
-    }
-  };
-}
+  if (!edgeLabels.ok) {
+    return edgeLabels;
+  }
 
-function parseTokenFields(
-  value: Record<string, unknown>,
-  currentComponent?: Extract<GameComponent, { type: "token" }>
-): ParseResult<TokenFields> {
-  const stackable = readOptionalBoolean(value.stackable, "Token stackable");
-  const valueLabel = readOptionalString(value.valueLabel);
+  const resolvedShape = shape.value ?? currentComponent?.shape ?? "square";
+  const expectedEdgeCount = resolvedShape === "square" ? 4 : 6;
 
-  if (!stackable.ok) {
-    return stackable;
+  if (edgeLabels.value !== undefined && edgeLabels.value.length !== expectedEdgeCount) {
+    return {
+      ok: false,
+      error: `Tile edge labels must include ${expectedEdgeCount} labels for ${resolvedShape} tiles`
+    };
   }
 
   return {
     ok: true,
     value: {
-      stackable: stackable.value ?? currentComponent?.stackable ?? true,
-      valueLabel:
-        value.valueLabel === undefined ? (currentComponent?.valueLabel ?? "") : (valueLabel ?? "")
+      shape: resolvedShape,
+      faceLabel:
+        value.faceLabel === undefined ? (currentComponent?.faceLabel ?? "") : (faceLabel ?? ""),
+      color: color?.ok ? color.value : (currentComponent?.color ?? "#e2e8f0"),
+      edgeLabels:
+        edgeLabels.value ??
+        (currentComponent?.shape === resolvedShape
+          ? currentComponent.edgeLabels
+          : Array.from({ length: expectedEdgeCount }, () => ""))
     }
   };
 }
 
-function readOptionalDeckCards(
-  value: unknown,
-  projectId: string
-): ParseResult<DeckCardEntry[] | undefined> {
-  if (value === undefined) {
-    return { ok: true, value: undefined };
+function parsePieceFields(
+  value: Record<string, unknown>,
+  projectId: string,
+  currentComponent?: Extract<GameComponent, { type: "piece" }>
+): ParseResult<PieceFields> {
+  const layout = parseOptionalPieceLayout(value.layout);
+  const templateId = readOptionalString(value.templateId);
+  const appearance = parseOptionalPieceAppearance(value.appearance);
+
+  if (!layout.ok) {
+    return layout;
   }
 
-  if (!Array.isArray(value)) {
-    return { ok: false, error: "Deck cards must be an array" };
+  if (!appearance.ok) {
+    return appearance;
   }
 
-  const entries: DeckCardEntry[] = [];
-  const seenCardIds = new Set<string>();
+  const selectedTemplateId = templateId ?? currentComponent?.templateId;
+  const template = selectedTemplateId
+    ? getProjectPieceTemplates(projectId).find((item) => item.id === selectedTemplateId)
+    : undefined;
 
-  for (const item of value) {
-    if (!isRecord(item)) {
-      return { ok: false, error: "Deck card entries must be objects" };
-    }
-
-    const cardId = readOptionalString(item.cardId);
-
-    if (!cardId) {
-      return { ok: false, error: "Deck card id must not be empty" };
-    }
-
-    if (seenCardIds.has(cardId)) {
-      return { ok: false, error: "Deck cannot include the same card twice" };
-    }
-
-    const quantity = readOptionalInteger(item.quantity, "Deck card quantity", { min: 1 });
-
-    if (!quantity.ok) {
-      return quantity;
-    }
-
-    const card = getProjectComponents(projectId).find((component) => component.id === cardId);
-
-    if (!card || card.type !== "card") {
-      return { ok: false, error: "Deck cards must reference cards in the same project" };
-    }
-
-    seenCardIds.add(cardId);
-    entries.push({ cardId, quantity: quantity.value ?? 1 });
+  if (selectedTemplateId && !template && value.layout === undefined) {
+    return { ok: false, error: "Piece template not found" };
   }
 
-  return { ok: true, value: entries };
+  const templateLayout =
+    layout.value ??
+    template?.layout ??
+    (currentComponent?.templateId
+      ? getProjectPieceTemplates(projectId).find((item) => item.id === currentComponent.templateId)
+          ?.layout
+      : undefined) ??
+    currentComponent?.layout ??
+    createDefaultPieceLayout();
+  const fieldValues = parseOptionalPieceFieldValues(value.fieldValues, templateLayout);
+
+  if (!fieldValues.ok) {
+    return fieldValues;
+  }
+
+  const resolvedFieldValues =
+    fieldValues.value ??
+    currentComponent?.fieldValues ??
+    getDefaultPieceFieldValues(templateLayout);
+  const resolvedAppearance = {
+    ...templateLayout.appearance,
+    ...(currentComponent?.appearance ?? currentComponent?.layout.appearance ?? {}),
+    ...(appearance.value ?? {})
+  };
+  const resolvedLayout = resolvePieceLayout(templateLayout, resolvedFieldValues, resolvedAppearance);
+
+  return {
+    ok: true,
+    value: {
+      labelText: getFirstPieceFaceText(resolvedLayout),
+      templateId: selectedTemplateId ?? currentComponent?.templateId ?? "",
+      appearance: resolvedLayout.appearance,
+      fieldValues: resolvedFieldValues,
+      layout: resolvedLayout
+    }
+  };
 }
 
 function readOptionalStringArray(value: unknown, label: string): ParseResult<string[] | undefined> {
@@ -1258,32 +1617,6 @@ function readOptionalInteger(
 
   if (range.max !== undefined && value > range.max) {
     return { ok: false, error: `${label} must be at most ${range.max}` };
-  }
-
-  return { ok: true, value };
-}
-
-function readOptionalBoolean(value: unknown, label: string): ParseResult<boolean | undefined> {
-  if (value === undefined) {
-    return { ok: true, value: undefined };
-  }
-
-  if (typeof value !== "boolean") {
-    return { ok: false, error: `${label} must be a boolean` };
-  }
-
-  return { ok: true, value };
-}
-
-function readOptionalVisibility(
-  value: unknown
-): ParseResult<CreateGameComponentInput["defaultVisibility"]> {
-  if (value === undefined) {
-    return { ok: true, value: undefined };
-  }
-
-  if (!isComponentVisibility(value)) {
-    return { ok: false, error: "Component visibility is invalid" };
   }
 
   return { ok: true, value };
@@ -1351,6 +1684,34 @@ function readRequiredBoolean(value: unknown, label: string): ParseResult<boolean
   }
 
   return { ok: true, value };
+}
+
+function readOptionalTileShape(value: unknown): ParseResult<TileShape | undefined> {
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  if (!tileShapes.includes(value as TileShape)) {
+    return { ok: false, error: "Tile shape is invalid" };
+  }
+
+  return { ok: true, value: value as TileShape };
+}
+
+function readRequiredPieceFormFactor(value: unknown): ParseResult<PieceFormFactor> {
+  if (!pieceFormFactors.includes(value as PieceFormFactor)) {
+    return { ok: false, error: "Piece form factor is invalid" };
+  }
+
+  return { ok: true, value: value as PieceFormFactor };
+}
+
+function readRequiredPieceShape(value: unknown): ParseResult<PieceShape> {
+  if (!pieceShapes.includes(value as PieceShape)) {
+    return { ok: false, error: "Piece shape is invalid" };
+  }
+
+  return { ok: true, value: value as PieceShape };
 }
 
 function readRequiredTextAlignment(value: unknown): ParseResult<CardTextAlignment> {
@@ -1451,14 +1812,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isComponentType(value: unknown): value is CreateGameComponentInput["type"] {
   return componentTypes.includes(value as CreateGameComponentInput["type"]);
-}
-
-function isComponentVisibility(
-  value: unknown
-): value is NonNullable<CreateGameComponentInput["defaultVisibility"]> {
-  return componentVisibilities.includes(
-    value as NonNullable<CreateGameComponentInput["defaultVisibility"]>
-  );
 }
 
 function isCardSizePreset(value: unknown): value is CardLayoutSize["preset"] {

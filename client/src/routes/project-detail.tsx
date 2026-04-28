@@ -37,9 +37,11 @@ import {
 import {
   componentTypes,
   type CardTemplate,
+  type ComponentCollection,
   type ComponentType,
   type GameComponent,
   type GameProject,
+  type PieceTemplate,
   type ProjectStatus
 } from "@bg-maker/shared";
 import { deleteProject, getApiErrorMessage, getProject, updateProject } from "../api/client";
@@ -47,13 +49,45 @@ import { ComponentFormModal } from "../components/component-form-modal";
 import { componentTypeLabels } from "../components/component-labels";
 import { ProjectFormModal, type ProjectFormValues } from "../components/project-form-modal";
 import { getProjectFormValues } from "../components/project-form-values";
-import { useProjectComponents } from "../hooks/use-project-components";
+import { useProjectComponents, type ComponentModalState } from "../hooks/use-project-components";
 
 const statusColors: Record<ProjectStatus, string> = {
   draft: "gray",
   testing: "yellow",
   ready: "teal"
 };
+
+function getComponentFormKind(
+  modal: ComponentModalState
+): "cardTemplate" | "collection" | "component" | "pieceTemplate" {
+  switch (modal?.mode) {
+    case "createTemplate":
+    case "editTemplate":
+      return "cardTemplate";
+    case "createPieceTemplate":
+    case "editPieceTemplate":
+      return "pieceTemplate";
+    case "createCollection":
+    case "editCollection":
+      return "collection";
+    case "create":
+    case "edit":
+    default:
+      return "component";
+  }
+}
+
+function getComponentFormMode(modal: ComponentModalState): "create" | "edit" {
+  switch (modal?.mode) {
+    case "create":
+    case "createTemplate":
+    case "createPieceTemplate":
+    case "createCollection":
+      return "create";
+    default:
+      return "edit";
+  }
+}
 
 export function ProjectDetailRoute() {
   const params = useParams({ strict: false });
@@ -203,23 +237,34 @@ export function ProjectDetailRoute() {
             <ProjectComponents
               actionError={componentCatalog.actionError}
               cardTemplates={componentCatalog.cardTemplates}
+              collections={componentCatalog.collections}
               components={componentCatalog.components}
               deletingCardTemplateId={componentCatalog.deletingCardTemplateId}
+              deletingCollectionId={componentCatalog.deletingCollectionId}
               deletingComponentId={componentCatalog.deletingComponentId}
+              deletingPieceTemplateId={componentCatalog.deletingPieceTemplateId}
               duplicatingComponentId={componentCatalog.duplicatingComponentId}
               filter={componentCatalog.componentTypeFilter}
               filteredComponents={componentCatalog.filteredComponents}
+              getCollectionDetails={componentCatalog.getCollectionDetails}
               loading={componentCatalog.componentsQuery.isLoading}
+              pieceTemplates={componentCatalog.pieceTemplates}
               queryError={componentCatalog.queryError}
               getComponentDetails={componentCatalog.getComponentDetails}
               onDeleteCardTemplate={componentCatalog.requestDeleteCardTemplate}
+              onDeleteCollection={componentCatalog.requestDeleteCollection}
               onDeleteComponent={componentCatalog.requestDeleteComponent}
+              onDeletePieceTemplate={componentCatalog.requestDeletePieceTemplate}
               onDuplicateComponent={componentCatalog.duplicateComponent}
+              onEditCollection={componentCatalog.openEditCollection}
               onEditComponent={componentCatalog.openEditComponent}
               onEditCardTemplate={componentCatalog.openEditCardTemplate}
+              onEditPieceTemplate={componentCatalog.openEditPieceTemplate}
               onFilterChange={componentCatalog.setComponentTypeFilter}
               onNewCardTemplate={componentCatalog.openNewCardTemplate}
+              onNewCollection={componentCatalog.openNewCollection}
               onNewComponent={componentCatalog.openNewComponent}
+              onNewPieceTemplate={componentCatalog.openNewPieceTemplate}
             />
           </Tabs.Panel>
           <Tabs.Panel value="layout" pt="md">
@@ -259,27 +304,21 @@ export function ProjectDetailRoute() {
         onSubmit={(values) => updateProjectMutation.mutate(values)}
       />
       <ComponentFormModal
-        availableCards={componentCatalog.components}
+        availableComponents={componentCatalog.components}
         cardTemplates={componentCatalog.cardTemplates}
+        collection={componentCatalog.editingCollection}
         component={componentCatalog.editingComponent}
         error={componentCatalog.formError}
+        formKind={getComponentFormKind(componentCatalog.componentModal)}
         loading={componentCatalog.formIsPending}
-        mode={
-          componentCatalog.componentModal?.mode === "create" ||
-          componentCatalog.componentModal?.mode === "createTemplate"
-            ? "create"
-            : "edit"
-        }
+        mode={getComponentFormMode(componentCatalog.componentModal)}
         opened={componentCatalog.componentModal !== null}
+        pieceTemplate={componentCatalog.editingPieceTemplate}
+        pieceTemplates={componentCatalog.pieceTemplates}
         template={componentCatalog.editingCardTemplate}
-        templateMode={
-          componentCatalog.componentModal?.mode === "createTemplate"
-            ? "create"
-            : componentCatalog.componentModal?.mode === "editTemplate"
-              ? "edit"
-              : undefined
-        }
         onClose={componentCatalog.closeComponentModal}
+        onEditCardTemplate={componentCatalog.openEditCardTemplate}
+        onEditPieceTemplate={componentCatalog.openEditPieceTemplate}
         onSubmit={componentCatalog.submitComponentForm}
       />
     </Container>
@@ -321,42 +360,64 @@ function ProjectOverview({ project }: { project: GameProject }) {
 function ProjectComponents({
   actionError,
   cardTemplates,
+  collections,
   components,
   deletingCardTemplateId,
+  deletingCollectionId,
   deletingComponentId,
+  deletingPieceTemplateId,
   duplicatingComponentId,
   filter,
   filteredComponents,
+  getCollectionDetails,
   getComponentDetails,
   loading,
   onDeleteComponent,
   onDeleteCardTemplate,
+  onDeleteCollection,
+  onDeletePieceTemplate,
   onDuplicateComponent,
+  onEditCollection,
   onEditComponent,
   onEditCardTemplate,
+  onEditPieceTemplate,
   onFilterChange,
   onNewCardTemplate,
+  onNewCollection,
   onNewComponent,
+  onNewPieceTemplate,
+  pieceTemplates,
   queryError
 }: {
   actionError: string | null;
   cardTemplates: CardTemplate[];
+  collections: ComponentCollection[];
   components: GameComponent[];
   deletingCardTemplateId: string | null;
+  deletingCollectionId: string | null;
   deletingComponentId: string | null;
+  deletingPieceTemplateId: string | null;
   duplicatingComponentId: string | null;
   filter: ComponentType | "all";
   filteredComponents: GameComponent[];
+  getCollectionDetails: (collection: ComponentCollection) => string;
   getComponentDetails: (component: GameComponent) => string;
   loading: boolean;
   onDeleteCardTemplate: (template: CardTemplate) => void;
+  onDeleteCollection: (collection: ComponentCollection) => void;
   onDeleteComponent: (component: GameComponent) => void;
+  onDeletePieceTemplate: (template: PieceTemplate) => void;
   onDuplicateComponent: (component: GameComponent) => void;
+  onEditCollection: (collection: ComponentCollection) => void;
   onEditComponent: (component: GameComponent) => void;
   onEditCardTemplate: (template: CardTemplate) => void;
+  onEditPieceTemplate: (template: PieceTemplate) => void;
   onFilterChange: (filter: ComponentType | "all") => void;
   onNewCardTemplate: () => void;
+  onNewCollection: () => void;
   onNewComponent: () => void;
+  onNewPieceTemplate: () => void;
+  pieceTemplates: PieceTemplate[];
   queryError: string | null;
 }) {
   const filterOptions = [
@@ -411,6 +472,67 @@ function ProjectComponents({
             deletingCardTemplateId={deletingCardTemplateId}
             onDeleteCardTemplate={onDeleteCardTemplate}
             onEditCardTemplate={onEditCardTemplate}
+          />
+        </Stack>
+      </Paper>
+
+      <Paper withBorder radius={8} p="md">
+        <Stack gap="md">
+          <Group justify="space-between" align="flex-start">
+            <Group gap="sm">
+              <ThemeIcon color="violet" variant="light" radius={8}>
+                <FileText size={18} />
+              </ThemeIcon>
+              <Box>
+                <Title order={2} size="h3">
+                  Piece templates
+                </Title>
+                <Text c="dimmed" size="sm">
+                  {pieceTemplates.length} total
+                </Text>
+              </Box>
+            </Group>
+            <Button leftSection={<Plus size={16} />} radius={8} onClick={onNewPieceTemplate}>
+              New piece template
+            </Button>
+          </Group>
+
+          <PieceTemplateTable
+            deletingPieceTemplateId={deletingPieceTemplateId}
+            pieceTemplates={pieceTemplates}
+            onDeletePieceTemplate={onDeletePieceTemplate}
+            onEditPieceTemplate={onEditPieceTemplate}
+          />
+        </Stack>
+      </Paper>
+
+      <Paper withBorder radius={8} p="md">
+        <Stack gap="md">
+          <Group justify="space-between" align="flex-start">
+            <Group gap="sm">
+              <ThemeIcon color="indigo" variant="light" radius={8}>
+                <Layers size={18} />
+              </ThemeIcon>
+              <Box>
+                <Title order={2} size="h3">
+                  Collections
+                </Title>
+                <Text c="dimmed" size="sm">
+                  {collections.length} total
+                </Text>
+              </Box>
+            </Group>
+            <Button leftSection={<Plus size={16} />} radius={8} onClick={onNewCollection}>
+              New collection
+            </Button>
+          </Group>
+
+          <CollectionTable
+            collections={collections}
+            deletingCollectionId={deletingCollectionId}
+            getCollectionDetails={getCollectionDetails}
+            onDeleteCollection={onDeleteCollection}
+            onEditCollection={onEditCollection}
           />
         </Stack>
       </Paper>
@@ -537,6 +659,162 @@ function CardTemplateTable({
                       radius={8}
                       variant="subtle"
                       onClick={() => onDeleteCardTemplate(template)}
+                    >
+                      <Trash2 size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
+  );
+}
+
+function PieceTemplateTable({
+  deletingPieceTemplateId,
+  pieceTemplates,
+  onDeletePieceTemplate,
+  onEditPieceTemplate
+}: {
+  deletingPieceTemplateId: string | null;
+  pieceTemplates: PieceTemplate[];
+  onDeletePieceTemplate: (template: PieceTemplate) => void;
+  onEditPieceTemplate: (template: PieceTemplate) => void;
+}) {
+  if (pieceTemplates.length === 0) {
+    return (
+      <Text c="dimmed" py="lg" ta="center">
+        No piece templates yet
+      </Text>
+    );
+  }
+
+  return (
+    <Table.ScrollContainer minWidth={640}>
+      <Table verticalSpacing="sm">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Name</Table.Th>
+            <Table.Th>Shape</Table.Th>
+            <Table.Th>Size</Table.Th>
+            <Table.Th>Fields</Table.Th>
+            <Table.Th>Updated</Table.Th>
+            <Table.Th className="component-actions-header" aria-label="Actions" />
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {pieceTemplates.map((template) => (
+            <Table.Tr key={template.id} className="piece-template-table-row">
+              <Table.Td>
+                <Text fw={600}>{template.name}</Text>
+              </Table.Td>
+              <Table.Td>
+                {template.layout.formFactor} {template.layout.shape}
+              </Table.Td>
+              <Table.Td>{formatPieceTemplateSize(template)}</Table.Td>
+              <Table.Td>
+                {template.fields.length > 0
+                  ? template.fields.map((field) => field.label).join(", ")
+                  : "Static template"}
+              </Table.Td>
+              <Table.Td>{formatDate(template.updatedAt)}</Table.Td>
+              <Table.Td className="component-actions-cell">
+                <Group gap={4} justify="flex-end" className="piece-template-row-actions">
+                  <Tooltip label="Edit template" withArrow>
+                    <ActionIcon
+                      aria-label={`Edit piece template ${template.name}`}
+                      radius={8}
+                      variant="subtle"
+                      onClick={() => onEditPieceTemplate(template)}
+                    >
+                      <Edit size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label="Delete template" withArrow>
+                    <ActionIcon
+                      aria-label={`Delete piece template ${template.name}`}
+                      color="red"
+                      loading={deletingPieceTemplateId === template.id}
+                      radius={8}
+                      variant="subtle"
+                      onClick={() => onDeletePieceTemplate(template)}
+                    >
+                      <Trash2 size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Group>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
+  );
+}
+
+function CollectionTable({
+  collections,
+  deletingCollectionId,
+  getCollectionDetails,
+  onDeleteCollection,
+  onEditCollection
+}: {
+  collections: ComponentCollection[];
+  deletingCollectionId: string | null;
+  getCollectionDetails: (collection: ComponentCollection) => string;
+  onDeleteCollection: (collection: ComponentCollection) => void;
+  onEditCollection: (collection: ComponentCollection) => void;
+}) {
+  if (collections.length === 0) {
+    return (
+      <Text c="dimmed" py="lg" ta="center">
+        No collections yet
+      </Text>
+    );
+  }
+
+  return (
+    <Table.ScrollContainer minWidth={640}>
+      <Table verticalSpacing="sm">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Name</Table.Th>
+            <Table.Th>Items</Table.Th>
+            <Table.Th>Updated</Table.Th>
+            <Table.Th className="component-actions-header" aria-label="Actions" />
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {collections.map((collection) => (
+            <Table.Tr key={collection.id} className="collection-table-row">
+              <Table.Td>
+                <Text fw={600}>{collection.name}</Text>
+              </Table.Td>
+              <Table.Td>{getCollectionDetails(collection)}</Table.Td>
+              <Table.Td>{formatDate(collection.updatedAt)}</Table.Td>
+              <Table.Td className="component-actions-cell">
+                <Group gap={4} justify="flex-end" className="collection-row-actions">
+                  <Tooltip label="Edit collection" withArrow>
+                    <ActionIcon
+                      aria-label={`Edit collection ${collection.name}`}
+                      radius={8}
+                      variant="subtle"
+                      onClick={() => onEditCollection(collection)}
+                    >
+                      <Edit size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label="Delete collection" withArrow>
+                    <ActionIcon
+                      aria-label={`Delete collection ${collection.name}`}
+                      color="red"
+                      loading={deletingCollectionId === collection.id}
+                      radius={8}
+                      variant="subtle"
+                      onClick={() => onDeleteCollection(collection)}
                     >
                       <Trash2 size={16} />
                     </ActionIcon>
@@ -719,4 +997,9 @@ function formatDate(value: string) {
 
 function formatCardTemplateSize(template: CardTemplate) {
   return `${template.layout.size.widthMm} x ${template.layout.size.heightMm} mm`;
+}
+
+function formatPieceTemplateSize(template: PieceTemplate) {
+  const { depthMm, heightMm, widthMm } = template.layout.sizeMm;
+  return `${widthMm} x ${heightMm} x ${depthMm} mm`;
 }

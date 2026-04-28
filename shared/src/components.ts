@@ -1,10 +1,6 @@
-export const componentTypes = ["card", "deck", "die", "coin", "marker", "token"] as const;
+export const componentTypes = ["card", "tile", "piece", "die"] as const;
 
 export type ComponentType = (typeof componentTypes)[number];
-
-export const componentVisibilities = ["visible", "hidden"] as const;
-
-export type ComponentVisibility = (typeof componentVisibilities)[number];
 
 export const cardSizePresets = ["poker", "mini", "tarot", "square", "custom"] as const;
 
@@ -56,7 +52,7 @@ export type CardLayoutPadding = {
   leftMm: number;
 };
 
-export type CardContentSource =
+export type LayoutContentSource =
   | {
       mode: "static";
     }
@@ -65,9 +61,9 @@ export type CardContentSource =
       mode: "field";
     };
 
-export type CardTextZoneContent = {
+export type TextZoneContent = {
   type: "text";
-  source?: CardContentSource;
+  source?: LayoutContentSource;
   text: string;
   fontSize: number;
   bold: boolean;
@@ -75,9 +71,9 @@ export type CardTextZoneContent = {
   color: string;
 };
 
-export type CardVisualZoneContent = {
+export type VisualZoneContent = {
   type: "visual";
-  source?: CardContentSource;
+  source?: LayoutContentSource;
   visualType: "image" | "icon";
   dataUrl: string;
   fileName: string;
@@ -89,21 +85,21 @@ export type CardVisualZoneContent = {
   verticalAlign: CardVisualVerticalAlignment;
 };
 
-export type CardZoneContent = CardTextZoneContent | CardVisualZoneContent;
+export type LayoutZoneContent = TextZoneContent | VisualZoneContent;
 
-export type CardLayoutZone = {
+export type LayoutZone = {
   id: string;
   name: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  content: CardZoneContent;
+  content: LayoutZoneContent;
 };
 
 export type CardSideLayout = {
   paddingMm: CardLayoutPadding;
-  zones: CardLayoutZone[];
+  zones: LayoutZone[];
 };
 
 export type CardLayout = {
@@ -116,15 +112,15 @@ export const cardTemplateFieldTypes = ["text", "image", "icon", "number"] as con
 
 export type CardTemplateFieldType = (typeof cardTemplateFieldTypes)[number];
 
-export type CardImageFieldValue = {
+export type TemplateImageFieldValue = {
   dataUrl: string;
   fileName: string;
   fit?: CardImageFit;
 };
 
-export type CardFieldValue = string | number | CardIconId | CardImageFieldValue;
+export type TemplateFieldValue = string | number | CardIconId | TemplateImageFieldValue;
 
-export type CardFieldValues = Record<string, CardFieldValue>;
+export type TemplateFieldValues = Record<string, TemplateFieldValue>;
 
 export type CardTemplateField = {
   key: string;
@@ -178,10 +174,114 @@ export const noCardPaddingMm: CardLayoutPadding = {
   leftMm: 0
 };
 
-export type DeckCardEntry = {
-  cardId: string;
+export const tileShapes = ["square", "hex"] as const;
+
+export type TileShape = (typeof tileShapes)[number];
+
+export const pieceFormFactors = ["flat", "standee", "solid"] as const;
+
+export type PieceFormFactor = (typeof pieceFormFactors)[number];
+
+export const pieceShapes = ["circle", "square", "rectangle", "hex", "meeple", "pawn", "custom"] as const;
+
+export type PieceShape = (typeof pieceShapes)[number];
+
+export type PieceLayoutSize = {
+  widthMm: number;
+  heightMm: number;
+  depthMm: number;
+};
+
+export type PieceAppearance = {
+  fillColor: string;
+  strokeColor: string;
+};
+
+export type PieceAppearanceInput = Partial<PieceAppearance>;
+
+export type PieceShapePoint = {
+  x: number;
+  y: number;
+};
+
+export type PieceCustomShape = {
+  points: PieceShapePoint[];
+};
+
+export const defaultPieceAppearance: PieceAppearance = {
+  fillColor: "#f8fafc",
+  strokeColor: "#0f766e"
+};
+
+export const defaultPieceCustomShape: PieceCustomShape = {
+  points: [
+    { x: 50, y: 6 },
+    { x: 90, y: 35 },
+    { x: 74, y: 92 },
+    { x: 26, y: 92 },
+    { x: 10, y: 35 }
+  ]
+};
+
+export type PieceLayoutFace = {
+  id: string;
+  name: string;
+  zones: LayoutZone[];
+};
+
+export type PieceLayout = {
+  version: 1;
+  formFactor: PieceFormFactor;
+  shape: PieceShape;
+  sizeMm: PieceLayoutSize;
+  appearance: PieceAppearance;
+  customShape?: PieceCustomShape;
+  faces: PieceLayoutFace[];
+};
+
+export type PieceTemplate = {
+  id: string;
+  projectId: string;
+  name: string;
+  layout: PieceLayout;
+  fields: CardTemplateField[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreatePieceTemplateInput = {
+  name: string;
+  layout: PieceLayout;
+};
+
+export type UpdatePieceTemplateInput = Partial<CreatePieceTemplateInput>;
+
+export type ComponentCollectionItem = {
+  componentId: string;
   quantity: number;
 };
+
+export type ComponentCollection = {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string;
+  tags: string[];
+  notes: string;
+  items: ComponentCollectionItem[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateComponentCollectionInput = {
+  name: string;
+  description?: string;
+  tags?: string[];
+  notes?: string;
+  items?: ComponentCollectionItem[];
+};
+
+export type UpdateComponentCollectionInput = Partial<CreateComponentCollectionInput>;
 
 export type GameComponentBase = {
   id: string;
@@ -200,17 +300,17 @@ export type CardComponent = GameComponentBase & {
   type: "card";
   frontText: string;
   backText: string;
-  defaultVisibility: ComponentVisibility;
   templateId: string;
-  fieldValues: CardFieldValues;
+  fieldValues: TemplateFieldValues;
   layout: CardLayout;
 };
 
-export type DeckComponent = GameComponentBase & {
-  type: "deck";
-  cards: DeckCardEntry[];
-  shuffleOnSetup: boolean;
-  defaultVisibility: ComponentVisibility;
+export type TileComponent = GameComponentBase & {
+  type: "tile";
+  shape: TileShape;
+  faceLabel: string;
+  color: string;
+  edgeLabels: string[];
 };
 
 export type DieComponent = GameComponentBase & {
@@ -219,30 +319,16 @@ export type DieComponent = GameComponentBase & {
   faceLabels: string[];
 };
 
-export type CoinComponent = GameComponentBase & {
-  type: "coin";
-  headsLabel: string;
-  tailsLabel: string;
+export type PieceComponent = GameComponentBase & {
+  type: "piece";
+  labelText: string;
+  templateId: string;
+  appearance: PieceAppearance;
+  fieldValues: TemplateFieldValues;
+  layout: PieceLayout;
 };
 
-export type MarkerComponent = GameComponentBase & {
-  type: "marker";
-  usage: string;
-};
-
-export type TokenComponent = GameComponentBase & {
-  type: "token";
-  stackable: boolean;
-  valueLabel: string;
-};
-
-export type GameComponent =
-  | CardComponent
-  | DeckComponent
-  | DieComponent
-  | CoinComponent
-  | MarkerComponent
-  | TokenComponent;
+export type GameComponent = CardComponent | TileComponent | PieceComponent | DieComponent;
 
 export type CreateGameComponentInput = {
   type: ComponentType;
@@ -253,28 +339,28 @@ export type CreateGameComponentInput = {
   notes?: string;
   frontText?: string;
   backText?: string;
-  defaultVisibility?: ComponentVisibility;
+  labelText?: string;
   templateId?: string;
-  fieldValues?: CardFieldValues;
-  layout?: CardLayout;
-  cards?: DeckCardEntry[];
-  shuffleOnSetup?: boolean;
+  appearance?: PieceAppearanceInput;
+  fieldValues?: TemplateFieldValues;
+  layout?: CardLayout | PieceLayout;
+  shape?: TileShape;
+  faceLabel?: string;
+  color?: string;
+  edgeLabels?: string[];
   sides?: number;
   faceLabels?: string[];
-  headsLabel?: string;
-  tailsLabel?: string;
-  usage?: string;
-  stackable?: boolean;
-  valueLabel?: string;
 };
 
 export type UpdateGameComponentInput = Partial<Omit<CreateGameComponentInput, "type">>;
 
-export function createDefaultCardLayout(input: {
-  backText?: string;
-  frontText?: string;
-  size?: CardLayoutSize;
-} = {}): CardLayout {
+export function createDefaultCardLayout(
+  input: {
+    backText?: string;
+    frontText?: string;
+    size?: CardLayoutSize;
+  } = {}
+): CardLayout {
   return {
     version: 1,
     size: input.size ?? defaultCardSize,
@@ -282,6 +368,67 @@ export function createDefaultCardLayout(input: {
       front: createDefaultCardSide("front", input.frontText),
       back: createDefaultCardSide("back", input.backText)
     }
+  };
+}
+
+export function createDefaultPieceLayout(
+  input: {
+    appearance?: Partial<PieceAppearance>;
+    customShape?: PieceCustomShape;
+    faceText?: string;
+    formFactor?: PieceFormFactor;
+    shape?: PieceShape;
+    twoSided?: boolean;
+  } = {}
+): PieceLayout {
+  const formFactor = input.formFactor ?? "flat";
+  const shape = input.shape ?? "circle";
+  const twoSided = input.twoSided ?? formFactor !== "solid";
+  const frontFace: PieceLayoutFace = {
+    id: "front",
+    name: "Front",
+    zones: input.faceText
+      ? [
+          {
+            ...createTextZone("front-label", "Label", 0, 0, 100, 100),
+            content: createTextContent(input.faceText)
+          }
+        ]
+      : []
+  };
+
+  const faces = twoSided
+    ? [
+        frontFace,
+        {
+          id: "back",
+          name: "Back",
+          zones: []
+        }
+      ]
+    : [frontFace];
+
+  return {
+    version: 1,
+    formFactor,
+    shape,
+    sizeMm: {
+      widthMm: 20,
+      heightMm: 20,
+      depthMm: formFactor === "solid" ? 10 : 2
+    },
+    appearance: {
+      ...defaultPieceAppearance,
+      ...input.appearance
+    },
+    customShape: shape === "custom" ? clonePieceCustomShape(input.customShape ?? defaultPieceCustomShape) : undefined,
+    faces
+  };
+}
+
+function clonePieceCustomShape(customShape: PieceCustomShape): PieceCustomShape {
+  return {
+    points: customShape.points.map((point) => ({ ...point }))
   };
 }
 
@@ -311,7 +458,10 @@ function createDefaultCardSide(side: CardLayoutSide, text = ""): CardSideLayout 
   return {
     paddingMm: { ...defaultCardPaddingMm },
     zones: [
-      { ...createTextZone(`${side}-title`, "Title", 0, 0, 100, 12), content: createTextContent("") },
+      {
+        ...createTextZone(`${side}-title`, "Title", 0, 0, 100, 12),
+        content: createTextContent("")
+      },
       {
         ...createVisualZone(`${side}-art`, "Art", 0, 16, 100, 40),
         content: createImageContent()
@@ -320,16 +470,27 @@ function createDefaultCardSide(side: CardLayoutSide, text = ""): CardSideLayout 
         ...createTextZone(`${side}-body`, "Body", 0, 60, 100, 30),
         content: createTextContent(trimmedText)
       },
-      { ...createTextZone(`${side}-footer`, "Footer", 0, 94, 100, 6), content: createTextContent("") }
+      {
+        ...createTextZone(`${side}-footer`, "Footer", 0, 94, 100, 6),
+        content: createTextContent("")
+      }
     ]
   };
 }
 
 export function getCardTemplateFields(layout: CardLayout): CardTemplateField[] {
+  return getTemplateFields(layout.sides.front.zones, layout.sides.back.zones);
+}
+
+export function getPieceTemplateFields(layout: PieceLayout): CardTemplateField[] {
+  return getTemplateFields(...layout.faces.map((face) => face.zones));
+}
+
+function getTemplateFields(...zoneGroups: LayoutZone[][]): CardTemplateField[] {
   const fields = new Map<string, CardTemplateField>();
 
-  for (const side of cardLayoutSides) {
-    for (const zone of layout.sides[side].zones) {
+  for (const zones of zoneGroups) {
+    for (const zone of zones) {
       if (zone.content.source?.mode !== "field") {
         continue;
       }
@@ -351,11 +512,19 @@ export function getCardTemplateFields(layout: CardLayout): CardTemplateField[] {
   return Array.from(fields.values());
 }
 
-export function getDefaultCardFieldValues(layout: CardLayout): CardFieldValues {
-  const values: CardFieldValues = {};
+export function getDefaultCardFieldValues(layout: CardLayout): TemplateFieldValues {
+  return getDefaultFieldValues(layout.sides.front.zones, layout.sides.back.zones);
+}
 
-  for (const side of cardLayoutSides) {
-    for (const zone of layout.sides[side].zones) {
+export function getDefaultPieceFieldValues(layout: PieceLayout): TemplateFieldValues {
+  return getDefaultFieldValues(...layout.faces.map((face) => face.zones));
+}
+
+function getDefaultFieldValues(...zoneGroups: LayoutZone[][]): TemplateFieldValues {
+  const values: TemplateFieldValues = {};
+
+  for (const zones of zoneGroups) {
+    for (const zone of zones) {
       if (zone.content.source?.mode !== "field") {
         continue;
       }
@@ -390,7 +559,10 @@ export function getDefaultCardFieldValues(layout: CardLayout): CardFieldValues {
   return values;
 }
 
-export function resolveCardLayout(layout: CardLayout, fieldValues: CardFieldValues = {}): CardLayout {
+export function resolveCardLayout(
+  layout: CardLayout,
+  fieldValues: TemplateFieldValues = {}
+): CardLayout {
   return {
     ...layout,
     size: { ...layout.size },
@@ -401,7 +573,41 @@ export function resolveCardLayout(layout: CardLayout, fieldValues: CardFieldValu
   };
 }
 
-function resolveCardSideLayout(side: CardSideLayout, fieldValues: CardFieldValues): CardSideLayout {
+export function resolvePieceLayout(
+  layout: PieceLayout,
+  fieldValues: TemplateFieldValues = {},
+  appearance?: PieceAppearanceInput
+): PieceLayout {
+  return {
+    ...layout,
+    sizeMm: { ...layout.sizeMm },
+    appearance: { ...layout.appearance, ...appearance },
+    customShape: layout.customShape
+      ? { points: layout.customShape.points.map((point) => ({ ...point })) }
+      : undefined,
+    faces: layout.faces.map((face) => ({
+      ...face,
+      zones: face.zones.map((zone) => ({
+        ...zone,
+        content: resolveCardZoneContent(zone.content, fieldValues)
+      }))
+    }))
+  };
+}
+
+export function getFirstPieceFaceText(layout: PieceLayout) {
+  for (const face of layout.faces) {
+    const text = getFirstCardSideText({ paddingMm: { ...noCardPaddingMm }, zones: face.zones });
+
+    if (text) {
+      return text;
+    }
+  }
+
+  return "";
+}
+
+function resolveCardSideLayout(side: CardSideLayout, fieldValues: TemplateFieldValues): CardSideLayout {
   return {
     paddingMm: { ...side.paddingMm },
     zones: side.zones.map((zone) => ({
@@ -412,9 +618,9 @@ function resolveCardSideLayout(side: CardSideLayout, fieldValues: CardFieldValue
 }
 
 function resolveCardZoneContent(
-  content: CardZoneContent,
-  fieldValues: CardFieldValues
-): CardZoneContent {
+  content: LayoutZoneContent,
+  fieldValues: TemplateFieldValues
+): LayoutZoneContent {
   if (content.source?.mode !== "field") {
     return { ...content, source: content.source ? { ...content.source } : { mode: "static" } };
   }
@@ -446,7 +652,7 @@ function resolveCardZoneContent(
     : { ...content, source: { ...content.source } };
 }
 
-function getFieldTypeForContent(content: CardZoneContent): CardTemplateFieldType {
+function getFieldTypeForContent(content: LayoutZoneContent): CardTemplateFieldType {
   switch (content.type) {
     case "text":
       return "text";
@@ -463,7 +669,7 @@ function createTextZone(
   y: number,
   width: number,
   height: number
-): Omit<CardLayoutZone, "content"> {
+): Omit<LayoutZone, "content"> {
   return { id, name, x, y, width, height };
 }
 
@@ -474,11 +680,11 @@ function createVisualZone(
   y: number,
   width: number,
   height: number
-): Omit<CardLayoutZone, "content"> {
+): Omit<LayoutZone, "content"> {
   return { id, name, x, y, width, height };
 }
 
-function createTextContent(text: string): CardTextZoneContent {
+function createTextContent(text: string): TextZoneContent {
   return {
     type: "text",
     source: { mode: "static" },
@@ -490,7 +696,7 @@ function createTextContent(text: string): CardTextZoneContent {
   };
 }
 
-function createImageContent(): CardVisualZoneContent {
+function createImageContent(): VisualZoneContent {
   return {
     type: "visual",
     source: { mode: "static" },
@@ -506,14 +712,14 @@ function createImageContent(): CardVisualZoneContent {
   };
 }
 
-function isCardImageFieldValue(value: unknown): value is CardImageFieldValue {
+function isCardImageFieldValue(value: unknown): value is TemplateImageFieldValue {
   return (
     typeof value === "object" &&
     value !== null &&
     "dataUrl" in value &&
     "fileName" in value &&
-    typeof (value as CardImageFieldValue).dataUrl === "string" &&
-    typeof (value as CardImageFieldValue).fileName === "string"
+    typeof (value as TemplateImageFieldValue).dataUrl === "string" &&
+    typeof (value as TemplateImageFieldValue).fileName === "string"
   );
 }
 
