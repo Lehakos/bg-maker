@@ -7,7 +7,6 @@ import {
   Modal,
   NumberInput,
   Select,
-  SimpleGrid,
   Stack,
   Text,
   Textarea,
@@ -257,6 +256,18 @@ function ProjectParametersFields({
     onChange(parameters.filter((_parameter, parameterIndex) => parameterIndex !== index));
   }
 
+  function addParameter() {
+    onChange([
+      ...parameters,
+      {
+        key: createUniqueParameterKey(parameters),
+        label: "New color",
+        type: "color",
+        value: "#0f766e"
+      }
+    ]);
+  }
+
   return (
     <Stack className="project-parameters-section" gap="sm">
       <Group justify="space-between" align="center">
@@ -270,17 +281,7 @@ function ProjectParametersFields({
           size="xs"
           type="button"
           variant="light"
-          onClick={() =>
-            onChange([
-              ...parameters,
-              {
-                key: createUniqueParameterKey(parameters),
-                label: "New color",
-                type: "color",
-                value: "#0f766e"
-              }
-            ])
-          }
+          onClick={addParameter}
         >
           Add parameter
         </Button>
@@ -294,33 +295,16 @@ function ProjectParametersFields({
         <Stack gap="xs">
           {parameters.map((parameter, index) => (
             <div className="project-parameter-row" key={index}>
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                <TextInput
-                  disabled={loading}
-                  label="Label"
-                  value={parameter.label}
-                  onChange={(event) =>
-                    updateParameter(index, { label: event.currentTarget.value })
-                  }
-                />
-                <Select
-                  allowDeselect={false}
-                  data={parameterTypeOptions}
-                  disabled={loading}
-                  label="Type"
-                  value={parameter.type}
-                  onChange={(value) =>
-                    updateParameter(index, {
-                      type: (value ?? "color") as ProjectParameterType,
-                      value: getDefaultParameterValue((value ?? "color") as ProjectParameterType)
-                    })
-                  }
-                />
-                <Group align="flex-end" gap="xs" wrap="nowrap">
-                  <ParameterValueInput
-                    loading={loading}
-                    parameter={parameter}
-                    onChange={(value) => updateParameter(index, { value })}
+              <Stack gap="sm">
+                <Group className="project-parameter-label-row" align="flex-end" gap="sm" wrap="nowrap">
+                  <TextInput
+                    className="project-parameter-label-field"
+                    disabled={loading}
+                    label="Label"
+                    value={parameter.label}
+                    onChange={(event) =>
+                      updateParameter(index, { label: event.currentTarget.value })
+                    }
                   />
                   <ActionIcon
                     aria-label={`Remove parameter ${parameter.label || parameter.key}`}
@@ -334,7 +318,30 @@ function ProjectParametersFields({
                     <Trash2 size={16} />
                   </ActionIcon>
                 </Group>
-              </SimpleGrid>
+                <Group className="project-parameter-value-row" align="flex-end" gap="sm" wrap="nowrap">
+                  <Select
+                    allowDeselect={false}
+                    className="project-parameter-type-field"
+                    data={parameterTypeOptions}
+                    disabled={loading}
+                    label="Type"
+                    value={parameter.type}
+                    onChange={(value) =>
+                      updateParameter(index, {
+                        type: (value ?? "color") as ProjectParameterType,
+                        value: getDefaultParameterValue((value ?? "color") as ProjectParameterType)
+                      })
+                    }
+                  />
+                  <div className="project-parameter-value-field">
+                    <ParameterValueInput
+                      loading={loading}
+                      parameter={parameter}
+                      onChange={(value) => updateParameter(index, { value })}
+                    />
+                  </div>
+                </Group>
+              </Stack>
             </div>
           ))}
         </Stack>

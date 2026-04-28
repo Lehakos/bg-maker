@@ -52,3 +52,31 @@
   border-radius: 8px;
   background: #f8fafc;
 }
+
+.project-parameter-label-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.project-parameter-type-field {
+  flex: 0 0 180px;
+}
+
+.project-parameter-value-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 520px) {
+  .project-parameter-label-row,
+  .project-parameter-value-row {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .project-parameter-label-field,
+  .project-parameter-type-field,
+  .project-parameter-value-field {
+    flex: 1 1 100%;
+  }
+}
