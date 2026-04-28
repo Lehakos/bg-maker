@@ -4,7 +4,7 @@
 }
 
 .component-row-actions,
-.card-template-row-actions {
+.template-row-actions {
   opacity: 0;
   pointer-events: none;
   transform: translateX(4px);
@@ -15,15 +15,15 @@
 
 .component-table-row:hover .component-row-actions,
 .component-table-row:focus-within .component-row-actions,
-.card-template-table-row:hover .card-template-row-actions,
-.card-template-table-row:focus-within .card-template-row-actions {
+.template-table-row:hover .template-row-actions,
+.template-table-row:focus-within .template-row-actions {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
 }
 
 .component-table-row:hover,
-.card-template-table-row:hover {
+.template-table-row:hover {
   background: rgba(15, 118, 110, 0.04);
 }
 
@@ -37,7 +37,7 @@
 
 @media (hover: none) {
   .component-row-actions,
-  .card-template-row-actions {
+  .template-row-actions {
     opacity: 1;
     pointer-events: auto;
     transform: none;

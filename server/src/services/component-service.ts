@@ -11,17 +11,23 @@ import {
   componentTypes,
   createDefaultCardLayout,
   createDefaultPieceLayout,
+  createDefaultTileLayout,
   getCardTemplateFields,
   getDefaultCardFieldValues,
   getDefaultPieceFieldValues,
+  getDefaultTileFieldValues,
   getFirstCardSideText,
   getFirstPieceFaceText,
+  getFirstTileSideText,
   getPieceTemplateFields,
+  getTileTemplateFields,
   pieceFormFactors,
   pieceShapes,
   resolveCardLayout,
   resolvePieceLayout,
+  resolveTileLayout,
   isProjectColorReference,
+  tileLayoutSides,
   tileShapes,
   type LayoutContentSource,
   type ProjectColorValue,
@@ -53,7 +59,15 @@ import {
   type PieceShapePoint,
   type PieceShape,
   type PieceTemplate,
+  type TileAppearance,
+  type TileCustomShape,
+  type TileLayout,
+  type TileLayoutSide,
+  type TileLayoutSize,
+  type TileShapePoint,
+  type TileSideLayout,
   type TileShape,
+  type TileTemplate,
   type UpdateGameComponentInput
 } from "@bg-maker/shared";
 import {
@@ -61,10 +75,12 @@ import {
   getProjectCollections,
   getProjectComponents,
   getProjectPieceTemplates,
+  getProjectTileTemplates,
   projects,
   setProjectCardTemplates,
   setProjectComponents,
-  setProjectPieceTemplates
+  setProjectPieceTemplates,
+  setProjectTileTemplates
 } from "./in-memory-store.js";
 import { touchProject } from "./project-service.js";
 import { fail, ok, type ServiceResult } from "./service-result.js";
@@ -90,10 +106,10 @@ type CardFields = {
 };
 
 type TileFields = {
-  shape: TileShape;
-  faceLabel: string;
-  color: ProjectColorValue;
-  edgeLabels: string[];
+  labelText: string;
+  templateId: string;
+  fieldValues: TemplateFieldValues;
+  layout: TileLayout;
 };
 
 type DieFields = {
@@ -142,6 +158,20 @@ export function createComponent(projectId: string, value: unknown): ServiceResul
     }
 
     componentInput = resolveCardInput(cardInput, projectId);
+  }
+
+  if (componentInput.type === "tile") {
+    const tileInput = componentInput as typeof componentInput & {
+      layout: TileLayout;
+      type: "tile";
+    };
+
+    if (!tileInput.templateId) {
+      const template = createFallbackTileTemplate(projectId, tileInput.name, tileInput.layout);
+      tileInput.templateId = template.id;
+    }
+
+    componentInput = resolveTileInput(tileInput, projectId);
   }
 
   if (componentInput.type === "piece") {
@@ -198,9 +228,11 @@ export function updateComponent(
   const resolvedInput =
     currentComponent.type === "card"
       ? resolveCardUpdateInput(currentComponent, input.value)
-      : currentComponent.type === "piece"
-        ? resolvePieceUpdateInput(currentComponent, input.value)
-        : input.value;
+      : currentComponent.type === "tile"
+        ? resolveTileUpdateInput(currentComponent, input.value)
+        : currentComponent.type === "piece"
+          ? resolvePieceUpdateInput(currentComponent, input.value)
+          : input.value;
 
   const updatedComponent: GameComponent = {
     ...currentComponent,
@@ -253,6 +285,10 @@ export function resolveComponentForRead(component: GameComponent): GameComponent
     return resolveStoredCard(component);
   }
 
+  if (component.type === "tile") {
+    return resolveStoredTile(component);
+  }
+
   if (component.type === "piece") {
     return resolveStoredPiece(component);
   }
@@ -277,6 +313,25 @@ export function resolveStoredCard(
     layout,
     frontText: getFirstCardSideText(layout.sides.front),
     backText: getFirstCardSideText(layout.sides.back)
+  };
+}
+
+export function resolveStoredTile(
+  component: Extract<GameComponent, { type: "tile" }>
+): Extract<GameComponent, { type: "tile" }> {
+  const template = getProjectTileTemplates(component.projectId).find(
+    (item) => item.id === component.templateId
+  );
+  const layout = resolveTileLayout(
+    template?.layout ?? component.layout,
+    component.fieldValues,
+    getProjectParameters(component.projectId)
+  );
+
+  return {
+    ...component,
+    layout,
+    labelText: getFirstTileSideText(layout)
   };
 }
 
@@ -313,6 +368,23 @@ function createFallbackCardTemplate(projectId: string, cardName: string, layout:
   };
 
   setProjectCardTemplates(projectId, [...getProjectCardTemplates(projectId), template]);
+
+  return template;
+}
+
+function createFallbackTileTemplate(projectId: string, tileName: string, layout: TileLayout) {
+  const timestamp = new Date().toISOString();
+  const template: TileTemplate = {
+    id: randomUUID(),
+    projectId,
+    name: `${tileName} template`,
+    layout,
+    fields: getTileTemplateFields(layout),
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+
+  setProjectTileTemplates(projectId, [...getProjectTileTemplates(projectId), template]);
 
   return template;
 }
@@ -376,6 +448,45 @@ function resolveCardUpdateInput(
     layout,
     frontText: getFirstCardSideText(layout.sides.front),
     backText: getFirstCardSideText(layout.sides.back)
+  };
+}
+
+function resolveTileInput<
+  T extends CreateGameComponentInput & CommonComponentInput & { layout: TileLayout; type: "tile" }
+>(input: T, projectId: string): T {
+  const layout = resolveTileLayout(
+    input.layout ?? createDefaultTileLayout(),
+    input.fieldValues,
+    getProjectParameters(projectId)
+  );
+
+  return {
+    ...input,
+    fieldValues: input.fieldValues ?? {},
+    layout,
+    labelText: getFirstTileSideText(layout)
+  };
+}
+
+function resolveTileUpdateInput(
+  currentComponent: Extract<GameComponent, { type: "tile" }>,
+  input: UpdateGameComponentInput
+): UpdateGameComponentInput {
+  const template = getProjectTileTemplates(currentComponent.projectId).find(
+    (item) => item.id === (input.templateId ?? currentComponent.templateId)
+  );
+  const fieldValues = input.fieldValues ?? currentComponent.fieldValues;
+  const layout = resolveTileLayout(
+    (input.layout as TileLayout | undefined) ?? template?.layout ?? currentComponent.layout,
+    fieldValues,
+    getProjectParameters(currentComponent.projectId)
+  );
+
+  return {
+    ...input,
+    fieldValues,
+    layout,
+    labelText: getFirstTileSideText(layout)
   };
 }
 
@@ -681,6 +792,40 @@ function parseOptionalCardFieldValues(
   return { ok: true, value: { ...getDefaultCardFieldValues(layout), ...values } };
 }
 
+function parseOptionalTileFieldValues(
+  value: unknown,
+  layout: TileLayout
+): ParseResult<TemplateFieldValues | undefined> {
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  if (!isRecord(value)) {
+    return { ok: false, error: "Tile field values must be an object" };
+  }
+
+  const fields = getTileTemplateFields(layout);
+  const values: TemplateFieldValues = {};
+
+  for (const field of fields) {
+    const fieldValue = value[field.key];
+
+    if (fieldValue === undefined) {
+      continue;
+    }
+
+    const parsedValue = parseCardFieldValue(field.type, fieldValue, field.label);
+
+    if (!parsedValue.ok) {
+      return parsedValue;
+    }
+
+    values[field.key] = parsedValue.value;
+  }
+
+  return { ok: true, value: { ...getDefaultTileFieldValues(layout), ...values } };
+}
+
 function parseOptionalPieceFieldValues(
   value: unknown,
   layout: PieceLayout
@@ -832,6 +977,88 @@ export function parseCardLayout(value: unknown, projectId?: string): ParseResult
   };
 }
 
+export function parseOptionalTileLayout(
+  value: unknown,
+  projectId?: string
+): ParseResult<TileLayout | undefined> {
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  return parseTileLayout(value, projectId);
+}
+
+export function parseTileLayout(value: unknown, projectId?: string): ParseResult<TileLayout> {
+  if (!isRecord(value)) {
+    return { ok: false, error: "Tile layout must be an object" };
+  }
+
+  if (value.version !== 1) {
+    return { ok: false, error: "Tile layout version is invalid" };
+  }
+
+  const shape = readRequiredTileShape(value.shape);
+  const sizeMm = parseTileLayoutSize(value.sizeMm);
+  const appearance = parseTileAppearance(value.appearance, projectId);
+  const rotationDeg = readOptionalInteger(value.rotationDeg, "Tile rotation", {
+    min: 0,
+    max: 359
+  });
+  const customShape =
+    value.shape === "custom"
+      ? parseRequiredTileCustomShape(value.customShape)
+      : parseOptionalPresetTileCustomShape(value.customShape);
+
+  if (!shape.ok) {
+    return shape;
+  }
+
+  if (!sizeMm.ok) {
+    return sizeMm;
+  }
+
+  if (!appearance.ok) {
+    return appearance;
+  }
+
+  if (!rotationDeg.ok) {
+    return rotationDeg;
+  }
+
+  if (!customShape.ok) {
+    return customShape;
+  }
+
+  if (!isRecord(value.sides)) {
+    return { ok: false, error: "Tile layout sides must be an object" };
+  }
+
+  const sides = {} as Record<TileLayoutSide, TileSideLayout>;
+
+  for (const side of tileLayoutSides) {
+    const parsedSide = parseTileSideLayout(value.sides[side], sizeMm.value, projectId);
+
+    if (!parsedSide.ok) {
+      return parsedSide;
+    }
+
+    sides[side] = parsedSide.value;
+  }
+
+  return {
+    ok: true,
+    value: {
+      version: 1,
+      shape: shape.value,
+      sizeMm: sizeMm.value,
+      appearance: appearance.value,
+      rotationDeg: normalizeRotation(rotationDeg.value ?? 0),
+      customShape: customShape.value,
+      sides
+    }
+  };
+}
+
 export function parseOptionalPieceLayout(
   value: unknown,
   projectId?: string
@@ -940,6 +1167,31 @@ function parseCardLayoutSize(value: unknown): ParseResult<CardLayoutSize> {
   };
 }
 
+function parseTileLayoutSize(value: unknown): ParseResult<TileLayoutSize> {
+  if (!isRecord(value)) {
+    return { ok: false, error: "Tile size must be an object" };
+  }
+
+  const width = readRequiredNumber(value.widthMm, "Tile width", { min: 1, max: 300 });
+  const height = readRequiredNumber(value.heightMm, "Tile height", { min: 1, max: 300 });
+
+  if (!width.ok) {
+    return width;
+  }
+
+  if (!height.ok) {
+    return height;
+  }
+
+  return {
+    ok: true,
+    value: {
+      widthMm: width.value,
+      heightMm: height.value
+    }
+  };
+}
+
 function parsePieceLayoutSize(value: unknown): ParseResult<PieceLayoutSize> {
   if (!isRecord(value)) {
     return { ok: false, error: "Piece size must be an object" };
@@ -967,6 +1219,35 @@ function parsePieceLayoutSize(value: unknown): ParseResult<PieceLayoutSize> {
       widthMm: width.value,
       heightMm: height.value,
       depthMm: depth.value
+    }
+  };
+}
+
+function parseTileAppearance(value: unknown, projectId?: string): ParseResult<TileAppearance> {
+  if (!isRecord(value)) {
+    return { ok: false, error: "Tile appearance must be an object" };
+  }
+
+  const fillColor = readRequiredProjectColorValue(value.fillColor, "Tile fill color", projectId);
+  const strokeColor = readRequiredProjectColorValue(
+    value.strokeColor,
+    "Tile stroke color",
+    projectId
+  );
+
+  if (!fillColor.ok) {
+    return fillColor;
+  }
+
+  if (!strokeColor.ok) {
+    return strokeColor;
+  }
+
+  return {
+    ok: true,
+    value: {
+      fillColor: fillColor.value,
+      strokeColor: strokeColor.value
     }
   };
 }
@@ -1015,11 +1296,7 @@ function parseOptionalPieceAppearance(
   const appearance: Partial<PieceAppearance> = {};
 
   if (value.fillColor !== undefined) {
-    const fillColor = readRequiredProjectColorValue(
-      value.fillColor,
-      "Piece fill color",
-      projectId
-    );
+    const fillColor = readRequiredProjectColorValue(value.fillColor, "Piece fill color", projectId);
 
     if (!fillColor.ok) {
       return fillColor;
@@ -1053,6 +1330,14 @@ function parseOptionalPresetPieceCustomShape(value: unknown): ParseResult<undefi
   return { ok: true, value: undefined };
 }
 
+function parseOptionalPresetTileCustomShape(value: unknown): ParseResult<undefined> {
+  if (value !== undefined) {
+    return { ok: false, error: "Tile custom shape can only be used with custom shape" };
+  }
+
+  return { ok: true, value: undefined };
+}
+
 function parseRequiredPieceCustomShape(value: unknown): ParseResult<PieceCustomShape> {
   if (!isRecord(value)) {
     return { ok: false, error: "Piece custom shape must be an object" };
@@ -1079,6 +1364,47 @@ function parseRequiredPieceCustomShape(value: unknown): ParseResult<PieceCustomS
 
     const x = readRequiredNumber(item.x, "Piece custom shape point x", { min: 0, max: 100 });
     const y = readRequiredNumber(item.y, "Piece custom shape point y", { min: 0, max: 100 });
+
+    if (!x.ok) {
+      return x;
+    }
+
+    if (!y.ok) {
+      return y;
+    }
+
+    points.push({ x: x.value, y: y.value });
+  }
+
+  return { ok: true, value: { points } };
+}
+
+function parseRequiredTileCustomShape(value: unknown): ParseResult<TileCustomShape> {
+  if (!isRecord(value)) {
+    return { ok: false, error: "Tile custom shape must be an object" };
+  }
+
+  if (!Array.isArray(value.points)) {
+    return { ok: false, error: "Tile custom shape points must be an array" };
+  }
+
+  if (value.points.length < 3) {
+    return { ok: false, error: "Tile custom shape must include at least 3 points" };
+  }
+
+  if (value.points.length > 64) {
+    return { ok: false, error: "Tile custom shape can include at most 64 points" };
+  }
+
+  const points: TileShapePoint[] = [];
+
+  for (const item of value.points) {
+    if (!isRecord(item)) {
+      return { ok: false, error: "Tile custom shape points must be objects" };
+    }
+
+    const x = readRequiredNumber(item.x, "Tile custom shape point x", { min: 0, max: 100 });
+    const y = readRequiredNumber(item.y, "Tile custom shape point y", { min: 0, max: 100 });
 
     if (!x.ok) {
       return x;
@@ -1224,6 +1550,40 @@ function parseCardSideLayout(
   };
 }
 
+function parseTileSideLayout(
+  value: unknown,
+  size: TileLayoutSize,
+  projectId?: string
+): ParseResult<TileSideLayout> {
+  if (!isRecord(value)) {
+    return { ok: false, error: "Tile side layout must be an object" };
+  }
+
+  const padding = parseCardLayoutPadding(value.paddingMm, {
+    preset: "custom",
+    widthMm: size.widthMm,
+    heightMm: size.heightMm
+  });
+
+  if (!padding.ok) {
+    return padding;
+  }
+
+  const zones = parseCardZones(value.zones, { label: "Tile layout", projectId });
+
+  if (!zones.ok) {
+    return zones;
+  }
+
+  return {
+    ok: true,
+    value: {
+      paddingMm: padding.value,
+      zones: zones.value
+    }
+  };
+}
+
 function parseCardZones(
   value: unknown,
   options: { allowEmpty?: boolean; label?: string; projectId?: string } = {}
@@ -1309,10 +1669,7 @@ function parseCardZones(
   return { ok: true, value: zones };
 }
 
-function parseCardZoneContent(
-  value: unknown,
-  projectId?: string
-): ParseResult<LayoutZoneContent> {
+function parseCardZoneContent(value: unknown, projectId?: string): ParseResult<LayoutZoneContent> {
   if (!isRecord(value)) {
     return { ok: false, error: "Card zone content must be an object" };
   }
@@ -1513,48 +1870,52 @@ function parseTileFields(
   projectId: string,
   currentComponent?: Extract<GameComponent, { type: "tile" }>
 ): ParseResult<TileFields> {
-  const shape = readOptionalTileShape(value.shape);
-  const faceLabel = readOptionalString(value.faceLabel);
-  const color =
-    value.color === undefined
-      ? undefined
-      : readRequiredProjectColorValue(value.color, "Tile color", projectId);
-  const edgeLabels = readOptionalStringArray(value.edgeLabels, "Tile edge labels");
+  const layout = parseOptionalTileLayout(value.layout, projectId);
+  const templateId = readOptionalString(value.templateId);
 
-  if (!shape.ok) {
-    return shape;
+  if (!layout.ok) {
+    return layout;
   }
 
-  if (color && !color.ok) {
-    return color;
+  const selectedTemplateId = templateId ?? currentComponent?.templateId;
+  const template = selectedTemplateId
+    ? getProjectTileTemplates(projectId).find((item) => item.id === selectedTemplateId)
+    : undefined;
+
+  if (selectedTemplateId && !template && value.layout === undefined) {
+    return { ok: false, error: "Tile template not found" };
   }
 
-  if (!edgeLabels.ok) {
-    return edgeLabels;
+  const templateLayout =
+    layout.value ??
+    template?.layout ??
+    (currentComponent?.templateId
+      ? getProjectTileTemplates(projectId).find((item) => item.id === currentComponent.templateId)
+          ?.layout
+      : undefined) ??
+    currentComponent?.layout ??
+    createDefaultTileLayout();
+  const fieldValues = parseOptionalTileFieldValues(value.fieldValues, templateLayout);
+
+  if (!fieldValues.ok) {
+    return fieldValues;
   }
 
-  const resolvedShape = shape.value ?? currentComponent?.shape ?? "square";
-  const expectedEdgeCount = resolvedShape === "square" ? 4 : 6;
-
-  if (edgeLabels.value !== undefined && edgeLabels.value.length !== expectedEdgeCount) {
-    return {
-      ok: false,
-      error: `Tile edge labels must include ${expectedEdgeCount} labels for ${resolvedShape} tiles`
-    };
-  }
+  const resolvedFieldValues =
+    fieldValues.value ?? currentComponent?.fieldValues ?? getDefaultTileFieldValues(templateLayout);
+  const resolvedLayout = resolveTileLayout(
+    templateLayout,
+    resolvedFieldValues,
+    getProjectParameters(projectId)
+  );
 
   return {
     ok: true,
     value: {
-      shape: resolvedShape,
-      faceLabel:
-        value.faceLabel === undefined ? (currentComponent?.faceLabel ?? "") : (faceLabel ?? ""),
-      color: color?.ok ? color.value : (currentComponent?.color ?? "#e2e8f0"),
-      edgeLabels:
-        edgeLabels.value ??
-        (currentComponent?.shape === resolvedShape
-          ? currentComponent.edgeLabels
-          : Array.from({ length: expectedEdgeCount }, () => ""))
+      labelText: getFirstTileSideText(resolvedLayout),
+      templateId: selectedTemplateId ?? currentComponent?.templateId ?? "",
+      fieldValues: resolvedFieldValues,
+      layout: resolvedLayout
     }
   };
 }
@@ -1742,11 +2103,11 @@ function readRequiredBoolean(value: unknown, label: string): ParseResult<boolean
   return { ok: true, value };
 }
 
-function readOptionalTileShape(value: unknown): ParseResult<TileShape | undefined> {
-  if (value === undefined) {
-    return { ok: true, value: undefined };
-  }
+function normalizeRotation(value: number) {
+  return ((Math.round(value) % 360) + 360) % 360;
+}
 
+function readRequiredTileShape(value: unknown): ParseResult<TileShape> {
   if (!tileShapes.includes(value as TileShape)) {
     return { ok: false, error: "Tile shape is invalid" };
   }

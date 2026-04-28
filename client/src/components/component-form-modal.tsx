@@ -10,6 +10,7 @@ import {
   NumberInput,
   Select,
   SimpleGrid,
+  Slider,
   Stack,
   Tabs,
   TagsInput,
@@ -24,15 +25,18 @@ import {
   cardIconIds,
   componentTypes,
   createDefaultCardLayout,
+  createDefaultTileLayout,
   defaultPieceCustomShape,
+  defaultTileCustomShape,
   getCardTemplateFields,
   getDefaultCardFieldValues,
   getDefaultPieceFieldValues,
+  getDefaultTileFieldValues,
   getPieceTemplateFields,
+  getTileTemplateFields,
   getFirstPieceFaceText,
   pieceFormFactors,
   resolveProjectColorValue,
-  tileShapes,
   type TemplateFieldValue,
   type TemplateFieldValues,
   type TemplateImageFieldValue,
@@ -40,6 +44,7 @@ import {
   type CardTemplateField,
   type ComponentCollection,
   type ComponentCollectionItem,
+  type ComponentType,
   type GameComponent,
   type LayoutZone,
   type LayoutZoneContent,
@@ -50,14 +55,18 @@ import {
   type PieceLayoutFace,
   type PieceShape,
   type PieceTemplate,
+  type TileLayout,
+  type TileLayoutSide,
   type ProjectParameter,
-  type TileShape
+  type TileShape,
+  type TileTemplate
 } from "@bg-maker/shared";
 import { componentTypeLabels } from "./component-labels";
 import { CardLayoutEditor, CardPreview, ZoneControls } from "./card-layout-editor";
 import { createId, createTextContent, createZone } from "./layout-zone-utils";
 import { CustomPieceShapeEditor, PiecePreview, PieceShapePicker } from "./piece-preview";
 import { ProjectColorValueInput } from "./project-color-value-input";
+import { CustomTileShapeEditor, TilePreview, TileShapePicker } from "./tile-preview";
 import {
   readNumber,
   useComponentForm,
@@ -71,7 +80,12 @@ import "./template-editor.css";
 
 export type { ComponentFormSubmitValues } from "../hooks/use-component-form";
 
-type ComponentFormKind = "cardTemplate" | "collection" | "component" | "pieceTemplate";
+type ComponentFormKind =
+  | "cardTemplate"
+  | "collection"
+  | "component"
+  | "pieceTemplate"
+  | "tileTemplate";
 
 type ComponentFormModalProps = {
   availableComponents: GameComponent[];
@@ -80,6 +94,7 @@ type ComponentFormModalProps = {
   component?: GameComponent;
   error?: string | null;
   formKind: ComponentFormKind;
+  initialComponentType?: ComponentType;
   loading?: boolean;
   mode: "create" | "edit";
   opened: boolean;
@@ -87,9 +102,15 @@ type ComponentFormModalProps = {
   pieceTemplates: PieceTemplate[];
   projectParameters: ProjectParameter[];
   template?: CardTemplate;
+  tileTemplate?: TileTemplate;
+  tileTemplates: TileTemplate[];
   onClose: () => void;
   onEditCardTemplate?: (template: CardTemplate) => void;
   onEditPieceTemplate?: (template: PieceTemplate) => void;
+  onEditTileTemplate?: (template: TileTemplate) => void;
+  onNewCardTemplate?: () => void;
+  onNewPieceTemplate?: () => void;
+  onNewTileTemplate?: () => void;
   onSubmit: (values: ComponentFormSubmitValues) => void;
 };
 
@@ -97,14 +118,14 @@ const componentFormTypeLabels: Record<ComponentFormType, string> = {
   ...componentTypeLabels,
   cardTemplate: "Card template",
   collection: "Collection",
-  pieceTemplate: "Piece template"
+  pieceTemplate: "Piece template",
+  tileTemplate: "Tile template"
 };
 
 const typeOptions = componentTypes.map((type) => ({
   value: type,
   label: componentTypeLabels[type]
 }));
-const tileShapeOptions = tileShapes.map((shape) => ({ value: shape, label: titleCase(shape) }));
 const pieceFormFactorOptions = pieceFormFactors.map((formFactor) => ({
   value: formFactor,
   label: titleCase(formFactor)
@@ -117,6 +138,7 @@ export function ComponentFormModal({
   component,
   error,
   formKind,
+  initialComponentType,
   loading = false,
   mode,
   opened,
@@ -124,15 +146,22 @@ export function ComponentFormModal({
   pieceTemplates,
   projectParameters,
   template,
+  tileTemplate,
+  tileTemplates,
   onClose,
   onEditCardTemplate,
   onEditPieceTemplate,
+  onEditTileTemplate,
+  onNewCardTemplate,
+  onNewPieceTemplate,
+  onNewTileTemplate,
   onSubmit
 }: ComponentFormModalProps) {
   const title = getModalTitle(formKind, mode);
   const isWideModal =
     formKind === "cardTemplate" ||
     formKind === "pieceTemplate" ||
+    formKind === "tileTemplate" ||
     formKind === "collection" ||
     mode === "create";
 
@@ -152,22 +181,37 @@ export function ComponentFormModal({
     >
       {opened ? (
         <ComponentFormContent
-          key={collection?.id ?? pieceTemplate?.id ?? template?.id ?? component?.id ?? "new"}
+          key={
+            collection?.id ??
+            pieceTemplate?.id ??
+            tileTemplate?.id ??
+            template?.id ??
+            component?.id ??
+            initialComponentType ??
+            "new"
+          }
           availableComponents={availableComponents}
           cardTemplates={cardTemplates}
           collection={collection}
           component={component}
           error={error}
           formKind={formKind}
+          initialComponentType={initialComponentType}
           loading={loading}
           mode={mode}
           pieceTemplate={pieceTemplate}
           pieceTemplates={pieceTemplates}
           projectParameters={projectParameters}
           template={template}
+          tileTemplate={tileTemplate}
+          tileTemplates={tileTemplates}
           onClose={onClose}
           onEditCardTemplate={onEditCardTemplate}
           onEditPieceTemplate={onEditPieceTemplate}
+          onEditTileTemplate={onEditTileTemplate}
+          onNewCardTemplate={onNewCardTemplate}
+          onNewPieceTemplate={onNewPieceTemplate}
+          onNewTileTemplate={onNewTileTemplate}
           onSubmit={onSubmit}
         />
       ) : null}
@@ -183,6 +227,8 @@ function getModalTitle(formKind: ComponentFormKind, mode: "create" | "edit") {
       return `${prefix} card template`;
     case "pieceTemplate":
       return `${prefix} piece template`;
+    case "tileTemplate":
+      return `${prefix} tile template`;
     case "collection":
       return `${prefix} collection`;
     case "component":
@@ -194,7 +240,8 @@ function getValuesForTypeSelection(
   currentValues: ComponentFormValues,
   value: string,
   cardTemplates: CardTemplate[],
-  pieceTemplates: PieceTemplate[]
+  pieceTemplates: PieceTemplate[],
+  tileTemplates: TileTemplate[]
 ): ComponentFormValues {
   const nextType = (typeOptions.some((option) => option.value === value) ? value : "card") as
     | "card"
@@ -229,6 +276,19 @@ function getValuesForTypeSelection(
     };
   }
 
+  if (nextType === "tile") {
+    const template = tileTemplates[0];
+
+    return {
+      ...currentValues,
+      type: "tile",
+      tileTemplateId: template?.id ?? "",
+      tileTemplateName: template?.name ?? "",
+      tileFieldValues: template ? getDefaultTileFieldValues(template.layout) : {},
+      ...(template ? getTileFormStateFromLayout(template.layout) : {})
+    };
+  }
+
   return {
     ...currentValues,
     type: nextType
@@ -242,15 +302,22 @@ function ComponentFormContent({
   component,
   error,
   formKind,
+  initialComponentType,
   loading = false,
   mode,
   pieceTemplate,
   pieceTemplates,
   projectParameters,
   template,
+  tileTemplate,
+  tileTemplates,
   onClose,
   onEditCardTemplate,
   onEditPieceTemplate,
+  onEditTileTemplate,
+  onNewCardTemplate,
+  onNewPieceTemplate,
+  onNewTileTemplate,
   onSubmit
 }: Omit<ComponentFormModalProps, "opened">) {
   const {
@@ -265,10 +332,13 @@ function ComponentFormContent({
     component,
     cardTemplates,
     pieceTemplates,
+    tileTemplates,
     template,
     pieceTemplate,
+    tileTemplate,
     collection,
-    formKind
+    formKind,
+    initialComponentType
   );
   const componentOptions = availableComponents.map((item) => ({
     value: item.id,
@@ -277,7 +347,9 @@ function ComponentFormContent({
   const isComponentForm = formKind === "component";
   const cardTemplateIsMissing = values.type === "card" && !values.cardTemplateId;
   const pieceTemplateIsMissing = values.type === "piece" && !values.pieceTemplateId;
-  const submitDisabled = nameIsEmpty || cardTemplateIsMissing || pieceTemplateIsMissing;
+  const tileTemplateIsMissing = values.type === "tile" && !values.tileTemplateId;
+  const submitDisabled =
+    nameIsEmpty || cardTemplateIsMissing || pieceTemplateIsMissing || tileTemplateIsMissing;
 
   return (
     <form
@@ -312,8 +384,7 @@ function ComponentFormContent({
             value={values.name}
             onChange={(event) => setValues({ ...values, name: event.currentTarget.value })}
           />
-          {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : mode === "create" &&
-            isComponentForm ? (
+          {isTemplateFormKind(formKind) ? null : mode === "create" && isComponentForm ? (
             <Select
               allowDeselect={false}
               data={typeOptions}
@@ -322,7 +393,13 @@ function ComponentFormContent({
               value={values.type}
               onChange={(value) =>
                 setValues(
-                  getValuesForTypeSelection(values, value ?? "card", cardTemplates, pieceTemplates)
+                  getValuesForTypeSelection(
+                    values,
+                    value ?? "card",
+                    cardTemplates,
+                    pieceTemplates,
+                    tileTemplates
+                  )
                 )
               }
             />
@@ -338,7 +415,7 @@ function ComponentFormContent({
           )}
         </Group>
 
-        {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : (
+        {isTemplateFormKind(formKind) ? null : (
           <Group grow align="flex-start">
             {formKind === "component" ? (
               <NumberInput
@@ -363,7 +440,7 @@ function ComponentFormContent({
           </Group>
         )}
 
-        {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : (
+        {isTemplateFormKind(formKind) ? null : (
           <Textarea
             disabled={loading}
             label="Description"
@@ -377,19 +454,24 @@ function ComponentFormContent({
         <TypeSpecificFields
           cardTemplates={cardTemplates}
           componentOptions={componentOptions}
-            loading={loading}
-            pieceTemplates={pieceTemplates}
-            projectParameters={projectParameters}
-            removeCollectionItem={removeCollectionItem}
+          loading={loading}
+          pieceTemplates={pieceTemplates}
+          projectParameters={projectParameters}
+          removeCollectionItem={removeCollectionItem}
           setDieSides={setDieSides}
           setValues={setValues}
+          tileTemplates={tileTemplates}
           updateCollectionItem={updateCollectionItem}
           values={values}
           onEditCardTemplate={onEditCardTemplate}
           onEditPieceTemplate={onEditPieceTemplate}
+          onEditTileTemplate={onEditTileTemplate}
+          onNewCardTemplate={onNewCardTemplate}
+          onNewPieceTemplate={onNewPieceTemplate}
+          onNewTileTemplate={onNewTileTemplate}
         />
 
-        {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : (
+        {isTemplateFormKind(formKind) ? null : (
           <Textarea
             disabled={loading}
             label="Notes"
@@ -417,6 +499,7 @@ function getNameLabel(formKind: ComponentFormKind) {
   switch (formKind) {
     case "cardTemplate":
     case "pieceTemplate":
+    case "tileTemplate":
       return "Template name";
     case "collection":
       return "Collection name";
@@ -431,6 +514,8 @@ function getNamePlaceholder(formKind: ComponentFormKind) {
       return "Action card template";
     case "pieceTemplate":
       return "Resource token template";
+    case "tileTemplate":
+      return "Terrain tile template";
     case "collection":
       return "Player deck";
     case "component":
@@ -442,12 +527,49 @@ function getCreateButtonLabel(formKind: ComponentFormKind) {
   switch (formKind) {
     case "cardTemplate":
     case "pieceTemplate":
+    case "tileTemplate":
       return "Create template";
     case "collection":
       return "Create collection";
     case "component":
       return "Create component";
   }
+}
+
+function isTemplateFormKind(formKind: ComponentFormKind) {
+  return formKind === "cardTemplate" || formKind === "pieceTemplate" || formKind === "tileTemplate";
+}
+
+function MissingTemplateAlert({
+  label,
+  onCreateTemplate
+}: {
+  label: "card" | "piece" | "tile";
+  onCreateTemplate?: () => void;
+}) {
+  const pluralLabel = label === "piece" ? "pieces" : `${label}s`;
+
+  return (
+    <Alert color="yellow" icon={<AlertTriangle size={16} />} radius={8} variant="light">
+      <Group align="center" justify="space-between" gap="sm">
+        <Text size="sm">
+          Create a {label} template first, then add {pluralLabel} from that template.
+        </Text>
+        {onCreateTemplate ? (
+          <Button
+            leftSection={<Plus size={14} />}
+            radius={8}
+            size="xs"
+            type="button"
+            variant="light"
+            onClick={onCreateTemplate}
+          >
+            Create {label} template
+          </Button>
+        ) : null}
+      </Group>
+    </Alert>
+  );
 }
 
 function TypeSpecificFields({
@@ -459,10 +581,15 @@ function TypeSpecificFields({
   removeCollectionItem,
   setDieSides,
   setValues,
+  tileTemplates,
   updateCollectionItem,
   values,
   onEditCardTemplate,
-  onEditPieceTemplate
+  onEditPieceTemplate,
+  onEditTileTemplate,
+  onNewCardTemplate,
+  onNewPieceTemplate,
+  onNewTileTemplate
 }: {
   cardTemplates: CardTemplate[];
   componentOptions: { value: string; label: string }[];
@@ -472,10 +599,15 @@ function TypeSpecificFields({
   removeCollectionItem: (index: number) => void;
   setDieSides: (sides: number) => void;
   setValues: Dispatch<SetStateAction<ComponentFormValues>>;
+  tileTemplates: TileTemplate[];
   updateCollectionItem: (index: number, patch: Partial<ComponentCollectionItem>) => void;
   values: ComponentFormValues;
   onEditCardTemplate?: (template: CardTemplate) => void;
   onEditPieceTemplate?: (template: PieceTemplate) => void;
+  onEditTileTemplate?: (template: TileTemplate) => void;
+  onNewCardTemplate?: () => void;
+  onNewPieceTemplate?: () => void;
+  onNewTileTemplate?: () => void;
 }) {
   switch (values.type) {
     case "card": {
@@ -518,9 +650,10 @@ function TypeSpecificFields({
           />
 
           {templateOptions.length === 0 ? (
-            <Alert color="yellow" icon={<AlertTriangle size={16} />} radius={8} variant="light">
-              Create a card template first, then add cards from that template.
-            </Alert>
+            <MissingTemplateAlert
+              label="card"
+              onCreateTemplate={onNewCardTemplate}
+            />
           ) : (
             <>
               <FieldValueFields
@@ -555,49 +688,83 @@ function TypeSpecificFields({
       );
     }
 
-    case "tile":
+    case "tile": {
+      const templateOptions = tileTemplates.map((template) => ({
+        value: template.id,
+        label: template.name
+      }));
+
       return (
         <Stack gap="md">
-          <Group grow align="flex-start">
-            <Select
-              allowDeselect={false}
-              data={tileShapeOptions}
-              disabled={loading}
-              label="Shape"
-              value={values.tileShape}
-              onChange={(value) => {
-                const shape = (value ?? "square") as TileShape;
-                setValues({ ...values, tileShape: shape });
-              }}
-            />
-            <ProjectColorValueInput
-              disabled={loading}
-              label="Color"
-              projectParameters={projectParameters}
-              value={values.tileColor}
-              onChange={(value) => setValues({ ...values, tileColor: value })}
-            />
-          </Group>
-          <TextInput
-            disabled={loading}
-            label="Face label"
-            placeholder="Field, city, forest"
-            value={values.tileFaceLabel}
-            onChange={(event) => setValues({ ...values, tileFaceLabel: event.currentTarget.value })}
+          <Select
+            allowDeselect={false}
+            data={templateOptions}
+            disabled={loading || templateOptions.length === 0}
+            label="Tile template"
+            placeholder="Create a tile template first"
+            value={values.tileTemplateId || null}
+            onChange={(value) => {
+              const template = tileTemplates.find((item) => item.id === value);
+
+              if (!template) {
+                setValues({
+                  ...values,
+                  tileTemplateId: "",
+                  tileTemplateName: "",
+                  tileFieldValues: {},
+                  tileLayout: values.tileLayout
+                });
+                return;
+              }
+
+              setValues({
+                ...values,
+                tileTemplateId: template.id,
+                tileTemplateName: template.name,
+                tileFieldValues: getDefaultTileFieldValues(template.layout),
+                ...getTileFormStateFromLayout(template.layout)
+              });
+            }}
           />
-          <TextInput
-            disabled={loading}
-            label="Edge labels"
-            placeholder={
-              values.tileShape === "square" ? "north, east, south, west" : "n, ne, se, s, sw, nw"
-            }
-            value={values.tileEdgeLabelsText}
-            onChange={(event) =>
-              setValues({ ...values, tileEdgeLabelsText: event.currentTarget.value })
-            }
-          />
+
+          {templateOptions.length === 0 ? (
+            <MissingTemplateAlert
+              label="tile"
+              onCreateTemplate={onNewTileTemplate}
+            />
+          ) : (
+            <>
+              <FieldValueFields
+                fields={getTileTemplateFields(values.tileLayout)}
+                fieldValues={values.tileFieldValues}
+                loading={loading}
+                onChange={(fieldValues) => setValues({ ...values, tileFieldValues: fieldValues })}
+                onEditTemplate={
+                  onEditTileTemplate
+                    ? () => {
+                        const selectedTemplate = tileTemplates.find(
+                          (item) => item.id === values.tileTemplateId
+                        );
+
+                        if (selectedTemplate) {
+                          onEditTileTemplate(selectedTemplate);
+                        }
+                      }
+                    : undefined
+                }
+              />
+              <TilePreview
+                compact
+                fieldValues={values.tileFieldValues}
+                layout={values.tileLayout}
+                projectParameters={projectParameters}
+                title="Final tile"
+              />
+            </>
+          )}
         </Stack>
       );
+    }
 
     case "piece": {
       const templateOptions = pieceTemplates.map((template) => ({
@@ -641,9 +808,10 @@ function TypeSpecificFields({
           />
 
           {templateOptions.length === 0 ? (
-            <Alert color="yellow" icon={<AlertTriangle size={16} />} radius={8} variant="light">
-              Create a piece template first, then add pieces from that template.
-            </Alert>
+            <MissingTemplateAlert
+              label="piece"
+              onCreateTemplate={onNewPieceTemplate}
+            />
           ) : (
             <>
               <FieldValueFields
@@ -737,6 +905,16 @@ function TypeSpecificFields({
     case "pieceTemplate":
       return (
         <PieceTemplateFields
+          loading={loading}
+          projectParameters={projectParameters}
+          setValues={setValues}
+          values={values}
+        />
+      );
+
+    case "tileTemplate":
+      return (
+        <TileTemplateFields
           loading={loading}
           projectParameters={projectParameters}
           setValues={setValues}
@@ -1212,8 +1390,357 @@ function PieceTemplateFields({
   );
 }
 
+function TileTemplateFields({
+  loading,
+  projectParameters,
+  setValues,
+  values
+}: {
+  loading: boolean;
+  projectParameters: ProjectParameter[];
+  setValues: Dispatch<SetStateAction<ComponentFormValues>>;
+  values: ComponentFormValues;
+}) {
+  const [selectedSideId, setSelectedSideId] = useState<TileLayoutSide>("front");
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [controlsTab, setControlsTab] = useState<"physical" | "appearance" | "zones">("physical");
+  const selectedSide =
+    values.tileLayout.sides[selectedSideId] ??
+    values.tileLayout.sides.front ??
+    createTileSide(selectedSideId);
+  const activeZone =
+    selectedZoneId && selectedSide.zones.some((zone) => zone.id === selectedZoneId)
+      ? selectedSide.zones.find((zone) => zone.id === selectedZoneId)
+      : selectedSide.zones[0];
+  const zoneOptions = selectedSide.zones.map((zone) => ({
+    value: zone.id,
+    label: `${zone.name} (${getZoneContentLabel(zone.content)})`
+  }));
+
+  function updateTileLayout(updater: (layout: TileLayout) => TileLayout) {
+    setValues((currentValues) => {
+      const layout = updater(currentValues.tileLayout);
+
+      return {
+        ...currentValues,
+        ...getTileFormStateFromLayout(layout)
+      };
+    });
+  }
+
+  function updateShape(shape: TileShape) {
+    updateTileLayout((layout) => ({
+      ...layout,
+      shape,
+      customShape:
+        shape === "custom"
+          ? cloneTileCustomShape(layout.customShape ?? defaultTileCustomShape)
+          : undefined
+    }));
+  }
+
+  function updateSide(
+    sideId: TileLayoutSide,
+    updater: (side: TileLayout["sides"]["front"]) => TileLayout["sides"]["front"]
+  ) {
+    updateTileLayout((layout) => ({
+      ...layout,
+      sides: {
+        ...layout.sides,
+        [sideId]: updater(layout.sides[sideId] ?? createTileSide(sideId))
+      }
+    }));
+  }
+
+  function updateZone(zoneId: string, patch: Partial<LayoutZone>) {
+    updateSide(selectedSideId, (side) => ({
+      ...side,
+      zones: side.zones.map((zone) => (zone.id === zoneId ? { ...zone, ...patch } : zone))
+    }));
+  }
+
+  function updateZoneContent(zoneId: string, content: LayoutZoneContent) {
+    updateZone(zoneId, { content });
+  }
+
+  function addZone() {
+    const zone = createZone(
+      createId(`${selectedSideId}-zone`),
+      "Custom zone",
+      0,
+      0,
+      100,
+      20,
+      createTextContent("New text")
+    );
+
+    updateSide(selectedSideId, (side) => ({
+      ...side,
+      zones: [...side.zones, zone]
+    }));
+    setSelectedZoneId(zone.id);
+  }
+
+  function removeZone(zoneId: string) {
+    if (selectedSide.zones.length <= 1) {
+      return;
+    }
+
+    const zones = selectedSide.zones.filter((zone) => zone.id !== zoneId);
+
+    updateSide(selectedSideId, (side) => ({
+      ...side,
+      zones
+    }));
+    setSelectedZoneId(zones[0]?.id ?? null);
+  }
+
+  return (
+    <SimpleGrid className="template-editor-shell" cols={{ base: 1, md: 2 }} spacing="lg">
+      <Stack className="template-editor-controls" gap="lg">
+        <Tabs
+          radius={8}
+          value={controlsTab}
+          onChange={(value) =>
+            setControlsTab((value ?? "physical") as "physical" | "appearance" | "zones")
+          }
+        >
+          <Tabs.List grow>
+            <Tabs.Tab value="physical">Physical</Tabs.Tab>
+            <Tabs.Tab value="appearance">Appearance</Tabs.Tab>
+            <Tabs.Tab value="zones">Zones</Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel value="physical" pt="md">
+            <Stack className="template-editor-section" gap="sm">
+              <TileShapePicker
+                disabled={loading}
+                fillColor={resolveProjectColorValue(
+                  values.tileLayout.appearance.fillColor,
+                  projectParameters,
+                  "#f8fafc"
+                )}
+                strokeColor={resolveProjectColorValue(
+                  values.tileLayout.appearance.strokeColor,
+                  projectParameters,
+                  "#0f766e"
+                )}
+                value={values.tileShape}
+                onChange={updateShape}
+              />
+
+              {values.tileShape === "custom" ? (
+                <CustomTileShapeEditor
+                  customShape={values.tileLayout.customShape ?? defaultTileCustomShape}
+                  disabled={loading}
+                  onChange={(customShape) =>
+                    updateTileLayout((layout) => ({
+                      ...layout,
+                      customShape
+                    }))
+                  }
+                />
+              ) : null}
+
+              <Group grow align="flex-start">
+                <NumberInput
+                  allowDecimal
+                  allowNegative={false}
+                  disabled={loading}
+                  label="Width"
+                  min={1}
+                  suffix=" mm"
+                  value={values.tileWidthMm}
+                  onChange={(value) =>
+                    updateTileLayout((layout) => ({
+                      ...layout,
+                      sizeMm: { ...layout.sizeMm, widthMm: readNumber(value, 50) }
+                    }))
+                  }
+                />
+                <NumberInput
+                  allowDecimal
+                  allowNegative={false}
+                  disabled={loading}
+                  label="Height"
+                  min={1}
+                  suffix=" mm"
+                  value={values.tileHeightMm}
+                  onChange={(value) =>
+                    updateTileLayout((layout) => ({
+                      ...layout,
+                      sizeMm: { ...layout.sizeMm, heightMm: readNumber(value, 50) }
+                    }))
+                  }
+                />
+              </Group>
+              <Stack gap={6}>
+                <Text size="sm" fw={500}>
+                  Rotation
+                </Text>
+                <Group align="center" gap="md" wrap="nowrap">
+                  <Slider
+                    aria-label="Rotation"
+                    disabled={loading}
+                    label={(value) => `${value} deg`}
+                    max={359}
+                    min={0}
+                    step={1}
+                    style={{ flex: 1 }}
+                    value={values.tileLayout.rotationDeg}
+                    onChange={(rotationDeg) =>
+                      updateTileLayout((layout) => ({
+                        ...layout,
+                        rotationDeg: normalizeRotation(rotationDeg)
+                      }))
+                    }
+                  />
+                  <NumberInput
+                    allowDecimal={false}
+                    allowNegative={false}
+                    aria-label="Rotation degrees"
+                    disabled={loading}
+                    max={359}
+                    min={0}
+                    suffix=" deg"
+                    value={values.tileLayout.rotationDeg}
+                    w={120}
+                    onChange={(value) =>
+                      updateTileLayout((layout) => ({
+                        ...layout,
+                        rotationDeg: normalizeRotation(readNumber(value, 0))
+                      }))
+                    }
+                  />
+                </Group>
+              </Stack>
+            </Stack>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="appearance" pt="md">
+            <Stack className="template-editor-section" gap="sm">
+              <Group grow align="flex-start">
+                <ProjectColorValueInput
+                  disabled={loading}
+                  label="Fill color"
+                  projectParameters={projectParameters}
+                  swatches={tileColorSwatches}
+                  value={values.tileLayout.appearance.fillColor}
+                  onChange={(fillColor) =>
+                    updateTileLayout((layout) => ({
+                      ...layout,
+                      appearance: { ...layout.appearance, fillColor }
+                    }))
+                  }
+                />
+                <ProjectColorValueInput
+                  disabled={loading}
+                  label="Stroke color"
+                  projectParameters={projectParameters}
+                  swatches={tileColorSwatches}
+                  value={values.tileLayout.appearance.strokeColor}
+                  onChange={(strokeColor) =>
+                    updateTileLayout((layout) => ({
+                      ...layout,
+                      appearance: { ...layout.appearance, strokeColor }
+                    }))
+                  }
+                />
+              </Group>
+            </Stack>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="zones" pt="md">
+            <Stack className="template-editor-section" gap="sm">
+              <Group align="flex-end" wrap="nowrap">
+                <Select
+                  allowDeselect={false}
+                  data={zoneOptions}
+                  disabled={loading || zoneOptions.length === 0}
+                  label="Selected zone"
+                  value={activeZone?.id ?? null}
+                  onChange={(value) => setSelectedZoneId(value)}
+                />
+                <Button
+                  disabled={loading}
+                  leftSection={<Plus size={14} />}
+                  radius={8}
+                  type="button"
+                  variant="light"
+                  onClick={addZone}
+                >
+                  Add zone
+                </Button>
+                <Tooltip label="Remove zone" withArrow>
+                  <ActionIcon
+                    aria-label="Remove zone"
+                    color="red"
+                    disabled={loading || !activeZone || selectedSide.zones.length <= 1}
+                    mb={2}
+                    radius={8}
+                    size={36}
+                    variant="subtle"
+                    onClick={() => activeZone && removeZone(activeZone.id)}
+                  >
+                    <Trash2 size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+
+              {activeZone ? (
+                <ZoneControls
+                  disabled={loading}
+                  projectParameters={projectParameters}
+                  uploadError={uploadError}
+                  zone={activeZone}
+                  onChange={(patch) => updateZone(activeZone.id, patch)}
+                  onContentChange={(content) => updateZoneContent(activeZone.id, content)}
+                  onUploadError={setUploadError}
+                />
+              ) : null}
+            </Stack>
+          </Tabs.Panel>
+        </Tabs>
+      </Stack>
+
+      <Stack className="template-editor-preview-rail" gap="md">
+        <TilePreview
+          interactive
+          layout={values.tileLayout}
+          projectParameters={projectParameters}
+          selectedSideId={selectedSideId}
+          selectedZoneId={activeZone?.id ?? null}
+          title="Template preview"
+          onSelectedSideIdChange={(sideId) => {
+            setSelectedSideId(sideId);
+            setSelectedZoneId(null);
+          }}
+          onSelectZone={(zoneId) => {
+            setSelectedZoneId(zoneId);
+            setControlsTab("zones");
+          }}
+          onUpdateZone={updateZone}
+        />
+      </Stack>
+    </SimpleGrid>
+  );
+}
+
 const pieceColorSwatches = [
   "#f8fafc",
+  "#0f766e",
+  "#1f2937",
+  "#0ea5e9",
+  "#9333ea",
+  "#dc2626",
+  "#f59e0b",
+  "#16a34a"
+];
+
+const tileColorSwatches = [
+  "#f8fafc",
+  "#e2e8f0",
   "#0f766e",
   "#1f2937",
   "#0ea5e9",
@@ -1236,6 +1763,15 @@ function getPieceFormStateFromLayout(layout: PieceLayout): Partial<ComponentForm
   };
 }
 
+function getTileFormStateFromLayout(layout: TileLayout): Partial<ComponentFormValues> {
+  return {
+    tileLayout: layout,
+    tileShape: layout.shape,
+    tileWidthMm: layout.sizeMm.widthMm,
+    tileHeightMm: layout.sizeMm.heightMm
+  };
+}
+
 function getPieceLayoutWithAppearance(
   layout: PieceLayout,
   appearance: PieceAppearance
@@ -1252,6 +1788,10 @@ function createPieceFace(id: "back" | "front" | string, name: string): PieceLayo
     name,
     zones: []
   };
+}
+
+function createTileSide(side: TileLayoutSide): TileLayout["sides"]["front"] {
+  return createDefaultTileLayout().sides[side];
 }
 
 function updateFirstTextZone(face: PieceLayoutFace, text: string): PieceLayoutFace {
@@ -1278,6 +1818,12 @@ function updateFirstTextZone(face: PieceLayoutFace, text: string): PieceLayoutFa
 }
 
 function cloneCustomShape(customShape: PieceCustomShape): PieceCustomShape {
+  return {
+    points: customShape.points.map((point) => ({ ...point }))
+  };
+}
+
+function cloneTileCustomShape(customShape: typeof defaultTileCustomShape) {
   return {
     points: customShape.points.map((point) => ({ ...point }))
   };
@@ -1431,6 +1977,10 @@ function titleCase(value: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function normalizeRotation(value: number) {
+  return ((Math.round(value) % 360) + 360) % 360;
 }
 
 function parseTagsText(value: string): string[] {

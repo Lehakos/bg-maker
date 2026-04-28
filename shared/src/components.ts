@@ -180,15 +180,78 @@ export const noCardPaddingMm: CardLayoutPadding = {
   leftMm: 0
 };
 
-export const tileShapes = ["square", "hex"] as const;
+export const tileLayoutSides = ["front", "back"] as const;
+
+export type TileLayoutSide = (typeof tileLayoutSides)[number];
+
+export const tileShapes = ["square", "rectangle", "triangle", "hex", "custom"] as const;
 
 export type TileShape = (typeof tileShapes)[number];
+
+export type TileLayoutSize = {
+  widthMm: number;
+  heightMm: number;
+};
+
+export type TileAppearance = {
+  fillColor: ProjectColorValue;
+  strokeColor: ProjectColorValue;
+};
+
+export type TileShapePoint = {
+  x: number;
+  y: number;
+};
+
+export type TileCustomShape = {
+  points: TileShapePoint[];
+};
+
+export type TileSideLayout = {
+  paddingMm: CardLayoutPadding;
+  zones: LayoutZone[];
+};
+
+export type TileLayout = {
+  version: 1;
+  shape: TileShape;
+  sizeMm: TileLayoutSize;
+  appearance: TileAppearance;
+  rotationDeg: number;
+  customShape?: TileCustomShape;
+  sides: Record<TileLayoutSide, TileSideLayout>;
+};
+
+export type TileTemplate = {
+  id: string;
+  projectId: string;
+  name: string;
+  layout: TileLayout;
+  fields: CardTemplateField[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateTileTemplateInput = {
+  name: string;
+  layout: TileLayout;
+};
+
+export type UpdateTileTemplateInput = Partial<CreateTileTemplateInput>;
 
 export const pieceFormFactors = ["flat", "standee", "solid"] as const;
 
 export type PieceFormFactor = (typeof pieceFormFactors)[number];
 
-export const pieceShapes = ["circle", "square", "rectangle", "hex", "meeple", "pawn", "custom"] as const;
+export const pieceShapes = [
+  "circle",
+  "square",
+  "rectangle",
+  "hex",
+  "meeple",
+  "pawn",
+  "custom"
+] as const;
 
 export type PieceShape = (typeof pieceShapes)[number];
 
@@ -219,7 +282,22 @@ export const defaultPieceAppearance: PieceAppearance = {
   strokeColor: "#0f766e"
 };
 
+export const defaultTileAppearance: TileAppearance = {
+  fillColor: "#f8fafc",
+  strokeColor: "#0f766e"
+};
+
 export const defaultPieceCustomShape: PieceCustomShape = {
+  points: [
+    { x: 50, y: 6 },
+    { x: 90, y: 35 },
+    { x: 74, y: 92 },
+    { x: 26, y: 92 },
+    { x: 10, y: 35 }
+  ]
+};
+
+export const defaultTileCustomShape: TileCustomShape = {
   points: [
     { x: 50, y: 6 },
     { x: 90, y: 35 },
@@ -313,10 +391,10 @@ export type CardComponent = GameComponentBase & {
 
 export type TileComponent = GameComponentBase & {
   type: "tile";
-  shape: TileShape;
-  faceLabel: string;
-  color: ProjectColorValue;
-  edgeLabels: string[];
+  labelText: string;
+  templateId: string;
+  fieldValues: TemplateFieldValues;
+  layout: TileLayout;
 };
 
 export type DieComponent = GameComponentBase & {
@@ -349,11 +427,7 @@ export type CreateGameComponentInput = {
   templateId?: string;
   appearance?: PieceAppearanceInput;
   fieldValues?: TemplateFieldValues;
-  layout?: CardLayout | PieceLayout;
-  shape?: TileShape;
-  faceLabel?: string;
-  color?: ProjectColorValue;
-  edgeLabels?: string[];
+  layout?: CardLayout | PieceLayout | TileLayout;
   sides?: number;
   faceLabels?: string[];
 };
@@ -373,6 +447,57 @@ export function createDefaultCardLayout(
     sides: {
       front: createDefaultCardSide("front", input.frontText),
       back: createDefaultCardSide("back", input.backText)
+    }
+  };
+}
+
+export function createDefaultTileLayout(
+  input: {
+    appearance?: Partial<TileAppearance>;
+    customShape?: TileCustomShape;
+    faceText?: string;
+    rotationDeg?: number;
+    shape?: TileShape;
+    size?: Partial<TileLayoutSize>;
+  } = {}
+): TileLayout {
+  const shape = input.shape ?? "square";
+
+  return {
+    version: 1,
+    shape,
+    sizeMm: {
+      widthMm: input.size?.widthMm ?? 50,
+      heightMm: input.size?.heightMm ?? 50
+    },
+    appearance: {
+      ...defaultTileAppearance,
+      ...input.appearance
+    },
+    rotationDeg: normalizeDegrees(input.rotationDeg ?? 0),
+    customShape:
+      shape === "custom"
+        ? cloneTileCustomShape(input.customShape ?? defaultTileCustomShape)
+        : undefined,
+    sides: {
+      front: {
+        paddingMm: { ...noCardPaddingMm },
+        zones: [
+          {
+            ...createTextZone("front-label", "Label", 0, 0, 100, 100),
+            content: createTextContent(input.faceText ?? "")
+          }
+        ]
+      },
+      back: {
+        paddingMm: { ...noCardPaddingMm },
+        zones: [
+          {
+            ...createVisualZone("back-art", "Art", 0, 0, 100, 100),
+            content: createImageContent()
+          }
+        ]
+      }
     }
   };
 }
@@ -427,12 +552,21 @@ export function createDefaultPieceLayout(
       ...defaultPieceAppearance,
       ...input.appearance
     },
-    customShape: shape === "custom" ? clonePieceCustomShape(input.customShape ?? defaultPieceCustomShape) : undefined,
+    customShape:
+      shape === "custom"
+        ? clonePieceCustomShape(input.customShape ?? defaultPieceCustomShape)
+        : undefined,
     faces
   };
 }
 
 function clonePieceCustomShape(customShape: PieceCustomShape): PieceCustomShape {
+  return {
+    points: customShape.points.map((point) => ({ ...point }))
+  };
+}
+
+function cloneTileCustomShape(customShape: TileCustomShape): TileCustomShape {
   return {
     points: customShape.points.map((point) => ({ ...point }))
   };
@@ -488,6 +622,10 @@ export function getCardTemplateFields(layout: CardLayout): CardTemplateField[] {
   return getTemplateFields(layout.sides.front.zones, layout.sides.back.zones);
 }
 
+export function getTileTemplateFields(layout: TileLayout): CardTemplateField[] {
+  return getTemplateFields(layout.sides.front.zones, layout.sides.back.zones);
+}
+
 export function getPieceTemplateFields(layout: PieceLayout): CardTemplateField[] {
   return getTemplateFields(...layout.faces.map((face) => face.zones));
 }
@@ -519,6 +657,10 @@ function getTemplateFields(...zoneGroups: LayoutZone[][]): CardTemplateField[] {
 }
 
 export function getDefaultCardFieldValues(layout: CardLayout): TemplateFieldValues {
+  return getDefaultFieldValues(layout.sides.front.zones, layout.sides.back.zones);
+}
+
+export function getDefaultTileFieldValues(layout: TileLayout): TemplateFieldValues {
   return getDefaultFieldValues(layout.sides.front.zones, layout.sides.back.zones);
 }
 
@@ -580,6 +722,37 @@ export function resolveCardLayout(
   };
 }
 
+export function resolveTileLayout(
+  layout: TileLayout,
+  fieldValues: TemplateFieldValues = {},
+  projectParameters: ProjectParameter[] = []
+): TileLayout {
+  return {
+    ...layout,
+    sizeMm: { ...layout.sizeMm },
+    appearance: {
+      fillColor: resolveProjectColorValue(
+        layout.appearance.fillColor,
+        projectParameters,
+        "#f8fafc"
+      ),
+      strokeColor: resolveProjectColorValue(
+        layout.appearance.strokeColor,
+        projectParameters,
+        "#0f766e"
+      )
+    },
+    rotationDeg: normalizeDegrees(layout.rotationDeg ?? 0),
+    customShape: layout.customShape
+      ? { points: layout.customShape.points.map((point) => ({ ...point })) }
+      : undefined,
+    sides: {
+      front: resolveCardSideLayout(layout.sides.front, fieldValues, projectParameters),
+      back: resolveCardSideLayout(layout.sides.back, fieldValues, projectParameters)
+    }
+  };
+}
+
 export function resolvePieceLayout(
   layout: PieceLayout,
   fieldValues: TemplateFieldValues = {},
@@ -614,6 +787,16 @@ export function resolvePieceLayout(
       }))
     }))
   };
+}
+
+export function getFirstTileSideText(layout: TileLayout) {
+  const frontText = getFirstCardSideText(layout.sides.front);
+
+  if (frontText) {
+    return frontText;
+  }
+
+  return getFirstCardSideText(layout.sides.back);
 }
 
 export function getFirstPieceFaceText(layout: PieceLayout) {
@@ -776,6 +959,10 @@ function isCardImageFieldValue(value: unknown): value is TemplateImageFieldValue
     typeof (value as TemplateImageFieldValue).dataUrl === "string" &&
     typeof (value as TemplateImageFieldValue).fileName === "string"
   );
+}
+
+function normalizeDegrees(value: number) {
+  return ((Math.round(value) % 360) + 360) % 360;
 }
 
 function titleCase(value: string) {

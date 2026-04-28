@@ -13,77 +13,76 @@ import {
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
-  defaultPieceCustomShape,
-  pieceShapes,
-  resolvePieceLayout,
+  defaultTileCustomShape,
+  resolveTileLayout,
+  tileShapes,
+  type CardLayoutPadding,
   type LayoutZone,
-  type PieceCustomShape,
-  type PieceLayout,
-  type PieceShape,
-  type PieceShapePoint,
   type ProjectParameter,
-  type TemplateFieldValues
+  type TemplateFieldValues,
+  type TileCustomShape,
+  type TileLayout,
+  type TileLayoutSide,
+  type TileShape,
+  type TileShapePoint
 } from "@bg-maker/shared";
 import { LayoutZoneContentPreview } from "./card-layout-editor";
 import "./card-layout-editor.css";
-import "./piece-preview.css";
+import "./tile-preview.css";
 
-type PiecePreviewProps = {
+type TilePreviewProps = {
   compact?: boolean;
   fieldValues?: TemplateFieldValues;
-  interactive?: boolean;
-  layout: PieceLayout;
-  projectParameters?: ProjectParameter[];
-  selectedFaceId?: string;
-  selectedZoneId?: string | null;
   footerExtra?: ReactNode;
-  showFaceTabs?: boolean;
+  interactive?: boolean;
+  layout: TileLayout;
+  projectParameters?: ProjectParameter[];
+  rotationDeg?: number;
+  selectedSideId?: TileLayoutSide;
+  selectedZoneId?: string | null;
+  showSideTabs?: boolean;
   title?: string;
-  onSelectedFaceIdChange?: (faceId: string) => void;
   onSelectZone?: (zoneId: string) => void;
+  onSelectedSideIdChange?: (sideId: TileLayoutSide) => void;
   onUpdateZone?: (zoneId: string, patch: Partial<LayoutZone>) => void;
 };
 
-const zoneResizeHandleHitSize = 34;
-
-type PieceShapeIconProps = {
-  customShape?: PieceCustomShape;
+type TileShapeIconProps = {
+  customShape?: TileCustomShape;
   fillColor?: string;
-  shape: PieceShape;
+  shape: TileShape;
   size?: number;
   strokeColor?: string;
 };
 
-export function PiecePreview({
+const zoneResizeHandleHitSize = 34;
+
+export function TilePreview({
   compact = false,
   fieldValues = {},
+  footerExtra,
   interactive = false,
   layout,
   projectParameters = [],
-  selectedFaceId,
+  rotationDeg,
+  selectedSideId,
   selectedZoneId = null,
-  footerExtra,
-  showFaceTabs = true,
+  showSideTabs = true,
   title = "Final preview",
-  onSelectedFaceIdChange,
   onSelectZone,
+  onSelectedSideIdChange,
   onUpdateZone
-}: PiecePreviewProps) {
-  const [internalFaceId, setInternalFaceId] = useState(layout.faces[0]?.id ?? "front");
+}: TilePreviewProps) {
+  const [internalSideId, setInternalSideId] = useState<TileLayoutSide>("front");
   const overlayRef = useRef<HTMLDivElement | null>(null);
-  const previewLayout = resolvePieceLayout(layout, fieldValues, undefined, projectParameters);
-  const selectedId =
-    selectedFaceId && previewLayout.faces.some((face) => face.id === selectedFaceId)
-      ? selectedFaceId
-      : previewLayout.faces.some((face) => face.id === internalFaceId)
-        ? internalFaceId
-        : (previewLayout.faces[0]?.id ?? "front");
-  const selectedFace =
-    previewLayout.faces.find((face) => face.id === selectedId) ?? previewLayout.faces[0];
+  const previewLayout = resolveTileLayout(layout, fieldValues, projectParameters);
+  const selectedId = selectedSideId ?? internalSideId;
+  const selectedSide = previewLayout.sides[selectedId] ?? previewLayout.sides.front;
+  const previewRotationDeg = rotationDeg ?? previewLayout.rotationDeg ?? 0;
 
-  function updateSelectedFace(faceId: string) {
-    setInternalFaceId(faceId);
-    onSelectedFaceIdChange?.(faceId);
+  function updateSelectedSide(sideId: TileLayoutSide) {
+    setInternalSideId(sideId);
+    onSelectedSideIdChange?.(sideId);
   }
 
   function getPointerPercent(event: Pick<PointerEvent | ReactPointerEvent, "clientX" | "clientY">) {
@@ -124,19 +123,15 @@ export function PiecePreview({
   }
 
   function getInteractionZoneAtPoint(point: { x: number; y: number }) {
-    if (!selectedFace) {
-      return undefined;
-    }
-
     const selectedZone = selectedZoneId
-      ? selectedFace.zones.find((zone) => zone.id === selectedZoneId)
+      ? selectedSide.zones.find((zone) => zone.id === selectedZoneId)
       : null;
 
     if (selectedZone && pointIsInsideZone(point, selectedZone)) {
       return selectedZone;
     }
 
-    return selectedFace.zones
+    return selectedSide.zones
       .slice()
       .reverse()
       .find((zone) => pointIsInsideZone(point, zone));
@@ -207,18 +202,15 @@ export function PiecePreview({
 
   return (
     <Stack gap="sm">
-      {showFaceTabs && previewLayout.faces.length > 1 ? (
+      {showSideTabs ? (
         <Tabs
           radius={8}
           value={selectedId}
-          onChange={(value) => updateSelectedFace(value ?? previewLayout.faces[0]?.id ?? "front")}
+          onChange={(value) => updateSelectedSide((value ?? "front") as TileLayoutSide)}
         >
           <Tabs.List grow>
-            {previewLayout.faces.map((face) => (
-              <Tabs.Tab key={face.id} value={face.id}>
-                {face.name}
-              </Tabs.Tab>
-            ))}
+            <Tabs.Tab value="front">Front</Tabs.Tab>
+            <Tabs.Tab value="back">Back</Tabs.Tab>
           </Tabs.List>
         </Tabs>
       ) : null}
@@ -230,58 +222,71 @@ export function PiecePreview({
         </Text>
       </Group>
 
-      <Box className={`piece-preview-shell${compact ? " piece-preview-shell--compact" : ""}`}>
+      <Box className={`tile-preview-shell${compact ? " tile-preview-shell--compact" : ""}`}>
         <Box
-          className="piece-preview"
-          style={{ aspectRatio: `${layout.sizeMm.widthMm} / ${layout.sizeMm.heightMm}` }}
+          className="tile-preview"
+          style={{
+            aspectRatio: `${layout.sizeMm.widthMm} / ${layout.sizeMm.heightMm}`
+          }}
         >
           <svg
-            aria-label="Piece preview"
-            className="piece-preview-svg"
+            aria-label="Tile preview"
+            className="tile-preview-svg"
             preserveAspectRatio="none"
             viewBox="0 0 100 100"
           >
-            <PieceShapeSvgElement
+            <TileShapeSvgElement
               customShape={previewLayout.customShape}
               fillColor={String(previewLayout.appearance.fillColor)}
+              rotationDeg={previewRotationDeg}
               shape={previewLayout.shape}
               strokeColor="transparent"
             />
           </svg>
 
           <div
-            className="piece-preview-zone-content-layer"
+            className="tile-preview-zone-content-layer"
             style={{
-              clipPath: getPieceShapeClipPath(previewLayout.shape, previewLayout.customShape)
+              clipPath: getTileShapeClipPath(
+                previewLayout.shape,
+                previewLayout.customShape,
+                previewRotationDeg
+              )
             }}
           >
-            {selectedFace?.zones.map((zone) => (
-              <div
-                key={zone.id}
-                className="layout-preview-zone"
-                style={{
-                  left: `${zone.x}%`,
-                  top: `${zone.y}%`,
-                  width: `${zone.width}%`,
-                  height: `${zone.height}%`
-                }}
-              >
-                <div className="card-preview-content card-final-preview-content piece-preview-content">
-                  <LayoutZoneContentPreview content={zone.content} />
+            <div
+              className="tile-preview-zone-safe-area"
+              style={getPaddingAreaStyle(previewLayout.sizeMm, selectedSide.paddingMm)}
+            >
+              {selectedSide.zones.map((zone) => (
+                <div
+                  key={zone.id}
+                  className="layout-preview-zone"
+                  style={{
+                    left: `${zone.x}%`,
+                    top: `${zone.y}%`,
+                    width: `${zone.width}%`,
+                    height: `${zone.height}%`
+                  }}
+                >
+                  <div className="card-preview-content card-final-preview-content tile-preview-content">
+                    <LayoutZoneContentPreview content={zone.content} />
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
           <svg
             aria-hidden
-            className="piece-preview-outline-svg"
+            className="tile-preview-outline-svg"
             preserveAspectRatio="none"
             viewBox="0 0 100 100"
           >
-            <PieceShapeSvgElement
+            <TileShapeSvgElement
               customShape={previewLayout.customShape}
               fillColor="none"
+              rotationDeg={previewRotationDeg}
               shape={previewLayout.shape}
               strokeColor={String(previewLayout.appearance.strokeColor)}
             />
@@ -290,7 +295,8 @@ export function PiecePreview({
           {interactive ? (
             <div
               ref={overlayRef}
-              className="piece-preview-zone-overlay"
+              className="tile-preview-zone-overlay"
+              style={getPaddingAreaStyle(previewLayout.sizeMm, selectedSide.paddingMm)}
               onPointerDown={(event) => {
                 const point = getPointerPercent(event);
 
@@ -311,10 +317,10 @@ export function PiecePreview({
                 );
               }}
             >
-              {selectedFace?.zones.map((zone) => (
+              {selectedSide.zones.map((zone) => (
                 <div
                   key={zone.id}
-                  aria-label={`Piece zone ${zone.name}`}
+                  aria-label={`Tile zone ${zone.name}`}
                   className="card-preview-zone"
                   data-selected={zone.id === selectedZoneId ? "true" : undefined}
                   data-zone-name={zone.name}
@@ -343,7 +349,7 @@ export function PiecePreview({
   );
 }
 
-export function PieceShapePicker({
+export function TileShapePicker({
   disabled = false,
   fillColor,
   onChange,
@@ -352,27 +358,27 @@ export function PieceShapePicker({
 }: {
   disabled?: boolean;
   fillColor: string;
-  onChange: (shape: PieceShape) => void;
+  onChange: (shape: TileShape) => void;
   strokeColor: string;
-  value: PieceShape;
+  value: TileShape;
 }) {
   return (
     <Stack gap="xs">
       <Text size="sm" fw={500}>
         Shape
       </Text>
-      <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs">
-        {pieceShapes.map((shape) => (
+      <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="xs">
+        {tileShapes.map((shape) => (
           <UnstyledButton
             key={shape}
             aria-label={`Select ${titleCase(shape)} shape`}
-            className="piece-shape-option"
+            className="tile-shape-option"
             data-selected={shape === value ? "true" : undefined}
             disabled={disabled}
             type="button"
             onClick={() => onChange(shape)}
           >
-            <PieceShapeIcon fillColor={fillColor} shape={shape} strokeColor={strokeColor} />
+            <TileShapeIcon fillColor={fillColor} shape={shape} strokeColor={strokeColor} />
             <Text size="xs" fw={600}>
               {titleCase(shape)}
             </Text>
@@ -383,16 +389,16 @@ export function PieceShapePicker({
   );
 }
 
-export function PieceShapeIcon({
+export function TileShapeIcon({
   customShape,
   fillColor = "#f8fafc",
   shape,
   size = 46,
   strokeColor = "#0f766e"
-}: PieceShapeIconProps) {
+}: TileShapeIconProps) {
   return (
-    <svg aria-hidden className="piece-shape-icon" height={size} viewBox="0 0 100 100" width={size}>
-      <PieceShapeSvgElement
+    <svg aria-hidden className="tile-shape-icon" height={size} viewBox="0 0 100 100" width={size}>
+      <TileShapeSvgElement
         customShape={customShape}
         fillColor={fillColor}
         shape={shape}
@@ -402,19 +408,19 @@ export function PieceShapeIcon({
   );
 }
 
-export function CustomPieceShapeEditor({
+export function CustomTileShapeEditor({
   customShape,
   disabled = false,
   onChange
 }: {
-  customShape: PieceCustomShape;
+  customShape: TileCustomShape;
   disabled?: boolean;
-  onChange: (customShape: PieceCustomShape) => void;
+  onChange: (customShape: TileCustomShape) => void;
 }) {
   const [selectedPointIndex, setSelectedPointIndex] = useState(0);
   const [draggingPointIndex, setDraggingPointIndex] = useState<number | null>(null);
 
-  function updatePoint(index: number, point: PieceShapePoint) {
+  function updatePoint(index: number, point: TileShapePoint) {
     onChange({
       points: customShape.points.map((currentPoint, pointIndex) =>
         pointIndex === index ? point : currentPoint
@@ -491,7 +497,7 @@ export function CustomPieceShapeEditor({
             type="button"
             variant="subtle"
             onClick={() => {
-              onChange(defaultPieceCustomShape);
+              onChange(defaultTileCustomShape);
               setSelectedPointIndex(0);
             }}
           >
@@ -502,7 +508,7 @@ export function CustomPieceShapeEditor({
 
       <svg
         aria-label="Custom shape editor"
-        className="custom-piece-shape-editor"
+        className="custom-tile-shape-editor"
         viewBox="0 0 100 100"
         onPointerMove={(event) => {
           if (disabled || draggingPointIndex === null) {
@@ -521,13 +527,13 @@ export function CustomPieceShapeEditor({
         onPointerCancel={() => setDraggingPointIndex(null)}
       >
         <polygon
-          className="custom-piece-shape-polygon"
+          className="custom-tile-shape-polygon"
           points={toPolygonPoints(customShape.points)}
         />
         {customShape.points.map((point, index) => (
           <circle
             key={`${point.x}-${point.y}-${index}`}
-            className="custom-piece-shape-point"
+            className="custom-tile-shape-point"
             cx={point.x}
             cy={point.y}
             data-selected={selectedPointIndex === index ? "true" : undefined}
@@ -550,15 +556,17 @@ export function CustomPieceShapeEditor({
   );
 }
 
-function PieceShapeSvgElement({
+function TileShapeSvgElement({
   customShape,
   fillColor,
+  rotationDeg = 0,
   shape,
   strokeColor
 }: {
-  customShape?: PieceCustomShape;
+  customShape?: TileCustomShape;
   fillColor: string;
-  shape: PieceShape;
+  rotationDeg?: number;
+  shape: TileShape;
   strokeColor: string;
 }) {
   const commonProps = {
@@ -566,94 +574,143 @@ function PieceShapeSvgElement({
     stroke: strokeColor,
     strokeLinejoin: "round" as const,
     strokeWidth: 4,
+    transform: `rotate(${rotationDeg} 50 50)`,
     vectorEffect: "non-scaling-stroke" as const
   };
 
   switch (shape) {
-    case "circle":
-      return <circle cx="50" cy="50" r="43" {...commonProps} />;
-
     case "square":
-      return <rect height="84" rx="5" width="84" x="8" y="8" {...commonProps} />;
+      return <rect height="84" rx="4" width="84" x="8" y="8" {...commonProps} />;
 
     case "rectangle":
-      return <rect height="62" rx="5" width="84" x="8" y="19" {...commonProps} />;
+      return <rect height="62" rx="4" width="84" x="8" y="19" {...commonProps} />;
+
+    case "triangle":
+      return <polygon points="50,8 91,88 9,88" {...commonProps} />;
 
     case "hex":
-      return <polygon points="50,6 88,28 88,72 50,94 12,72 12,28" {...commonProps} />;
-
-    case "meeple":
-      return (
-        <path
-          d="M50 7c-10 0-18 8-18 18 0 6 3 11 8 14H28c-8 0-14 6-14 14v13h15l-6 27h18l9-24 9 24h18l-6-27h15V53c0-8-6-14-14-14H60c5-3 8-8 8-14 0-10-8-18-18-18Z"
-          {...commonProps}
-        />
-      );
-
-    case "pawn":
-      return (
-        <path
-          d="M50 9c-11 0-20 9-20 20 0 8 5 15 12 18L35 58l-5 23-11 7v6h62v-6l-11-7-5-23-7-11c7-3 12-10 12-18 0-11-9-20-20-20Z"
-          {...commonProps}
-        />
-      );
+      return <polygon points="50,5 88,27 88,73 50,95 12,73 12,27" {...commonProps} />;
 
     case "custom":
       return (
         <polygon
-          points={toPolygonPoints(customShape?.points ?? defaultPieceCustomShape.points)}
+          points={toPolygonPoints(customShape?.points ?? defaultTileCustomShape.points)}
           {...commonProps}
         />
       );
   }
 }
 
-function toPolygonPoints(points: PieceShapePoint[]) {
+function toPolygonPoints(points: TileShapePoint[]) {
   return points.map((point) => `${point.x},${point.y}`).join(" ");
 }
 
-function getPieceShapeClipPath(shape: PieceShape, customShape: PieceCustomShape | undefined) {
+function getTileShapeClipPath(
+  shape: TileShape,
+  customShape: TileCustomShape | undefined,
+  rotationDeg: number
+) {
   switch (shape) {
-    case "circle":
-      return "ellipse(43% 43% at 50% 50%)";
-
     case "square":
-      return toCssPolygon([
-        { x: 8, y: 8 },
-        { x: 92, y: 8 },
-        { x: 92, y: 92 },
-        { x: 8, y: 92 }
-      ]);
+      return toCssPolygon(
+        rotateClipPoints(
+          [
+            { x: 8, y: 8 },
+            { x: 92, y: 8 },
+            { x: 92, y: 92 },
+            { x: 8, y: 92 }
+          ],
+          rotationDeg
+        )
+      );
 
     case "rectangle":
-      return toCssPolygon([
-        { x: 8, y: 19 },
-        { x: 92, y: 19 },
-        { x: 92, y: 81 },
-        { x: 8, y: 81 }
-      ]);
+      return toCssPolygon(
+        rotateClipPoints(
+          [
+            { x: 8, y: 19 },
+            { x: 92, y: 19 },
+            { x: 92, y: 81 },
+            { x: 8, y: 81 }
+          ],
+          rotationDeg
+        )
+      );
+
+    case "triangle":
+      return toCssPolygon(
+        rotateClipPoints(
+          [
+            { x: 50, y: 8 },
+            { x: 91, y: 88 },
+            { x: 9, y: 88 }
+          ],
+          rotationDeg
+        )
+      );
 
     case "hex":
-      return toCssPolygon([
-        { x: 50, y: 6 },
-        { x: 88, y: 28 },
-        { x: 88, y: 72 },
-        { x: 50, y: 94 },
-        { x: 12, y: 72 },
-        { x: 12, y: 28 }
-      ]);
+      return toCssPolygon(
+        rotateClipPoints(
+          [
+            { x: 50, y: 5 },
+            { x: 88, y: 27 },
+            { x: 88, y: 73 },
+            { x: 50, y: 95 },
+            { x: 12, y: 73 },
+            { x: 12, y: 27 }
+          ],
+          rotationDeg
+        )
+      );
 
     case "custom":
-      return toCssPolygon(customShape?.points ?? defaultPieceCustomShape.points);
-
-    case "meeple":
-    case "pawn":
-      return undefined;
+      return toCssPolygon(
+        rotateClipPoints(customShape?.points ?? defaultTileCustomShape.points, rotationDeg)
+      );
   }
 }
 
-function toCssPolygon(points: PieceShapePoint[]) {
-  return `polygon(${points.map((point) => `${point.x}% ${point.y}%`).join(", ")})`;
+function rotateClipPoints(points: TileShapePoint[], rotationDeg: number) {
+  if (rotationDeg === 0) {
+    return points;
+  }
+
+  const radians = (rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  return points.map((point) => {
+    const dx = point.x - 50;
+    const dy = point.y - 50;
+
+    return {
+      x: 50 + dx * cos - dy * sin,
+      y: 50 + dx * sin + dy * cos
+    };
+  });
+}
+
+function toCssPolygon(points: TileShapePoint[]) {
+  return `polygon(${points
+    .map((point) => `${roundClipValue(point.x)}% ${roundClipValue(point.y)}%`)
+    .join(", ")})`;
+}
+
+function roundClipValue(value: number) {
+  return Math.round(value * 1000) / 1000;
+}
+
+function getPaddingAreaStyle(
+  size: Pick<TileLayout["sizeMm"], "heightMm" | "widthMm">,
+  padding: CardLayoutPadding
+) {
+  return {
+    top: `${(padding.topMm / size.heightMm) * 100}%`,
+    right: `${(padding.rightMm / size.widthMm) * 100}%`,
+    bottom: `${(padding.bottomMm / size.heightMm) * 100}%`,
+    left: `${(padding.leftMm / size.widthMm) * 100}%`
+  };
 }
 
 function clamp(value: number, min = 0, max = 100) {

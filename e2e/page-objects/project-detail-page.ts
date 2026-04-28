@@ -17,22 +17,27 @@ export class ProjectDetailPage {
     await this.page.getByRole("tab", { name: "Components" }).click();
   }
 
-  async openNewComponent() {
-    await this.page.getByRole("button", { name: "New component" }).click();
+  async openNewComponent(type = "Card") {
+    await this.openCreateMenuItem("New component", `${type} component`);
   }
 
-  async openNewComponentForm() {
-    await this.openNewComponent();
+  async openNewComponentForm(type = "Card") {
+    await this.openNewComponent(type);
     return this.componentForm;
   }
 
   async openNewCardTemplateForm() {
-    await this.page.getByRole("button", { name: "New card template" }).click();
+    await this.openCreateMenuItem("New template", "Card template");
     return this.componentForm;
   }
 
   async openNewPieceTemplateForm() {
-    await this.page.getByRole("button", { name: "New piece template" }).click();
+    await this.openCreateMenuItem("New template", "Piece template");
+    return this.componentForm;
+  }
+
+  async openNewTileTemplateForm() {
+    await this.openCreateMenuItem("New template", "Tile template");
     return this.componentForm;
   }
 
@@ -157,6 +162,11 @@ export class ProjectDetailPage {
   apiError(message: string) {
     return this.page.getByText(message);
   }
+
+  private async openCreateMenuItem(buttonName: string, itemName: string) {
+    await this.page.getByRole("button", { name: buttonName }).click();
+    await this.page.getByRole("menuitem", { name: itemName }).click();
+  }
 }
 
 class ComponentFormObject {
@@ -164,7 +174,7 @@ class ComponentFormObject {
 
   get dialog() {
     return this.page.getByRole("dialog", {
-      name: /^(New component|Edit component|New card template|Edit card template|New piece template|Edit piece template|New collection|Edit collection)$/
+      name: /^(New component|Edit component|New card template|Edit card template|New tile template|Edit tile template|New piece template|Edit piece template|New collection|Edit collection)$/
     });
   }
 
@@ -408,6 +418,15 @@ class ComponentFormObject {
     await this.page.getByRole("option", { name }).click();
   }
 
+  async createMissingTemplate(type: "card" | "piece" | "tile") {
+    await this.dialog.getByRole("button", { name: `Create ${type} template` }).click();
+  }
+
+  async selectTileTemplate(name: string) {
+    await this.dialog.getByLabel("Tile template").click();
+    await this.page.getByRole("option", { name }).click();
+  }
+
   async fillPieceTemplate(values: {
     faceText?: string;
     formFactor?: "Flat" | "Solid" | "Standee";
@@ -440,6 +459,17 @@ class ComponentFormObject {
 
     if (values.shape === "Custom") {
       await this.openPhysicalTab();
+    }
+  }
+
+  async fillTileTemplate(values: { faceText?: string; shape?: string }) {
+    if (values.shape !== undefined) {
+      await this.openPhysicalTab();
+      await this.dialog.getByRole("button", { name: `Select ${values.shape} shape` }).click();
+    }
+
+    if (values.faceText !== undefined) {
+      await this.addTextElement(values.faceText);
     }
   }
 

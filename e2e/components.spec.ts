@@ -17,7 +17,8 @@ test.describe("project components", () => {
     await detailPage.openComponents();
     await expect(detailPage.componentsHeading).toBeVisible();
 
-    let form = await detailPage.openNewCardTemplateForm();
+    let form = await detailPage.openNewComponentForm();
+    await form.createMissingTemplate("card");
     await form.fillCommon({ name: "Action card template" });
     await form.addTextElement("Deal 1 damage");
     await form.saveCreate();
@@ -41,10 +42,9 @@ test.describe("project components", () => {
     await form.saveCreate();
 
     await expect(form.dialog).toBeHidden();
-    await expect(detailPage.pieceTemplateRow("Coin piece template")).toContainText("flat circle");
+    await expect(detailPage.pieceTemplateRow("Coin piece template")).toContainText("Flat Circle");
 
-    form = await detailPage.openNewComponentForm();
-    await form.selectType("Piece");
+    form = await detailPage.openNewComponentForm("Piece");
     await form.fillCommon({ name: "Coin", quantity: "20", tags: "resource" });
     await form.selectPieceTemplate("Coin piece template");
     await expect(form.dialog.locator(".piece-preview").getByText("1 coin")).toBeVisible();
@@ -53,10 +53,16 @@ test.describe("project components", () => {
     await expect(form.dialog).toBeHidden();
     await expect(detailPage.componentRow("Coin")).toContainText("flat circle");
 
-    form = await detailPage.openNewComponentForm();
-    await form.selectType("Tile");
+    form = await detailPage.openNewTileTemplateForm();
+    await form.fillCommon({ name: "Forest hex template" });
+    await form.fillTileTemplate({ shape: "Hex", faceText: "Forest" });
+    await form.saveCreate();
+
+    await expect(form.dialog).toBeHidden();
+
+    form = await detailPage.openNewComponentForm("Tile");
     await form.fillCommon({ name: "Forest hex", quantity: "19" });
-    await form.fillTile({ shape: "Hex", faceLabel: "Forest", edgeLabels: "n, ne, se, s, sw, nw" });
+    await form.selectTileTemplate("Forest hex template");
     await form.saveCreate();
 
     await expect(form.dialog).toBeHidden();
@@ -70,8 +76,7 @@ test.describe("project components", () => {
     await expect(form.dialog).toBeHidden();
     await expect(detailPage.collectionRow("Player deck")).toContainText("Strike x12");
 
-    form = await detailPage.openNewComponentForm();
-    await form.selectType("Die");
+    form = await detailPage.openNewComponentForm("Die");
     await expect(form.dialog.getByLabel("Face labels")).toHaveCount(0);
     await form.fillCommon({ name: "Weather die" });
     await form.fillDie({ sides: "8" });
@@ -253,7 +258,9 @@ test.describe("project components", () => {
     await form.saveCreate();
 
     await expect(form.dialog).toBeHidden();
-    await expect(detailPage.pieceTemplateRow("Artifact token template")).toContainText("flat custom");
+    await expect(detailPage.pieceTemplateRow("Artifact token template")).toContainText(
+      "Flat Custom"
+    );
 
     form = await detailPage.openNewPieceTemplateForm();
     await form.fillCommon({ name: "Hero standee template" });
@@ -265,11 +272,10 @@ test.describe("project components", () => {
 
     await expect(form.dialog).toBeHidden();
     await expect(detailPage.pieceTemplateRow("Hero standee template")).toContainText(
-      "standee pawn"
+      "Standee Pawn"
     );
 
-    form = await detailPage.openNewComponentForm();
-    await form.selectType("Piece");
+    form = await detailPage.openNewComponentForm("Piece");
     await form.fillCommon({ name: "Ancient key", quantity: "1" });
     await form.selectPieceTemplate("Artifact token template");
     await form.fillPerCardValue("Label", "Ancient Key");

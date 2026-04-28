@@ -5,6 +5,9 @@ export const apiPaths = {
   cardTemplates: (projectId: string) => `/api/projects/${projectId}/card-templates`,
   cardTemplate: (projectId: string, templateId: string) =>
     `/api/projects/${projectId}/card-templates/${templateId}`,
+  tileTemplates: (projectId: string) => `/api/projects/${projectId}/tile-templates`,
+  tileTemplate: (projectId: string, templateId: string) =>
+    `/api/projects/${projectId}/tile-templates/${templateId}`,
   pieceTemplates: (projectId: string) => `/api/projects/${projectId}/piece-templates`,
   pieceTemplate: (projectId: string, templateId: string) =>
     `/api/projects/${projectId}/piece-templates/${templateId}`,

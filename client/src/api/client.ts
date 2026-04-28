@@ -8,16 +8,19 @@ import {
   type CreateGameComponentInput,
   type CreateGameProjectInput,
   type CreatePieceTemplateInput,
+  type CreateTileTemplateInput,
   type GameComponent,
   type GameProject,
   type GameProjectSummary,
   type HealthResponse,
   type PieceTemplate,
+  type TileTemplate,
   type UpdateCardTemplateInput,
   type UpdateComponentCollectionInput,
   type UpdateGameComponentInput,
   type UpdateGameProjectInput,
-  type UpdatePieceTemplateInput
+  type UpdatePieceTemplateInput,
+  type UpdateTileTemplateInput
 } from "@bg-maker/shared";
 
 const http = axios.create({
@@ -68,6 +71,11 @@ export async function getPieceTemplates(projectId: string) {
   return response.data;
 }
 
+export async function getTileTemplates(projectId: string) {
+  const response = await http.get<TileTemplate[]>(apiPaths.tileTemplates(projectId));
+  return response.data;
+}
+
 export async function getCollections(projectId: string) {
   const response = await http.get<ComponentCollection[]>(apiPaths.collections(projectId));
   return response.data;
@@ -113,6 +121,27 @@ export async function updatePieceTemplate(
 
 export async function deletePieceTemplate(projectId: string, templateId: string) {
   await http.delete(apiPaths.pieceTemplate(projectId, templateId));
+}
+
+export async function createTileTemplate(projectId: string, input: CreateTileTemplateInput) {
+  const response = await http.post<TileTemplate>(apiPaths.tileTemplates(projectId), input);
+  return response.data;
+}
+
+export async function updateTileTemplate(
+  projectId: string,
+  templateId: string,
+  input: UpdateTileTemplateInput
+) {
+  const response = await http.patch<TileTemplate>(
+    apiPaths.tileTemplate(projectId, templateId),
+    input
+  );
+  return response.data;
+}
+
+export async function deleteTileTemplate(projectId: string, templateId: string) {
+  await http.delete(apiPaths.tileTemplate(projectId, templateId));
 }
 
 export async function createCollection(projectId: string, input: CreateComponentCollectionInput) {

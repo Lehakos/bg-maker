@@ -3,7 +3,8 @@ import type {
   ComponentCollection,
   GameComponent,
   GameProject,
-  PieceTemplate
+  PieceTemplate,
+  TileTemplate
 } from "@bg-maker/shared";
 import { createDefaultProjectParameters } from "@bg-maker/shared";
 
@@ -50,6 +51,10 @@ export const projectPieceTemplates = new Map<string, PieceTemplate[]>(
   seedProjects.map((project) => [project.id, []])
 );
 
+export const projectTileTemplates = new Map<string, TileTemplate[]>(
+  seedProjects.map((project) => [project.id, []])
+);
+
 export const projectCollections = new Map<string, ComponentCollection[]>(
   seedProjects.map((project) => [project.id, []])
 );
@@ -76,6 +81,14 @@ export function getProjectPieceTemplates(projectId: string) {
 
 export function setProjectPieceTemplates(projectId: string, templates: PieceTemplate[]) {
   projectPieceTemplates.set(projectId, templates);
+}
+
+export function getProjectTileTemplates(projectId: string) {
+  return projectTileTemplates.get(projectId) ?? [];
+}
+
+export function setProjectTileTemplates(projectId: string, templates: TileTemplate[]) {
+  projectTileTemplates.set(projectId, templates);
 }
 
 export function getProjectCollections(projectId: string) {
