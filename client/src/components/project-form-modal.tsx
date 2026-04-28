@@ -1,17 +1,29 @@
 import {
   Alert,
+  ActionIcon,
   Button,
+  ColorInput,
   Group,
   Modal,
+  NumberInput,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   Textarea,
   TextInput
 } from "@mantine/core";
 import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
-import { projectStatuses, type CreateGameProjectInput, type ProjectStatus } from "@bg-maker/shared";
+import { AlertTriangle, Plus, Trash2 } from "lucide-react";
+import {
+  createDefaultProjectParameters,
+  projectParameterTypes,
+  projectStatuses,
+  type CreateGameProjectInput,
+  type ProjectParameter,
+  type ProjectParameterType,
+  type ProjectStatus
+} from "@bg-maker/shared";
 import "./form-modal.css";
 
 export type ProjectFormValues = Required<CreateGameProjectInput>;
@@ -30,6 +42,7 @@ const defaultValues: ProjectFormValues = {
   name: "",
   description: "",
   players: "1-4",
+  parameters: createDefaultProjectParameters(),
   status: "draft",
   notes: ""
 };
@@ -43,6 +56,17 @@ const statusLabels: Record<ProjectStatus, string> = {
 const statusOptions = projectStatuses.map((status) => ({
   value: status,
   label: statusLabels[status]
+}));
+
+const parameterTypeLabels: Record<ProjectParameterType, string> = {
+  color: "Color",
+  number: "Number",
+  text: "Text"
+};
+
+const parameterTypeOptions = projectParameterTypes.map((type) => ({
+  value: type,
+  label: parameterTypeLabels[type]
 }));
 
 export function ProjectFormModal({
@@ -67,6 +91,7 @@ export function ProjectFormModal({
       opened={opened}
       onClose={onClose}
       radius={8}
+      size="lg"
       title={mode === "create" ? "New project" : "Edit project"}
     >
       {opened && isWaitingForEditValues ? (
@@ -112,7 +137,9 @@ function ProjectFormContent({
   onClose,
   onSubmit
 }: Omit<ProjectFormModalProps, "opened">) {
-  const [values, setValues] = useState<ProjectFormValues>(initialValues ?? defaultValues);
+  const [values, setValues] = useState<ProjectFormValues>(() =>
+    cloneProjectFormValues(initialValues ?? defaultValues)
+  );
   const nameIsEmpty = values.name.trim().length === 0;
 
   return (
@@ -129,6 +156,7 @@ function ProjectFormContent({
           name: values.name.trim(),
           description: values.description.trim(),
           players: values.players.trim(),
+          parameters: normalizeProjectParameters(values.parameters),
           status: values.status,
           notes: values.notes.trim()
         });
@@ -181,6 +209,12 @@ function ProjectFormContent({
           />
         </Group>
 
+        <ProjectParametersFields
+          loading={loading}
+          parameters={values.parameters}
+          onChange={(parameters) => setValues({ ...values, parameters })}
+        />
+
         <Textarea
           label="Notes"
           minRows={4}
@@ -200,4 +234,243 @@ function ProjectFormContent({
       </Group>
     </form>
   );
+}
+
+function ProjectParametersFields({
+  loading,
+  onChange,
+  parameters
+}: {
+  loading: boolean;
+  onChange: (parameters: ProjectParameter[]) => void;
+  parameters: ProjectParameter[];
+}) {
+  function updateParameter(index: number, patch: Partial<ProjectParameter>) {
+    onChange(
+      parameters.map((parameter, parameterIndex) =>
+        parameterIndex === index ? normalizeParameterPatch(parameter, patch) : parameter
+      )
+    );
+  }
+
+  function removeParameter(index: number) {
+    onChange(parameters.filter((_parameter, parameterIndex) => parameterIndex !== index));
+  }
+
+  return (
+    <Stack className="project-parameters-section" gap="sm">
+      <Group justify="space-between" align="center">
+        <Text size="sm" fw={500}>
+          Project parameters
+        </Text>
+        <Button
+          disabled={loading}
+          leftSection={<Plus size={14} />}
+          radius={8}
+          size="xs"
+          type="button"
+          variant="light"
+          onClick={() =>
+            onChange([
+              ...parameters,
+              {
+                key: createUniqueParameterKey(parameters),
+                label: "New color",
+                type: "color",
+                value: "#0f766e"
+              }
+            ])
+          }
+        >
+          Add parameter
+        </Button>
+      </Group>
+
+      {parameters.length === 0 ? (
+        <Text c="dimmed" size="sm">
+          No project parameters
+        </Text>
+      ) : (
+        <Stack gap="xs">
+          {parameters.map((parameter, index) => (
+            <div className="project-parameter-row" key={index}>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                <TextInput
+                  disabled={loading}
+                  label="Label"
+                  value={parameter.label}
+                  onChange={(event) =>
+                    updateParameter(index, { label: event.currentTarget.value })
+                  }
+                />
+                <Select
+                  allowDeselect={false}
+                  data={parameterTypeOptions}
+                  disabled={loading}
+                  label="Type"
+                  value={parameter.type}
+                  onChange={(value) =>
+                    updateParameter(index, {
+                      type: (value ?? "color") as ProjectParameterType,
+                      value: getDefaultParameterValue((value ?? "color") as ProjectParameterType)
+                    })
+                  }
+                />
+                <Group align="flex-end" gap="xs" wrap="nowrap">
+                  <ParameterValueInput
+                    loading={loading}
+                    parameter={parameter}
+                    onChange={(value) => updateParameter(index, { value })}
+                  />
+                  <ActionIcon
+                    aria-label={`Remove parameter ${parameter.label || parameter.key}`}
+                    color="red"
+                    disabled={loading}
+                    mb={2}
+                    radius={8}
+                    variant="subtle"
+                    onClick={() => removeParameter(index)}
+                  >
+                    <Trash2 size={16} />
+                  </ActionIcon>
+                </Group>
+              </SimpleGrid>
+            </div>
+          ))}
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
+function ParameterValueInput({
+  loading,
+  onChange,
+  parameter
+}: {
+  loading: boolean;
+  onChange: (value: string) => void;
+  parameter: ProjectParameter;
+}) {
+  if (parameter.type === "color") {
+    return (
+      <ColorInput
+        disabled={loading}
+        format="hex"
+        label="Value"
+        value={parameter.value}
+        onChange={onChange}
+      />
+    );
+  }
+
+  if (parameter.type === "number") {
+    const numericValue = Number.isFinite(Number(parameter.value)) ? Number(parameter.value) : 0;
+
+    return (
+      <NumberInput
+        allowDecimal
+        disabled={loading}
+        label="Value"
+        value={numericValue}
+        onChange={(value) => onChange(String(value ?? 0))}
+      />
+    );
+  }
+
+  return (
+    <TextInput
+      disabled={loading}
+      label="Value"
+      value={parameter.value}
+      onChange={(event) => onChange(event.currentTarget.value)}
+    />
+  );
+}
+
+function normalizeParameterPatch(
+  parameter: ProjectParameter,
+  patch: Partial<ProjectParameter>
+): ProjectParameter {
+  const nextType = patch.type ?? parameter.type;
+
+  return {
+    ...parameter,
+    ...patch,
+    key: patch.key ?? parameter.key,
+    label: patch.label ?? parameter.label,
+    type: nextType,
+    value: patch.value ?? parameter.value
+  };
+}
+
+function normalizeProjectParameters(parameters: ProjectParameter[]) {
+  const usedKeys = new Set<string>();
+
+  return parameters.map((parameter, index) => {
+    const fallbackKey = `parameter_${index + 1}`;
+    const key = createUniqueNormalizedParameterKey(
+      parameter.key || parameter.label || fallbackKey,
+      usedKeys
+    );
+
+    usedKeys.add(key);
+
+    return {
+      key,
+      label: parameter.label.trim(),
+      type: parameter.type,
+      value: parameter.value.trim()
+    };
+  });
+}
+
+function cloneProjectFormValues(values: ProjectFormValues): ProjectFormValues {
+  return {
+    ...values,
+    parameters: values.parameters.map((parameter) => ({ ...parameter }))
+  };
+}
+
+function createUniqueParameterKey(parameters: ProjectParameter[]) {
+  const keys = new Set(parameters.map((parameter) => parameter.key));
+  return createUniqueNormalizedParameterKey("new_color", keys);
+}
+
+function getDefaultParameterValue(type: ProjectParameterType) {
+  switch (type) {
+    case "color":
+      return "#0f766e";
+    case "number":
+      return "0";
+    case "text":
+      return "";
+  }
+}
+
+function normalizeParameterKey(value: string) {
+  const key = value
+    .trim()
+    .replace(/[^a-z0-9_]+/gi, "_")
+    .replace(/^_+/, "")
+    .toLowerCase();
+
+  if (!key || /^[a-z]/.test(key)) {
+    return key;
+  }
+
+  return `parameter_${key}`;
+}
+
+function createUniqueNormalizedParameterKey(value: string, existingKeys: Set<string>) {
+  const baseKey = normalizeParameterKey(value) || "parameter";
+  let key = baseKey;
+  let index = 2;
+
+  while (existingKeys.has(key)) {
+    key = `${baseKey}_${index}`;
+    index += 1;
+  }
+
+  return key;
 }

@@ -4,7 +4,6 @@ import {
   Anchor,
   Button,
   Checkbox,
-  ColorInput,
   FileInput,
   Group,
   Modal,
@@ -32,6 +31,7 @@ import {
   getPieceTemplateFields,
   getFirstPieceFaceText,
   pieceFormFactors,
+  resolveProjectColorValue,
   tileShapes,
   type TemplateFieldValue,
   type TemplateFieldValues,
@@ -50,12 +50,14 @@ import {
   type PieceLayoutFace,
   type PieceShape,
   type PieceTemplate,
+  type ProjectParameter,
   type TileShape
 } from "@bg-maker/shared";
 import { componentTypeLabels } from "./component-labels";
 import { CardLayoutEditor, CardPreview, ZoneControls } from "./card-layout-editor";
 import { createId, createTextContent, createZone } from "./layout-zone-utils";
 import { CustomPieceShapeEditor, PiecePreview, PieceShapePicker } from "./piece-preview";
+import { ProjectColorValueInput } from "./project-color-value-input";
 import {
   readNumber,
   useComponentForm,
@@ -83,6 +85,7 @@ type ComponentFormModalProps = {
   opened: boolean;
   pieceTemplate?: PieceTemplate;
   pieceTemplates: PieceTemplate[];
+  projectParameters: ProjectParameter[];
   template?: CardTemplate;
   onClose: () => void;
   onEditCardTemplate?: (template: CardTemplate) => void;
@@ -119,6 +122,7 @@ export function ComponentFormModal({
   opened,
   pieceTemplate,
   pieceTemplates,
+  projectParameters,
   template,
   onClose,
   onEditCardTemplate,
@@ -159,6 +163,7 @@ export function ComponentFormModal({
           mode={mode}
           pieceTemplate={pieceTemplate}
           pieceTemplates={pieceTemplates}
+          projectParameters={projectParameters}
           template={template}
           onClose={onClose}
           onEditCardTemplate={onEditCardTemplate}
@@ -241,6 +246,7 @@ function ComponentFormContent({
   mode,
   pieceTemplate,
   pieceTemplates,
+  projectParameters,
   template,
   onClose,
   onEditCardTemplate,
@@ -371,9 +377,10 @@ function ComponentFormContent({
         <TypeSpecificFields
           cardTemplates={cardTemplates}
           componentOptions={componentOptions}
-          loading={loading}
-          pieceTemplates={pieceTemplates}
-          removeCollectionItem={removeCollectionItem}
+            loading={loading}
+            pieceTemplates={pieceTemplates}
+            projectParameters={projectParameters}
+            removeCollectionItem={removeCollectionItem}
           setDieSides={setDieSides}
           setValues={setValues}
           updateCollectionItem={updateCollectionItem}
@@ -448,6 +455,7 @@ function TypeSpecificFields({
   componentOptions,
   loading,
   pieceTemplates,
+  projectParameters,
   removeCollectionItem,
   setDieSides,
   setValues,
@@ -460,6 +468,7 @@ function TypeSpecificFields({
   componentOptions: { value: string; label: string }[];
   loading: boolean;
   pieceTemplates: PieceTemplate[];
+  projectParameters: ProjectParameter[];
   removeCollectionItem: (index: number) => void;
   setDieSides: (sides: number) => void;
   setValues: Dispatch<SetStateAction<ComponentFormValues>>;
@@ -537,6 +546,7 @@ function TypeSpecificFields({
                 compact
                 fieldValues={values.cardFieldValues}
                 layout={values.layout}
+                projectParameters={projectParameters}
                 title="Final card"
               />
             </>
@@ -560,9 +570,10 @@ function TypeSpecificFields({
                 setValues({ ...values, tileShape: shape });
               }}
             />
-            <ColorInput
+            <ProjectColorValueInput
               disabled={loading}
               label="Color"
+              projectParameters={projectParameters}
               value={values.tileColor}
               onChange={(value) => setValues({ ...values, tileColor: value })}
             />
@@ -657,10 +668,10 @@ function TypeSpecificFields({
               <Stack className="template-editor-section" gap="sm">
                 <Text className="template-editor-section-title">Piece color</Text>
                 <Group grow align="flex-start">
-                  <ColorInput
+                  <ProjectColorValueInput
                     disabled={loading}
-                    format="hex"
                     label="Fill color"
+                    projectParameters={projectParameters}
                     value={values.pieceAppearance.fillColor}
                     onChange={(fillColor) =>
                       setValues({
@@ -669,10 +680,10 @@ function TypeSpecificFields({
                       })
                     }
                   />
-                  <ColorInput
+                  <ProjectColorValueInput
                     disabled={loading}
-                    format="hex"
                     label="Stroke color"
+                    projectParameters={projectParameters}
                     value={values.pieceAppearance.strokeColor}
                     onChange={(strokeColor) =>
                       setValues({
@@ -687,6 +698,7 @@ function TypeSpecificFields({
                 compact
                 fieldValues={values.pieceFieldValues}
                 layout={getPieceLayoutWithAppearance(values.pieceLayout, values.pieceAppearance)}
+                projectParameters={projectParameters}
                 title="Final piece"
               />
             </>
@@ -717,12 +729,20 @@ function TypeSpecificFields({
         <CardLayoutEditor
           disabled={loading}
           layout={values.layout}
+          projectParameters={projectParameters}
           onChange={(layout) => setValues({ ...values, layout })}
         />
       );
 
     case "pieceTemplate":
-      return <PieceTemplateFields loading={loading} setValues={setValues} values={values} />;
+      return (
+        <PieceTemplateFields
+          loading={loading}
+          projectParameters={projectParameters}
+          setValues={setValues}
+          values={values}
+        />
+      );
 
     case "collection":
       return (
@@ -798,10 +818,12 @@ function TypeSpecificFields({
 
 function PieceTemplateFields({
   loading,
+  projectParameters,
   setValues,
   values
 }: {
   loading: boolean;
+  projectParameters: ProjectParameter[];
   setValues: Dispatch<SetStateAction<ComponentFormValues>>;
   values: ComponentFormValues;
 }) {
@@ -982,8 +1004,16 @@ function PieceTemplateFields({
 
               <PieceShapePicker
                 disabled={loading}
-                fillColor={values.pieceLayout.appearance.fillColor}
-                strokeColor={values.pieceLayout.appearance.strokeColor}
+                fillColor={resolveProjectColorValue(
+                  values.pieceLayout.appearance.fillColor,
+                  projectParameters,
+                  "#f8fafc"
+                )}
+                strokeColor={resolveProjectColorValue(
+                  values.pieceLayout.appearance.strokeColor,
+                  projectParameters,
+                  "#0f766e"
+                )}
                 value={values.pieceShape}
                 onChange={updateShape}
               />
@@ -1054,10 +1084,10 @@ function PieceTemplateFields({
           <Tabs.Panel value="appearance" pt="md">
             <Stack className="template-editor-section" gap="sm">
               <Group grow align="flex-start">
-                <ColorInput
+                <ProjectColorValueInput
                   disabled={loading}
-                  format="hex"
                   label="Fill color"
+                  projectParameters={projectParameters}
                   swatches={pieceColorSwatches}
                   value={values.pieceLayout.appearance.fillColor}
                   onChange={(fillColor) =>
@@ -1067,10 +1097,10 @@ function PieceTemplateFields({
                     }))
                   }
                 />
-                <ColorInput
+                <ProjectColorValueInput
                   disabled={loading}
-                  format="hex"
                   label="Stroke color"
+                  projectParameters={projectParameters}
                   swatches={pieceColorSwatches}
                   value={values.pieceLayout.appearance.strokeColor}
                   onChange={(strokeColor) =>
@@ -1126,6 +1156,7 @@ function PieceTemplateFields({
                   {activeZone ? (
                     <ZoneControls
                       disabled={loading}
+                      projectParameters={projectParameters}
                       uploadError={uploadError}
                       zone={activeZone}
                       onChange={(patch) => updateZone(activeZone.id, patch)}
@@ -1152,6 +1183,7 @@ function PieceTemplateFields({
         <PiecePreview
           interactive
           layout={values.pieceLayout}
+          projectParameters={projectParameters}
           selectedFaceId={selectedFace.id}
           selectedZoneId={activeZone?.id ?? null}
           footerExtra={

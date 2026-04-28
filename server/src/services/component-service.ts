@@ -21,8 +21,10 @@ import {
   pieceShapes,
   resolveCardLayout,
   resolvePieceLayout,
+  isProjectColorReference,
   tileShapes,
   type LayoutContentSource,
+  type ProjectColorValue,
   type TemplateFieldValue,
   type TemplateFieldValues,
   type TemplateImageFieldValue,
@@ -90,7 +92,7 @@ type CardFields = {
 type TileFields = {
   shape: TileShape;
   faceLabel: string;
-  color: string;
+  color: ProjectColorValue;
   edgeLabels: string[];
 };
 
@@ -139,7 +141,7 @@ export function createComponent(projectId: string, value: unknown): ServiceResul
       cardInput.templateId = template.id;
     }
 
-    componentInput = resolveCardInput(cardInput);
+    componentInput = resolveCardInput(cardInput, projectId);
   }
 
   if (componentInput.type === "piece") {
@@ -153,7 +155,7 @@ export function createComponent(projectId: string, value: unknown): ServiceResul
       pieceInput.templateId = template.id;
     }
 
-    componentInput = resolvePieceInput(pieceInput);
+    componentInput = resolvePieceInput(pieceInput, projectId);
   }
 
   const timestamp = new Date().toISOString();
@@ -264,7 +266,11 @@ export function resolveStoredCard(
   const template = getProjectCardTemplates(component.projectId).find(
     (item) => item.id === component.templateId
   );
-  const layout = resolveCardLayout(template?.layout ?? component.layout, component.fieldValues);
+  const layout = resolveCardLayout(
+    template?.layout ?? component.layout,
+    component.fieldValues,
+    getProjectParameters(component.projectId)
+  );
 
   return {
     ...component,
@@ -283,12 +289,12 @@ export function resolveStoredPiece(
   const layout = resolvePieceLayout(
     template?.layout ?? component.layout,
     component.fieldValues,
-    component.appearance ?? component.layout.appearance
+    component.appearance ?? component.layout.appearance,
+    getProjectParameters(component.projectId)
   );
 
   return {
     ...component,
-    appearance: layout.appearance,
     layout,
     labelText: getFirstPieceFaceText(layout)
   };
@@ -328,10 +334,18 @@ function createFallbackPieceTemplate(projectId: string, pieceName: string, layou
   return template;
 }
 
+function getProjectParameters(projectId: string) {
+  return projects.get(projectId)?.parameters ?? [];
+}
+
 function resolveCardInput<
   T extends CreateGameComponentInput & CommonComponentInput & { layout: CardLayout; type: "card" }
->(input: T): T {
-  const layout = resolveCardLayout(input.layout ?? createDefaultCardLayout(), input.fieldValues);
+>(input: T, projectId: string): T {
+  const layout = resolveCardLayout(
+    input.layout ?? createDefaultCardLayout(),
+    input.fieldValues,
+    getProjectParameters(projectId)
+  );
 
   return {
     ...input,
@@ -352,7 +366,8 @@ function resolveCardUpdateInput(
   const fieldValues = input.fieldValues ?? currentComponent.fieldValues;
   const layout = resolveCardLayout(
     (input.layout as CardLayout | undefined) ?? template?.layout ?? currentComponent.layout,
-    fieldValues
+    fieldValues,
+    getProjectParameters(currentComponent.projectId)
   );
 
   return {
@@ -366,16 +381,17 @@ function resolveCardUpdateInput(
 
 function resolvePieceInput<
   T extends CreateGameComponentInput & CommonComponentInput & { layout: PieceLayout; type: "piece" }
->(input: T): T {
+>(input: T, projectId: string): T {
   const layout = resolvePieceLayout(
     input.layout ?? createDefaultPieceLayout(),
     input.fieldValues,
-    input.appearance
+    input.appearance,
+    getProjectParameters(projectId)
   );
 
   return {
     ...input,
-    appearance: layout.appearance,
+    appearance: input.appearance ?? layout.appearance,
     fieldValues: input.fieldValues ?? {},
     layout,
     labelText: getFirstPieceFaceText(layout)
@@ -393,12 +409,13 @@ function resolvePieceUpdateInput(
   const layout = resolvePieceLayout(
     (input.layout as PieceLayout | undefined) ?? template?.layout ?? currentComponent.layout,
     fieldValues,
-    input.appearance ?? currentComponent.appearance ?? currentComponent.layout.appearance
+    input.appearance ?? currentComponent.appearance ?? currentComponent.layout.appearance,
+    getProjectParameters(currentComponent.projectId)
   );
 
   return {
     ...input,
-    appearance: layout.appearance,
+    appearance: input.appearance ?? currentComponent.appearance ?? layout.appearance,
     fieldValues,
     layout,
     labelText: getFirstPieceFaceText(layout)
@@ -442,7 +459,7 @@ function parseCreateComponentInput(
     }
 
     case "tile": {
-      const tile = parseTileFields(value);
+      const tile = parseTileFields(value, projectId);
       return tile.ok ? { ok: true, value: { ...base, type: "tile", ...tile.value } } : tile;
     }
 
@@ -506,7 +523,7 @@ function parseUpdateComponentInput(
     }
 
     case "tile": {
-      const tile = parseTileFields(value, currentComponent);
+      const tile = parseTileFields(value, projectId, currentComponent);
       return tile.ok ? { ok: true, value: { ...input, ...tile.value } } : tile;
     }
 
@@ -562,7 +579,7 @@ function parseCardFields(
 ): ParseResult<CardFields> {
   const frontText = readOptionalString(value.frontText);
   const backText = readOptionalString(value.backText);
-  const layout = parseOptionalCardLayout(value.layout);
+  const layout = parseOptionalCardLayout(value.layout, projectId);
   const templateId = readOptionalString(value.templateId);
 
   if (!layout.ok) {
@@ -598,7 +615,11 @@ function parseCardFields(
 
   const resolvedFieldValues =
     fieldValues.value ?? currentComponent?.fieldValues ?? getDefaultCardFieldValues(templateLayout);
-  const resolvedLayout = resolveCardLayout(templateLayout, resolvedFieldValues);
+  const resolvedLayout = resolveCardLayout(
+    templateLayout,
+    resolvedFieldValues,
+    getProjectParameters(projectId)
+  );
 
   return {
     ok: true,
@@ -759,15 +780,18 @@ function parseCardImageFieldValue(value: unknown): ParseResult<TemplateImageFiel
   };
 }
 
-export function parseOptionalCardLayout(value: unknown): ParseResult<CardLayout | undefined> {
+export function parseOptionalCardLayout(
+  value: unknown,
+  projectId?: string
+): ParseResult<CardLayout | undefined> {
   if (value === undefined) {
     return { ok: true, value: undefined };
   }
 
-  return parseCardLayout(value);
+  return parseCardLayout(value, projectId);
 }
 
-export function parseCardLayout(value: unknown): ParseResult<CardLayout> {
+export function parseCardLayout(value: unknown, projectId?: string): ParseResult<CardLayout> {
   if (!isRecord(value)) {
     return { ok: false, error: "Card layout must be an object" };
   }
@@ -789,7 +813,7 @@ export function parseCardLayout(value: unknown): ParseResult<CardLayout> {
   const sides = {} as Record<CardLayoutSide, CardSideLayout>;
 
   for (const side of cardLayoutSides) {
-    const parsedSide = parseCardSideLayout(value.sides[side], size.value);
+    const parsedSide = parseCardSideLayout(value.sides[side], size.value, projectId);
 
     if (!parsedSide.ok) {
       return parsedSide;
@@ -808,15 +832,18 @@ export function parseCardLayout(value: unknown): ParseResult<CardLayout> {
   };
 }
 
-export function parseOptionalPieceLayout(value: unknown): ParseResult<PieceLayout | undefined> {
+export function parseOptionalPieceLayout(
+  value: unknown,
+  projectId?: string
+): ParseResult<PieceLayout | undefined> {
   if (value === undefined) {
     return { ok: true, value: undefined };
   }
 
-  return parsePieceLayout(value);
+  return parsePieceLayout(value, projectId);
 }
 
-export function parsePieceLayout(value: unknown): ParseResult<PieceLayout> {
+export function parsePieceLayout(value: unknown, projectId?: string): ParseResult<PieceLayout> {
   if (!isRecord(value)) {
     return { ok: false, error: "Piece layout must be an object" };
   }
@@ -828,12 +855,12 @@ export function parsePieceLayout(value: unknown): ParseResult<PieceLayout> {
   const formFactor = readRequiredPieceFormFactor(value.formFactor);
   const shape = readRequiredPieceShape(value.shape);
   const sizeMm = parsePieceLayoutSize(value.sizeMm);
-  const appearance = parsePieceAppearance(value.appearance);
+  const appearance = parsePieceAppearance(value.appearance, projectId);
   const customShape =
     value.shape === "custom"
       ? parseRequiredPieceCustomShape(value.customShape)
       : parseOptionalPresetPieceCustomShape(value.customShape);
-  const faces = parsePieceLayoutFaces(value.faces);
+  const faces = parsePieceLayoutFaces(value.faces, projectId);
 
   if (!formFactor.ok) {
     return formFactor;
@@ -944,13 +971,17 @@ function parsePieceLayoutSize(value: unknown): ParseResult<PieceLayoutSize> {
   };
 }
 
-function parsePieceAppearance(value: unknown): ParseResult<PieceAppearance> {
+function parsePieceAppearance(value: unknown, projectId?: string): ParseResult<PieceAppearance> {
   if (!isRecord(value)) {
     return { ok: false, error: "Piece appearance must be an object" };
   }
 
-  const fillColor = readRequiredHexColor(value.fillColor, "Piece fill color");
-  const strokeColor = readRequiredHexColor(value.strokeColor, "Piece stroke color");
+  const fillColor = readRequiredProjectColorValue(value.fillColor, "Piece fill color", projectId);
+  const strokeColor = readRequiredProjectColorValue(
+    value.strokeColor,
+    "Piece stroke color",
+    projectId
+  );
 
   if (!fillColor.ok) {
     return fillColor;
@@ -970,7 +1001,8 @@ function parsePieceAppearance(value: unknown): ParseResult<PieceAppearance> {
 }
 
 function parseOptionalPieceAppearance(
-  value: unknown
+  value: unknown,
+  projectId?: string
 ): ParseResult<Partial<PieceAppearance> | undefined> {
   if (value === undefined) {
     return { ok: true, value: undefined };
@@ -983,7 +1015,11 @@ function parseOptionalPieceAppearance(
   const appearance: Partial<PieceAppearance> = {};
 
   if (value.fillColor !== undefined) {
-    const fillColor = readRequiredHexColor(value.fillColor, "Piece fill color");
+    const fillColor = readRequiredProjectColorValue(
+      value.fillColor,
+      "Piece fill color",
+      projectId
+    );
 
     if (!fillColor.ok) {
       return fillColor;
@@ -993,7 +1029,11 @@ function parseOptionalPieceAppearance(
   }
 
   if (value.strokeColor !== undefined) {
-    const strokeColor = readRequiredHexColor(value.strokeColor, "Piece stroke color");
+    const strokeColor = readRequiredProjectColorValue(
+      value.strokeColor,
+      "Piece stroke color",
+      projectId
+    );
 
     if (!strokeColor.ok) {
       return strokeColor;
@@ -1054,7 +1094,7 @@ function parseRequiredPieceCustomShape(value: unknown): ParseResult<PieceCustomS
   return { ok: true, value: { points } };
 }
 
-function parsePieceLayoutFaces(value: unknown): ParseResult<PieceLayoutFace[]> {
+function parsePieceLayoutFaces(value: unknown, projectId?: string): ParseResult<PieceLayoutFace[]> {
   if (!Array.isArray(value)) {
     return { ok: false, error: "Piece layout faces must be an array" };
   }
@@ -1075,7 +1115,8 @@ function parsePieceLayoutFaces(value: unknown): ParseResult<PieceLayoutFace[]> {
     const name = readRequiredString(item.name, "Piece face name");
     const zones = parseCardZones(item.zones, {
       allowEmpty: true,
-      label: "Piece layout"
+      label: "Piece layout",
+      projectId
     });
 
     if (!id.ok) {
@@ -1153,7 +1194,11 @@ function parseCardLayoutPadding(
   };
 }
 
-function parseCardSideLayout(value: unknown, size: CardLayoutSize): ParseResult<CardSideLayout> {
+function parseCardSideLayout(
+  value: unknown,
+  size: CardLayoutSize,
+  projectId?: string
+): ParseResult<CardSideLayout> {
   if (!isRecord(value)) {
     return { ok: false, error: "Card side layout must be an object" };
   }
@@ -1164,7 +1209,7 @@ function parseCardSideLayout(value: unknown, size: CardLayoutSize): ParseResult<
     return padding;
   }
 
-  const zones = parseCardZones(value.zones);
+  const zones = parseCardZones(value.zones, { projectId });
 
   if (!zones.ok) {
     return zones;
@@ -1181,7 +1226,7 @@ function parseCardSideLayout(value: unknown, size: CardLayoutSize): ParseResult<
 
 function parseCardZones(
   value: unknown,
-  options: { allowEmpty?: boolean; label?: string } = {}
+  options: { allowEmpty?: boolean; label?: string; projectId?: string } = {}
 ): ParseResult<LayoutZone[]> {
   const label = options.label ?? "Card layout";
 
@@ -1211,7 +1256,7 @@ function parseCardZones(
     const y = readRequiredNumber(item.y, "Card zone y", { min: 0, max: 100 });
     const width = readRequiredNumber(item.width, "Card zone width", { min: 1, max: 100 });
     const height = readRequiredNumber(item.height, "Card zone height", { min: 1, max: 100 });
-    const content = parseCardZoneContent(item.content);
+    const content = parseCardZoneContent(item.content, options.projectId);
 
     if (!id.ok) {
       return id;
@@ -1264,7 +1309,10 @@ function parseCardZones(
   return { ok: true, value: zones };
 }
 
-function parseCardZoneContent(value: unknown): ParseResult<LayoutZoneContent> {
+function parseCardZoneContent(
+  value: unknown,
+  projectId?: string
+): ParseResult<LayoutZoneContent> {
   if (!isRecord(value)) {
     return { ok: false, error: "Card zone content must be an object" };
   }
@@ -1284,7 +1332,7 @@ function parseCardZoneContent(value: unknown): ParseResult<LayoutZoneContent> {
       });
       const bold = readRequiredBoolean(value.bold, "Card text bold");
       const align = readRequiredTextAlignment(value.align);
-      const color = readRequiredHexColor(value.color, "Card text color");
+      const color = readRequiredProjectColorValue(value.color, "Card text color", projectId);
 
       if (!text.ok) {
         return text;
@@ -1332,7 +1380,7 @@ function parseCardZoneContent(value: unknown): ParseResult<LayoutZoneContent> {
       const fit = readRequiredImageFit(value.fit);
       const iconId = readRequiredIconId(value.iconId);
       const size = readRequiredInteger(value.size, "Card icon size", { min: 8, max: 96 });
-      const color = readRequiredHexColor(value.color, "Card icon color");
+      const color = readRequiredProjectColorValue(value.color, "Card icon color", projectId);
       const horizontalAlign = readRequiredVisualHorizontalAlignment(value.horizontalAlign);
       const verticalAlign = readRequiredVisualVerticalAlignment(value.verticalAlign);
 
@@ -1462,12 +1510,15 @@ function parseDieFields(
 
 function parseTileFields(
   value: Record<string, unknown>,
+  projectId: string,
   currentComponent?: Extract<GameComponent, { type: "tile" }>
 ): ParseResult<TileFields> {
   const shape = readOptionalTileShape(value.shape);
   const faceLabel = readOptionalString(value.faceLabel);
   const color =
-    value.color === undefined ? undefined : readRequiredHexColor(value.color, "Tile color");
+    value.color === undefined
+      ? undefined
+      : readRequiredProjectColorValue(value.color, "Tile color", projectId);
   const edgeLabels = readOptionalStringArray(value.edgeLabels, "Tile edge labels");
 
   if (!shape.ok) {
@@ -1513,9 +1564,9 @@ function parsePieceFields(
   projectId: string,
   currentComponent?: Extract<GameComponent, { type: "piece" }>
 ): ParseResult<PieceFields> {
-  const layout = parseOptionalPieceLayout(value.layout);
+  const layout = parseOptionalPieceLayout(value.layout, projectId);
   const templateId = readOptionalString(value.templateId);
-  const appearance = parseOptionalPieceAppearance(value.appearance);
+  const appearance = parseOptionalPieceAppearance(value.appearance, projectId);
 
   if (!layout.ok) {
     return layout;
@@ -1558,14 +1609,19 @@ function parsePieceFields(
     ...(currentComponent?.appearance ?? currentComponent?.layout.appearance ?? {}),
     ...(appearance.value ?? {})
   };
-  const resolvedLayout = resolvePieceLayout(templateLayout, resolvedFieldValues, resolvedAppearance);
+  const resolvedLayout = resolvePieceLayout(
+    templateLayout,
+    resolvedFieldValues,
+    resolvedAppearance,
+    getProjectParameters(projectId)
+  );
 
   return {
     ok: true,
     value: {
       labelText: getFirstPieceFaceText(resolvedLayout),
       templateId: selectedTemplateId ?? currentComponent?.templateId ?? "",
-      appearance: resolvedLayout.appearance,
+      appearance: resolvedAppearance,
       fieldValues: resolvedFieldValues,
       layout: resolvedLayout
     }
@@ -1770,6 +1826,36 @@ function readRequiredHexColor(value: unknown, label: string): ParseResult<string
   }
 
   return color;
+}
+
+function readRequiredProjectColorValue(
+  value: unknown,
+  label: string,
+  projectId?: string
+): ParseResult<ProjectColorValue> {
+  if (isProjectColorReference(value)) {
+    const key = readRequiredString(value.key, `${label} project parameter key`);
+
+    if (!key.ok) {
+      return key;
+    }
+
+    const parameter = projectId
+      ? getProjectParameters(projectId).find((item) => item.key === key.value)
+      : undefined;
+
+    if (projectId && !parameter) {
+      return { ok: false, error: `${label} project color parameter not found` };
+    }
+
+    if (parameter && parameter.type !== "color") {
+      return { ok: false, error: `${label} project parameter must be a color` };
+    }
+
+    return { ok: true, value: { source: "project", key: key.value } };
+  }
+
+  return readRequiredHexColor(value, label);
 }
 
 function readOptionalImageDataUrl(value: unknown): ParseResult<string> {

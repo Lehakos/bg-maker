@@ -5,6 +5,7 @@ import type {
   GameProject,
   PieceTemplate
 } from "@bg-maker/shared";
+import { createDefaultProjectParameters } from "@bg-maker/shared";
 
 export const seedProjects: GameProject[] = [
   {
@@ -12,6 +13,7 @@ export const seedProjects: GameProject[] = [
     name: "Solo Dungeon",
     description: "Compact solo card crawl project.",
     players: "1",
+    parameters: createDefaultProjectParameters(),
     status: "draft",
     notes: "Focus on fast setup and short playtest loops.",
     componentCount: 0,
@@ -23,6 +25,7 @@ export const seedProjects: GameProject[] = [
     name: "Market Race",
     description: "Light economy race with a shared market row.",
     players: "2-4",
+    parameters: createDefaultProjectParameters(),
     status: "testing",
     notes: "Needs stronger catch-up pressure after round three.",
     componentCount: 0,

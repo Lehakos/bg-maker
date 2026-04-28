@@ -35,7 +35,7 @@ export function createCardTemplate(
     return fail(404, "Project not found");
   }
 
-  const input = parseCreateCardTemplateInput(value);
+  const input = parseCreateCardTemplateInput(value, projectId);
 
   if (!input.ok) {
     return fail(400, input.error);
@@ -74,7 +74,7 @@ export function updateCardTemplate(
     return fail(404, "Card template not found");
   }
 
-  const input = parseUpdateCardTemplateInput(value);
+  const input = parseUpdateCardTemplateInput(value, projectId);
 
   if (!input.ok) {
     return fail(400, input.error);
@@ -129,13 +129,16 @@ export function deleteCardTemplate(
   return ok(undefined);
 }
 
-function parseCreateCardTemplateInput(value: unknown): ParseResult<CreateCardTemplateInput> {
+function parseCreateCardTemplateInput(
+  value: unknown,
+  projectId: string
+): ParseResult<CreateCardTemplateInput> {
   if (!isRecord(value)) {
     return { ok: false, error: "Request body must be an object" };
   }
 
   const name = readRequiredString(value.name, "Card template name");
-  const layout = parseCardLayout(value.layout);
+  const layout = parseCardLayout(value.layout, projectId);
 
   if (!name.ok) {
     return name;
@@ -148,7 +151,10 @@ function parseCreateCardTemplateInput(value: unknown): ParseResult<CreateCardTem
   return { ok: true, value: { name: name.value, layout: layout.value } };
 }
 
-function parseUpdateCardTemplateInput(value: unknown): ParseResult<UpdateCardTemplateInput> {
+function parseUpdateCardTemplateInput(
+  value: unknown,
+  projectId: string
+): ParseResult<UpdateCardTemplateInput> {
   if (!isRecord(value)) {
     return { ok: false, error: "Request body must be an object" };
   }
@@ -166,7 +172,7 @@ function parseUpdateCardTemplateInput(value: unknown): ParseResult<UpdateCardTem
   }
 
   if (value.layout !== undefined) {
-    const layout = parseCardLayout(value.layout);
+    const layout = parseCardLayout(value.layout, projectId);
 
     if (!layout.ok) {
       return layout;

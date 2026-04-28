@@ -22,6 +22,7 @@ import {
   type PieceFormFactor,
   type PieceLayout,
   type PieceShape,
+  type ProjectColorValue,
   type PieceTemplate,
   type TileShape,
   type UpdateComponentCollectionInput,
@@ -87,7 +88,7 @@ export type ComponentFormValues = {
   pieceFaceText: string;
   tileShape: TileShape;
   tileFaceLabel: string;
-  tileColor: string;
+  tileColor: ProjectColorValue;
   tileEdgeLabelsText: string;
   collectionItems: ComponentCollectionItem[];
   sides: number;

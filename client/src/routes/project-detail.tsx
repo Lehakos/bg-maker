@@ -42,6 +42,7 @@ import {
   type GameComponent,
   type GameProject,
   type PieceTemplate,
+  type ProjectParameter,
   type ProjectStatus
 } from "@bg-maker/shared";
 import { deleteProject, getApiErrorMessage, getProject, updateProject } from "../api/client";
@@ -316,6 +317,7 @@ export function ProjectDetailRoute() {
         opened={componentCatalog.componentModal !== null}
         pieceTemplate={componentCatalog.editingPieceTemplate}
         pieceTemplates={componentCatalog.pieceTemplates}
+        projectParameters={project.parameters}
         template={componentCatalog.editingCardTemplate}
         onClose={componentCatalog.closeComponentModal}
         onEditCardTemplate={componentCatalog.openEditCardTemplate}
@@ -348,6 +350,13 @@ function ProjectOverview({ project }: { project: GameProject }) {
 
       <Paper withBorder radius={8} p="md">
         <Title order={2} size="h3">
+          Project parameters
+        </Title>
+        <ProjectParametersSummary parameters={project.parameters} />
+      </Paper>
+
+      <Paper withBorder radius={8} p="md">
+        <Title order={2} size="h3">
           Working notes
         </Title>
         <Text c={project.notes ? undefined : "dimmed"} mt="xs" style={{ whiteSpace: "pre-wrap" }}>
@@ -355,6 +364,42 @@ function ProjectOverview({ project }: { project: GameProject }) {
         </Text>
       </Paper>
     </Stack>
+  );
+}
+
+function ProjectParametersSummary({ parameters }: { parameters: ProjectParameter[] }) {
+  if (parameters.length === 0) {
+    return (
+      <Text c="dimmed" mt="xs">
+        No parameters
+      </Text>
+    );
+  }
+
+  return (
+    <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} mt="sm">
+      {parameters.map((parameter) => (
+        <Paper key={parameter.key} withBorder radius={8} p="sm">
+          <Group gap="xs" wrap="nowrap">
+            {parameter.type === "color" ? (
+              <span
+                aria-hidden
+                className="project-parameter-swatch"
+                style={{ backgroundColor: parameter.value }}
+              />
+            ) : null}
+            <Box>
+              <Text size="sm" fw={600}>
+                {parameter.label}
+              </Text>
+              <Text c="dimmed" size="xs">
+                {parameter.key}
+              </Text>
+            </Box>
+          </Group>
+        </Paper>
+      ))}
+    </SimpleGrid>
   );
 }
 

@@ -484,6 +484,59 @@ test.describe("project components", () => {
       }
     });
 
+    const referencedPieceResponse = await request.post(`/api/projects/${project.id}/components`, {
+      data: {
+        type: "piece",
+        name: "Player one meeple",
+        quantity: 10,
+        templateId: colorTemplate.id,
+        appearance: {
+          fillColor: { source: "project", key: "player_1_color" },
+          strokeColor: "#111827"
+        }
+      }
+    });
+    expect(referencedPieceResponse.status()).toBe(201);
+    await expect(referencedPieceResponse.json()).resolves.toMatchObject({
+      appearance: {
+        fillColor: { source: "project", key: "player_1_color" },
+        strokeColor: "#111827"
+      },
+      layout: {
+        appearance: {
+          fillColor: "#dc2626",
+          strokeColor: "#111827"
+        }
+      }
+    });
+
+    const updateProjectColor = await request.patch(`/api/projects/${project.id}`, {
+      data: {
+        parameters: project.parameters.map((parameter) =>
+          parameter.key === "player_1_color" ? { ...parameter, value: "#7c3aed" } : parameter
+        )
+      }
+    });
+    expect(updateProjectColor.status()).toBe(200);
+
+    const componentsResponse = await request.get(`/api/projects/${project.id}/components`);
+    expect(componentsResponse.status()).toBe(200);
+    const components = (await componentsResponse.json()) as Array<{
+      name: string;
+      appearance?: unknown;
+      layout?: { appearance?: { fillColor?: string } };
+    }>;
+    expect(components.find((component) => component.name === "Player one meeple")).toMatchObject({
+      appearance: {
+        fillColor: { source: "project", key: "player_1_color" }
+      },
+      layout: {
+        appearance: {
+          fillColor: "#7c3aed"
+        }
+      }
+    });
+
     for (const shape of ["disc", "cube", "train", "road"]) {
       const response = await request.post(`/api/projects/${project.id}/piece-templates`, {
         data: {

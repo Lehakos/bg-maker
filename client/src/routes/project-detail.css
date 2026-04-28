@@ -27,6 +27,14 @@
   background: rgba(15, 118, 110, 0.04);
 }
 
+.project-parameter-swatch {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 8px;
+}
+
 @media (hover: none) {
   .component-row-actions,
   .card-template-row-actions {

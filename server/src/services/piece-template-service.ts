@@ -34,7 +34,7 @@ export function createPieceTemplate(
     return fail(404, "Project not found");
   }
 
-  const input = parseCreatePieceTemplateInput(value);
+  const input = parseCreatePieceTemplateInput(value, projectId);
 
   if (!input.ok) {
     return fail(400, input.error);
@@ -73,7 +73,7 @@ export function updatePieceTemplate(
     return fail(404, "Piece template not found");
   }
 
-  const input = parseUpdatePieceTemplateInput(value);
+  const input = parseUpdatePieceTemplateInput(value, projectId);
 
   if (!input.ok) {
     return fail(400, input.error);
@@ -125,13 +125,16 @@ export function deletePieceTemplate(projectId: string, templateId: string): Serv
   return ok(undefined);
 }
 
-function parseCreatePieceTemplateInput(value: unknown): ParseResult<CreatePieceTemplateInput> {
+function parseCreatePieceTemplateInput(
+  value: unknown,
+  projectId: string
+): ParseResult<CreatePieceTemplateInput> {
   if (!isRecord(value)) {
     return { ok: false, error: "Request body must be an object" };
   }
 
   const name = readRequiredString(value.name, "Piece template name");
-  const layout = parsePieceLayout(value.layout);
+  const layout = parsePieceLayout(value.layout, projectId);
 
   if (!name.ok) {
     return name;
@@ -144,7 +147,10 @@ function parseCreatePieceTemplateInput(value: unknown): ParseResult<CreatePieceT
   return { ok: true, value: { name: name.value, layout: layout.value } };
 }
 
-function parseUpdatePieceTemplateInput(value: unknown): ParseResult<UpdatePieceTemplateInput> {
+function parseUpdatePieceTemplateInput(
+  value: unknown,
+  projectId: string
+): ParseResult<UpdatePieceTemplateInput> {
   if (!isRecord(value)) {
     return { ok: false, error: "Request body must be an object" };
   }
@@ -162,7 +168,7 @@ function parseUpdatePieceTemplateInput(value: unknown): ParseResult<UpdatePieceT
   }
 
   if (value.layout !== undefined) {
-    const layout = parsePieceLayout(value.layout);
+    const layout = parsePieceLayout(value.layout, projectId);
 
     if (!layout.ok) {
       return layout;

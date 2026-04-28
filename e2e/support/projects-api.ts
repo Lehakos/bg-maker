@@ -2,10 +2,18 @@ import { expect, type APIRequestContext } from "@playwright/test";
 
 type ProjectStatus = "draft" | "testing" | "ready";
 
+export type TestProjectParameter = {
+  key: string;
+  label: string;
+  type: "color" | "number" | "text";
+  value: string;
+};
+
 type CreateProjectInput = {
   name: string;
   description?: string;
   players?: string;
+  parameters?: TestProjectParameter[];
   status?: ProjectStatus;
   notes?: string;
 };
@@ -15,6 +23,7 @@ export type TestProject = {
   name: string;
   description: string;
   players: string;
+  parameters: TestProjectParameter[];
   status: ProjectStatus;
   notes: string;
   componentCount: number;

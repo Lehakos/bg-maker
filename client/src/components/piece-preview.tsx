@@ -27,6 +27,7 @@ import {
   type PieceLayout,
   type PieceShape,
   type PieceShapePoint,
+  type ProjectParameter,
   type TemplateFieldValues
 } from "@bg-maker/shared";
 import { LayoutZoneContentPreview } from "./card-layout-editor";
@@ -38,6 +39,7 @@ type PiecePreviewProps = {
   fieldValues?: TemplateFieldValues;
   interactive?: boolean;
   layout: PieceLayout;
+  projectParameters?: ProjectParameter[];
   selectedFaceId?: string;
   selectedZoneId?: string | null;
   footerExtra?: ReactNode;
@@ -63,6 +65,7 @@ export function PiecePreview({
   fieldValues = {},
   interactive = false,
   layout,
+  projectParameters = [],
   selectedFaceId,
   selectedZoneId = null,
   footerExtra,
@@ -75,7 +78,7 @@ export function PiecePreview({
   const generatedId = useId().replace(/:/g, "");
   const [internalFaceId, setInternalFaceId] = useState(layout.faces[0]?.id ?? "front");
   const overlayRef = useRef<HTMLDivElement | null>(null);
-  const previewLayout = resolvePieceLayout(layout, fieldValues);
+  const previewLayout = resolvePieceLayout(layout, fieldValues, undefined, projectParameters);
   const selectedId =
     selectedFaceId && previewLayout.faces.some((face) => face.id === selectedFaceId)
       ? selectedFaceId
@@ -244,18 +247,18 @@ export function PiecePreview({
             <defs>
               <clipPath id={clipId}>
                 <PieceShapeSvgElement
-                  customShape={layout.customShape}
+                  customShape={previewLayout.customShape}
                   fillColor="#fff"
-                  shape={layout.shape}
+                  shape={previewLayout.shape}
                   strokeColor="#000"
                 />
               </clipPath>
             </defs>
             <PieceShapeSvgElement
-              customShape={layout.customShape}
-              fillColor={layout.appearance.fillColor}
-              shape={layout.shape}
-              strokeColor={layout.appearance.strokeColor}
+              customShape={previewLayout.customShape}
+              fillColor={String(previewLayout.appearance.fillColor)}
+              shape={previewLayout.shape}
+              strokeColor={String(previewLayout.appearance.strokeColor)}
             />
             <foreignObject clipPath={`url(#${clipId})`} height="100" width="100" x="0" y="0">
               <div className="piece-preview-face">

@@ -1,3 +1,9 @@
+import {
+  resolveProjectColorValue,
+  type ProjectColorValue,
+  type ProjectParameter
+} from "./projects.js";
+
 export const componentTypes = ["card", "tile", "piece", "die"] as const;
 
 export type ComponentType = (typeof componentTypes)[number];
@@ -68,7 +74,7 @@ export type TextZoneContent = {
   fontSize: number;
   bold: boolean;
   align: CardTextAlignment;
-  color: string;
+  color: ProjectColorValue;
 };
 
 export type VisualZoneContent = {
@@ -80,7 +86,7 @@ export type VisualZoneContent = {
   fit: CardImageFit;
   iconId: CardIconId;
   size: number;
-  color: string;
+  color: ProjectColorValue;
   horizontalAlign: CardVisualHorizontalAlignment;
   verticalAlign: CardVisualVerticalAlignment;
 };
@@ -193,8 +199,8 @@ export type PieceLayoutSize = {
 };
 
 export type PieceAppearance = {
-  fillColor: string;
-  strokeColor: string;
+  fillColor: ProjectColorValue;
+  strokeColor: ProjectColorValue;
 };
 
 export type PieceAppearanceInput = Partial<PieceAppearance>;
@@ -309,7 +315,7 @@ export type TileComponent = GameComponentBase & {
   type: "tile";
   shape: TileShape;
   faceLabel: string;
-  color: string;
+  color: ProjectColorValue;
   edgeLabels: string[];
 };
 
@@ -346,7 +352,7 @@ export type CreateGameComponentInput = {
   layout?: CardLayout | PieceLayout;
   shape?: TileShape;
   faceLabel?: string;
-  color?: string;
+  color?: ProjectColorValue;
   edgeLabels?: string[];
   sides?: number;
   faceLabels?: string[];
@@ -561,14 +567,15 @@ function getDefaultFieldValues(...zoneGroups: LayoutZone[][]): TemplateFieldValu
 
 export function resolveCardLayout(
   layout: CardLayout,
-  fieldValues: TemplateFieldValues = {}
+  fieldValues: TemplateFieldValues = {},
+  projectParameters: ProjectParameter[] = []
 ): CardLayout {
   return {
     ...layout,
     size: { ...layout.size },
     sides: {
-      front: resolveCardSideLayout(layout.sides.front, fieldValues),
-      back: resolveCardSideLayout(layout.sides.back, fieldValues)
+      front: resolveCardSideLayout(layout.sides.front, fieldValues, projectParameters),
+      back: resolveCardSideLayout(layout.sides.back, fieldValues, projectParameters)
     }
   };
 }
@@ -576,12 +583,26 @@ export function resolveCardLayout(
 export function resolvePieceLayout(
   layout: PieceLayout,
   fieldValues: TemplateFieldValues = {},
-  appearance?: PieceAppearanceInput
+  appearance?: PieceAppearanceInput,
+  projectParameters: ProjectParameter[] = []
 ): PieceLayout {
+  const resolvedAppearance = { ...layout.appearance, ...appearance };
+
   return {
     ...layout,
     sizeMm: { ...layout.sizeMm },
-    appearance: { ...layout.appearance, ...appearance },
+    appearance: {
+      fillColor: resolveProjectColorValue(
+        resolvedAppearance.fillColor,
+        projectParameters,
+        "#f8fafc"
+      ),
+      strokeColor: resolveProjectColorValue(
+        resolvedAppearance.strokeColor,
+        projectParameters,
+        "#0f766e"
+      )
+    },
     customShape: layout.customShape
       ? { points: layout.customShape.points.map((point) => ({ ...point })) }
       : undefined,
@@ -589,7 +610,7 @@ export function resolvePieceLayout(
       ...face,
       zones: face.zones.map((zone) => ({
         ...zone,
-        content: resolveCardZoneContent(zone.content, fieldValues)
+        content: resolveCardZoneContent(zone.content, fieldValues, projectParameters)
       }))
     }))
   };
@@ -607,49 +628,83 @@ export function getFirstPieceFaceText(layout: PieceLayout) {
   return "";
 }
 
-function resolveCardSideLayout(side: CardSideLayout, fieldValues: TemplateFieldValues): CardSideLayout {
+function resolveCardSideLayout(
+  side: CardSideLayout,
+  fieldValues: TemplateFieldValues,
+  projectParameters: ProjectParameter[]
+): CardSideLayout {
   return {
     paddingMm: { ...side.paddingMm },
     zones: side.zones.map((zone) => ({
       ...zone,
-      content: resolveCardZoneContent(zone.content, fieldValues)
+      content: resolveCardZoneContent(zone.content, fieldValues, projectParameters)
     }))
   };
 }
 
 function resolveCardZoneContent(
   content: LayoutZoneContent,
-  fieldValues: TemplateFieldValues
+  fieldValues: TemplateFieldValues,
+  projectParameters: ProjectParameter[]
 ): LayoutZoneContent {
   if (content.source?.mode !== "field") {
-    return { ...content, source: content.source ? { ...content.source } : { mode: "static" } };
+    return resolveLayoutZoneColor(
+      { ...content, source: content.source ? { ...content.source } : { mode: "static" } },
+      projectParameters
+    );
   }
 
   const value = fieldValues[content.source.fieldKey];
 
   if (content.type === "text") {
-    return {
-      ...content,
-      source: { ...content.source },
-      text: typeof value === "number" || typeof value === "string" ? String(value) : content.text
-    };
+    return resolveLayoutZoneColor(
+      {
+        ...content,
+        source: { ...content.source },
+        text: typeof value === "number" || typeof value === "string" ? String(value) : content.text
+      },
+      projectParameters
+    );
   }
 
   if (content.visualType === "image") {
-    return isCardImageFieldValue(value)
-      ? {
-          ...content,
-          source: { ...content.source },
-          dataUrl: value.dataUrl,
-          fileName: value.fileName,
-          fit: value.fit ?? content.fit
-        }
-      : { ...content, source: { ...content.source } };
+    return resolveLayoutZoneColor(
+      isCardImageFieldValue(value)
+        ? {
+            ...content,
+            source: { ...content.source },
+            dataUrl: value.dataUrl,
+            fileName: value.fileName,
+            fit: value.fit ?? content.fit
+          }
+        : { ...content, source: { ...content.source } },
+      projectParameters
+    );
   }
 
-  return typeof value === "string" && cardIconIds.includes(value as CardIconId)
-    ? { ...content, source: { ...content.source }, iconId: value as CardIconId }
-    : { ...content, source: { ...content.source } };
+  return resolveLayoutZoneColor(
+    typeof value === "string" && cardIconIds.includes(value as CardIconId)
+      ? { ...content, source: { ...content.source }, iconId: value as CardIconId }
+      : { ...content, source: { ...content.source } },
+    projectParameters
+  );
+}
+
+function resolveLayoutZoneColor(
+  content: LayoutZoneContent,
+  projectParameters: ProjectParameter[]
+): LayoutZoneContent {
+  if (content.type === "text") {
+    return {
+      ...content,
+      color: resolveProjectColorValue(content.color, projectParameters, "#1f2937")
+    };
+  }
+
+  return {
+    ...content,
+    color: resolveProjectColorValue(content.color, projectParameters, "#0f766e")
+  };
 }
 
 function getFieldTypeForContent(content: LayoutZoneContent): CardTemplateFieldType {

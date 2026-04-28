@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Checkbox,
-  ColorInput,
   FileInput,
   Group,
   NumberInput,
@@ -43,6 +42,7 @@ import {
   cardVisualHorizontalAlignments,
   cardVisualVerticalAlignments,
   resolveCardLayout,
+  resolveProjectColorValue,
   type LayoutContentSource,
   type TemplateFieldValues,
   type CardIconId,
@@ -57,10 +57,12 @@ import {
   type TextZoneContent,
   type CardVisualHorizontalAlignment,
   type CardVisualVerticalAlignment,
+  type ProjectParameter,
   type VisualZoneContent,
   type LayoutZoneContent
 } from "@bg-maker/shared";
 import { createId, createTextContent, createVisualContent, createZone } from "./layout-zone-utils";
+import { ProjectColorValueInput } from "./project-color-value-input";
 import "./card-layout-editor.css";
 import "./template-editor.css";
 
@@ -68,6 +70,7 @@ type CardLayoutEditorProps = {
   disabled?: boolean;
   fieldValues?: TemplateFieldValues;
   layout: CardLayout;
+  projectParameters?: ProjectParameter[];
   onChange: (layout: CardLayout) => void;
 };
 
@@ -159,6 +162,7 @@ export function CardLayoutEditor({
   disabled = false,
   fieldValues = {},
   layout,
+  projectParameters = [],
   onChange
 }: CardLayoutEditorProps) {
   const [selectedSide, setSelectedSide] = useState<CardLayoutSide>("front");
@@ -484,6 +488,7 @@ export function CardLayoutEditor({
                     disabled={disabled}
                     uploadError={uploadError}
                     zone={activeZone}
+                    projectParameters={projectParameters}
                     onChange={(patch) => updateZone(activeZone.id, patch)}
                     onContentChange={(content) => updateZoneContent(activeZone.id, content)}
                     onUploadError={setUploadError}
@@ -514,6 +519,7 @@ export function CardLayoutEditor({
           disabled={disabled}
           fieldValues={fieldValues}
           layout={layout}
+          projectParameters={projectParameters}
           selectedZoneId={activeZone?.id ?? null}
           side={selectedSide}
           onSelectZone={(zoneId) => {
@@ -532,6 +538,7 @@ export function ZoneControls({
   onChange,
   onContentChange,
   onUploadError,
+  projectParameters,
   uploadError,
   zone
 }: {
@@ -539,6 +546,7 @@ export function ZoneControls({
   onChange: (patch: Partial<LayoutZone>) => void;
   onContentChange: (content: LayoutZoneContent) => void;
   onUploadError: (error: string | null) => void;
+  projectParameters?: ProjectParameter[];
   uploadError: string | null;
   zone: LayoutZone;
 }) {
@@ -663,12 +671,14 @@ export function ZoneControls({
         <TextContentControls
           content={zone.content}
           disabled={disabled}
+          projectParameters={projectParameters ?? []}
           onChange={(content) => onContentChange(content)}
         />
       ) : (
         <VisualContentControls
           content={zone.content}
           disabled={disabled}
+          projectParameters={projectParameters ?? []}
           onChange={(content) => onContentChange(content)}
           onUploadError={onUploadError}
         />
@@ -686,10 +696,12 @@ export function ZoneControls({
 function TextContentControls({
   content,
   disabled,
+  projectParameters,
   onChange
 }: {
   content: TextZoneContent;
   disabled: boolean;
+  projectParameters: ProjectParameter[];
   onChange: (content: TextZoneContent) => void;
 }) {
   return (
@@ -715,10 +727,10 @@ function TextContentControls({
             onChange({ ...content, fontSize: readFormNumber(value, content.fontSize) })
           }
         />
-        <ColorInput
+        <ProjectColorValueInput
           disabled={disabled}
-          format="hex"
           label="Text color"
+          projectParameters={projectParameters}
           swatches={colorSwatchPalette}
           value={content.color}
           onChange={(value) => onChange({ ...content, color: value })}
@@ -745,11 +757,13 @@ function TextContentControls({
 function VisualContentControls({
   content,
   disabled,
+  projectParameters,
   onChange,
   onUploadError
 }: {
   content: VisualZoneContent;
   disabled: boolean;
+  projectParameters: ProjectParameter[];
   onChange: (content: VisualZoneContent) => void;
   onUploadError: (error: string | null) => void;
 }) {
@@ -802,7 +816,12 @@ function VisualContentControls({
           onUploadError={onUploadError}
         />
       ) : (
-        <IconContentControls content={content} disabled={disabled} onChange={onChange} />
+        <IconContentControls
+          content={content}
+          disabled={disabled}
+          projectParameters={projectParameters}
+          onChange={onChange}
+        />
       )}
     </Stack>
   );
@@ -880,10 +899,12 @@ function ImageContentControls({
 function IconContentControls({
   content,
   disabled,
+  projectParameters,
   onChange
 }: {
   content: VisualZoneContent;
   disabled: boolean;
+  projectParameters: ProjectParameter[];
   onChange: (content: VisualZoneContent) => void;
 }) {
   return (
@@ -907,10 +928,10 @@ function IconContentControls({
         value={content.size}
         onChange={(value) => onChange({ ...content, size: readFormNumber(value, content.size) })}
       />
-      <ColorInput
+      <ProjectColorValueInput
         disabled={disabled}
-        format="hex"
         label="Icon color"
+        projectParameters={projectParameters}
         swatches={colorSwatchPalette}
         value={content.color}
         onChange={(value) => onChange({ ...content, color: value })}
@@ -925,12 +946,14 @@ function InteractiveCardPreview({
   layout,
   onSelectZone,
   onUpdateZone,
+  projectParameters,
   selectedZoneId,
   side
 }: {
   disabled: boolean;
   fieldValues: TemplateFieldValues;
   layout: CardLayout;
+  projectParameters: ProjectParameter[];
   selectedZoneId: string | null;
   side: CardLayoutSide;
   onSelectZone: (zoneId: string) => void;
@@ -938,8 +961,8 @@ function InteractiveCardPreview({
 }) {
   const previewRef = useRef<HTMLDivElement | null>(null);
   const previewLayout = useMemo(
-    () => resolveCardLayout(layout, fieldValues),
-    [fieldValues, layout]
+    () => resolveCardLayout(layout, fieldValues, projectParameters),
+    [fieldValues, layout, projectParameters]
   );
   const sideLayout = previewLayout.sides[side];
 
@@ -1144,18 +1167,20 @@ export function CardPreview({
   compact = false,
   fieldValues = {},
   layout,
+  projectParameters = [],
   side = "front",
   title = "Final preview"
 }: {
   compact?: boolean;
   fieldValues?: TemplateFieldValues;
   layout: CardLayout;
+  projectParameters?: ProjectParameter[];
   side?: CardLayoutSide;
   title?: string;
 }) {
   const previewLayout = useMemo(
-    () => resolveCardLayout(layout, fieldValues),
-    [fieldValues, layout]
+    () => resolveCardLayout(layout, fieldValues, projectParameters),
+    [fieldValues, layout, projectParameters]
   );
   const sideLayout = previewLayout.sides[side];
 
@@ -1201,11 +1226,13 @@ export function CardPreview({
 
 export function LayoutZoneContentPreview({ content }: { content: LayoutZoneContent }) {
   if (content.type === "text") {
+    const color = resolveProjectColorValue(content.color, [], "#1f2937");
+
     return (
       <Text
         className="card-preview-text"
         style={{
-          color: content.color,
+          color,
           fontSize: content.fontSize,
           fontWeight: content.bold ? 700 : 400,
           textAlign: content.align
@@ -1242,10 +1269,11 @@ export function LayoutZoneContentPreview({ content }: { content: LayoutZoneConte
   }
 
   const Icon = iconComponents[content.iconId];
+  const color = resolveProjectColorValue(content.color, [], "#0f766e");
 
   return (
     <Box className="card-preview-visual" style={visualPositionStyle}>
-      <Icon color={content.color} size={content.size} />
+      <Icon color={color} size={content.size} />
     </Box>
   );
 }
