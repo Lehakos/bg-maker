@@ -49,6 +49,13 @@ export type CardLayoutSize = {
   heightMm: number;
 };
 
+export type CardLayoutPadding = {
+  topMm: number;
+  rightMm: number;
+  bottomMm: number;
+  leftMm: number;
+};
+
 export type CardContentSource =
   | {
       mode: "static";
@@ -95,6 +102,7 @@ export type CardLayoutZone = {
 };
 
 export type CardSideLayout = {
+  paddingMm: CardLayoutPadding;
   zones: CardLayoutZone[];
 };
 
@@ -154,6 +162,20 @@ export const cardSizePresetDimensions: Record<
 export const defaultCardSize: CardLayoutSize = {
   preset: "poker",
   ...cardSizePresetDimensions.poker
+};
+
+export const defaultCardPaddingMm: CardLayoutPadding = {
+  topMm: 4,
+  rightMm: 4,
+  bottomMm: 4,
+  leftMm: 4
+};
+
+export const noCardPaddingMm: CardLayoutPadding = {
+  topMm: 0,
+  rightMm: 0,
+  bottomMm: 0,
+  leftMm: 0
 };
 
 export type DeckCardEntry = {
@@ -274,18 +296,31 @@ export function getFirstCardSideText(side: CardSideLayout) {
 function createDefaultCardSide(side: CardLayoutSide, text = ""): CardSideLayout {
   const trimmedText = text.trim();
 
+  if (side === "back" && trimmedText.length === 0) {
+    return {
+      paddingMm: { ...noCardPaddingMm },
+      zones: [
+        {
+          ...createVisualZone(`${side}-art`, "Art", 0, 0, 100, 100),
+          content: createImageContent()
+        }
+      ]
+    };
+  }
+
   return {
+    paddingMm: { ...defaultCardPaddingMm },
     zones: [
-      { ...createTextZone(`${side}-title`, "Title", 7, 6, 86, 12), content: createTextContent("") },
+      { ...createTextZone(`${side}-title`, "Title", 0, 0, 100, 12), content: createTextContent("") },
       {
-        ...createVisualZone(`${side}-art`, "Art", 7, 21, 86, 38),
+        ...createVisualZone(`${side}-art`, "Art", 0, 16, 100, 40),
         content: createImageContent()
       },
       {
-        ...createTextZone(`${side}-body`, "Body", 7, 62, 86, 24),
+        ...createTextZone(`${side}-body`, "Body", 0, 60, 100, 30),
         content: createTextContent(trimmedText)
       },
-      { ...createTextZone(`${side}-footer`, "Footer", 7, 89, 86, 6), content: createTextContent("") }
+      { ...createTextZone(`${side}-footer`, "Footer", 0, 94, 100, 6), content: createTextContent("") }
     ]
   };
 }
@@ -368,6 +403,7 @@ export function resolveCardLayout(layout: CardLayout, fieldValues: CardFieldValu
 
 function resolveCardSideLayout(side: CardSideLayout, fieldValues: CardFieldValues): CardSideLayout {
   return {
+    paddingMm: { ...side.paddingMm },
     zones: side.zones.map((zone) => ({
       ...zone,
       content: resolveCardZoneContent(zone.content, fieldValues)

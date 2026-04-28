@@ -163,6 +163,29 @@ class ComponentFormObject {
     await this.page.getByRole("option", { name: size }).click();
   }
 
+  async fillCardPadding(values: {
+    bottom?: string;
+    left?: string;
+    right?: string;
+    top?: string;
+  }) {
+    if (values.top !== undefined) {
+      await this.dialog.getByLabel("Padding top").fill(values.top);
+    }
+
+    if (values.right !== undefined) {
+      await this.dialog.getByLabel("Padding right").fill(values.right);
+    }
+
+    if (values.bottom !== undefined) {
+      await this.dialog.getByLabel("Padding bottom").fill(values.bottom);
+    }
+
+    if (values.left !== undefined) {
+      await this.dialog.getByLabel("Padding left").fill(values.left);
+    }
+  }
+
   async selectZoneTemplate(template: string) {
     await this.dialog.getByLabel("Zone template").click();
     await this.page.getByRole("option", { name: template }).click();

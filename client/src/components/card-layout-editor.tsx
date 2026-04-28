@@ -49,9 +49,11 @@ import {
   type CardIconId,
   type CardImageFit,
   type CardLayout,
+  type CardLayoutPadding,
   type CardLayoutSide,
   type CardLayoutSize,
   type CardLayoutZone,
+  type CardSideLayout,
   type CardTextAlignment,
   type CardTextZoneContent,
   type CardVisualHorizontalAlignment,
@@ -173,38 +175,55 @@ export function CardLayoutEditor({
     const preset = (value ?? "poker") as CardLayoutSize["preset"];
 
     if (preset === "custom") {
+      const size = {
+        preset,
+        widthMm: layout.size.widthMm,
+        heightMm: layout.size.heightMm
+      };
+
       updateLayout({
-        size: {
-          preset,
-          widthMm: layout.size.widthMm,
-          heightMm: layout.size.heightMm
-        }
+        size,
+        sides: normalizeSidePaddings(layout.sides, size)
       });
       return;
     }
 
+    const size = {
+      preset,
+      ...cardSizePresetDimensions[preset]
+    };
+
     updateLayout({
-      size: {
-        preset,
-        ...cardSizePresetDimensions[preset]
-      }
+      size,
+      sides: normalizeSidePaddings(layout.sides, size)
     });
   }
 
   function updateCustomSize(patch: Partial<Pick<CardLayoutSize, "heightMm" | "widthMm">>) {
+    const size = {
+      ...layout.size,
+      preset: "custom" as const,
+      ...patch
+    };
+
     updateLayout({
-      size: {
-        ...layout.size,
-        preset: "custom",
-        ...patch
-      }
+      size,
+      sides: normalizeSidePaddings(layout.sides, size)
     });
+  }
+
+  function updatePadding(patch: Partial<CardLayoutPadding>) {
+    updateSide((currentSide) => ({
+      ...currentSide,
+      paddingMm: normalizePaddingMm({ ...currentSide.paddingMm, ...patch }, layout.size)
+    }));
   }
 
   function applyZoneTemplate(templateId: CardZoneTemplateId) {
     const zones = buildTemplateZones(selectedSide, templateId);
 
-    updateSide(() => ({
+    updateSide((currentSide) => ({
+      ...currentSide,
       zones
     }));
     setZoneTemplate(templateId);
@@ -215,9 +234,9 @@ export function CardLayoutEditor({
     const zone: CardLayoutZone = {
       id: createId(`${selectedSide}-zone`),
       name: "Custom zone",
-      x: 10,
-      y: 10,
-      width: 80,
+      x: 0,
+      y: 0,
+      width: 100,
       height: 20,
       content: createTextContent("New text")
     };
@@ -249,7 +268,8 @@ export function CardLayoutEditor({
 
     const zones = sideLayout.zones.filter((zone) => zone.id !== zoneId);
 
-    updateSide(() => ({
+    updateSide((currentSide) => ({
+      ...currentSide,
       zones
     }));
     setSelectedZoneId(zones[0].id);
@@ -311,6 +331,62 @@ export function CardLayoutEditor({
             <Tabs.Tab value="back">Back</Tabs.Tab>
           </Tabs.List>
         </Tabs>
+
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>
+            {titleCase(selectedSide)} padding (mm)
+          </Text>
+          <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+            <NumberInput
+              allowDecimal
+              allowNegative={false}
+              aria-label="Padding top"
+              disabled={disabled}
+              label="Top"
+              min={0}
+              value={sideLayout.paddingMm.topMm}
+              onChange={(value) =>
+                updatePadding({ topMm: readFormNumber(value, sideLayout.paddingMm.topMm) })
+              }
+            />
+            <NumberInput
+              allowDecimal
+              allowNegative={false}
+              aria-label="Padding right"
+              disabled={disabled}
+              label="Right"
+              min={0}
+              value={sideLayout.paddingMm.rightMm}
+              onChange={(value) =>
+                updatePadding({ rightMm: readFormNumber(value, sideLayout.paddingMm.rightMm) })
+              }
+            />
+            <NumberInput
+              allowDecimal
+              allowNegative={false}
+              aria-label="Padding bottom"
+              disabled={disabled}
+              label="Bottom"
+              min={0}
+              value={sideLayout.paddingMm.bottomMm}
+              onChange={(value) =>
+                updatePadding({ bottomMm: readFormNumber(value, sideLayout.paddingMm.bottomMm) })
+              }
+            />
+            <NumberInput
+              allowDecimal
+              allowNegative={false}
+              aria-label="Padding left"
+              disabled={disabled}
+              label="Left"
+              min={0}
+              value={sideLayout.paddingMm.leftMm}
+              onChange={(value) =>
+                updatePadding({ leftMm: readFormNumber(value, sideLayout.paddingMm.leftMm) })
+              }
+            />
+          </SimpleGrid>
+        </Stack>
 
         <Group grow align="flex-end">
           <Select
@@ -921,50 +997,59 @@ function CardPreview({
       </Group>
       <Box className="card-preview-shell">
         <Box
-          ref={previewRef}
           className="card-preview"
           style={{ aspectRatio: `${layout.size.widthMm} / ${layout.size.heightMm}` }}
-          onPointerDown={(event) => {
-            const point = getPointerPercent(event);
-
-            if (!point) {
-              return;
-            }
-
-            const zone = getInteractionZoneAtPoint(point);
-
-            if (!zone) {
-              return;
-            }
-
-            startZoneInteraction(event, zone, pointIsInResizeCorner(point, zone) ? "resize" : "move");
-          }}
         >
-          {sideLayout.zones.map((zone) => (
-            <Box
-              key={zone.id}
-              aria-label={`Card zone ${zone.name}`}
-              className="card-preview-zone"
-              data-selected={zone.id === selectedZoneId ? "true" : undefined}
-              data-zone-name={zone.name}
-              style={{
-                left: `${zone.x}%`,
-                top: `${zone.y}%`,
-                width: `${zone.width}%`,
-                height: `${zone.height}%`
-              }}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSelectZone(zone.id);
-              }}
-            >
-              <Text className="card-preview-zone-label">{zone.name}</Text>
-              <Box className="card-preview-content">
-                <PreviewZoneContent content={zone.content} />
+          <Box
+            ref={previewRef}
+            className="card-preview-safe-area"
+            style={getPaddingAreaStyle(layout.size, sideLayout.paddingMm)}
+            onPointerDown={(event) => {
+              const point = getPointerPercent(event);
+
+              if (!point) {
+                return;
+              }
+
+              const zone = getInteractionZoneAtPoint(point);
+
+              if (!zone) {
+                return;
+              }
+
+              startZoneInteraction(
+                event,
+                zone,
+                pointIsInResizeCorner(point, zone) ? "resize" : "move"
+              );
+            }}
+          >
+            {sideLayout.zones.map((zone) => (
+              <Box
+                key={zone.id}
+                aria-label={`Card zone ${zone.name}`}
+                className="card-preview-zone"
+                data-selected={zone.id === selectedZoneId ? "true" : undefined}
+                data-zone-name={zone.name}
+                style={{
+                  left: `${zone.x}%`,
+                  top: `${zone.y}%`,
+                  width: `${zone.width}%`,
+                  height: `${zone.height}%`
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectZone(zone.id);
+                }}
+              >
+                <Text className="card-preview-zone-label">{zone.name}</Text>
+                <Box className="card-preview-content">
+                  <PreviewZoneContent content={zone.content} />
+                </Box>
+                <Box aria-hidden className="card-preview-zone-resize-handle" />
               </Box>
-              <Box aria-hidden className="card-preview-zone-resize-handle" />
-            </Box>
-          ))}
+            ))}
+          </Box>
         </Box>
       </Box>
     </Stack>
@@ -1026,18 +1111,18 @@ function buildTemplateZones(side: CardLayoutSide, templateId: CardZoneTemplateId
   switch (templateId) {
     case "classic":
       return [
-        createZone(`${side}-title`, "Title", 7, 6, 86, 12, createTextContent("")),
-        createZone(`${side}-art`, "Art", 7, 21, 86, 38, createVisualContent("image")),
-        createZone(`${side}-body`, "Body", 7, 62, 86, 24, createTextContent("")),
-        createZone(`${side}-footer`, "Footer", 7, 89, 86, 6, createTextContent(""))
+        createZone(`${side}-title`, "Title", 0, 0, 100, 12, createTextContent("")),
+        createZone(`${side}-art`, "Art", 0, 16, 100, 40, createVisualContent("image")),
+        createZone(`${side}-body`, "Body", 0, 60, 100, 30, createTextContent("")),
+        createZone(`${side}-footer`, "Footer", 0, 94, 100, 6, createTextContent(""))
       ];
 
     case "split":
       return [
-        createZone(`${side}-top`, "Top", 7, 6, 86, 13, createTextContent("")),
-        createZone(`${side}-left`, "Left", 7, 23, 41, 58, createTextContent("")),
-        createZone(`${side}-right`, "Right", 52, 23, 41, 58, createVisualContent("image")),
-        createZone(`${side}-bottom`, "Bottom", 7, 85, 86, 9, createTextContent(""))
+        createZone(`${side}-top`, "Top", 0, 0, 100, 14, createTextContent("")),
+        createZone(`${side}-left`, "Left", 0, 18, 48, 66, createTextContent("")),
+        createZone(`${side}-right`, "Right", 52, 18, 48, 66, createVisualContent("image")),
+        createZone(`${side}-bottom`, "Bottom", 0, 88, 100, 12, createTextContent(""))
       ];
 
     case "full-art":
@@ -1048,7 +1133,7 @@ function buildTemplateZones(side: CardLayoutSide, templateId: CardZoneTemplateId
       ];
 
     case "custom":
-      return [createZone(`${side}-custom`, "Custom", 7, 7, 86, 86, createTextContent(""))];
+      return [createZone(`${side}-custom`, "Custom", 0, 0, 100, 100, createTextContent(""))];
   }
 }
 
@@ -1116,6 +1201,72 @@ function getVisualAlignItems(alignment: CardVisualVerticalAlignment) {
     case "center":
       return "center";
   }
+}
+
+function getPaddingAreaStyle(size: CardLayoutSize, padding: CardLayoutPadding) {
+  return {
+    top: `${(padding.topMm / size.heightMm) * 100}%`,
+    right: `${(padding.rightMm / size.widthMm) * 100}%`,
+    bottom: `${(padding.bottomMm / size.heightMm) * 100}%`,
+    left: `${(padding.leftMm / size.widthMm) * 100}%`
+  };
+}
+
+function normalizeSidePaddings(
+  sides: Record<CardLayoutSide, CardSideLayout>,
+  size: Pick<CardLayoutSize, "heightMm" | "widthMm">
+) {
+  return {
+    front: {
+      ...sides.front,
+      paddingMm: normalizePaddingMm(sides.front.paddingMm, size)
+    },
+    back: {
+      ...sides.back,
+      paddingMm: normalizePaddingMm(sides.back.paddingMm, size)
+    }
+  };
+}
+
+function normalizePaddingMm(
+  padding: CardLayoutPadding,
+  size: Pick<CardLayoutSize, "heightMm" | "widthMm">
+): CardLayoutPadding {
+  const horizontal = normalizePaddingPair(padding.leftMm, padding.rightMm, size.widthMm);
+  const vertical = normalizePaddingPair(padding.topMm, padding.bottomMm, size.heightMm);
+
+  return {
+    topMm: vertical.start,
+    rightMm: horizontal.end,
+    bottomMm: vertical.end,
+    leftMm: horizontal.start
+  };
+}
+
+function normalizePaddingPair(start: number, end: number, total: number) {
+  const safeTotal = Math.max(1, total);
+  const maxCombined = Math.max(0, safeTotal - 1);
+  const normalizedStart = Math.max(0, Number.isFinite(start) ? start : 0);
+  const normalizedEnd = Math.max(0, Number.isFinite(end) ? end : 0);
+  const combined = normalizedStart + normalizedEnd;
+
+  if (combined <= maxCombined) {
+    return {
+      start: roundMm(normalizedStart),
+      end: roundMm(normalizedEnd)
+    };
+  }
+
+  const scale = combined === 0 ? 0 : maxCombined / combined;
+
+  return {
+    start: roundMm(normalizedStart * scale),
+    end: roundMm(normalizedEnd * scale)
+  };
+}
+
+function roundMm(value: number) {
+  return Math.round(value * 10) / 10;
 }
 
 function getZoneContentLabel(content: CardZoneContent) {

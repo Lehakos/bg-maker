@@ -21,6 +21,7 @@ import {
   type CardImageFieldValue,
   type CardImageFit,
   type CardLayout,
+  type CardLayoutPadding,
   type CardLayoutSide,
   type CardLayoutSize,
   type CardLayoutZone,
@@ -665,7 +666,7 @@ export function parseCardLayout(value: unknown): ParseResult<CardLayout> {
   const sides = {} as Record<CardLayoutSide, CardSideLayout>;
 
   for (const side of cardLayoutSides) {
-    const parsedSide = parseCardSideLayout(value.sides[side]);
+    const parsedSide = parseCardSideLayout(value.sides[side], size.value);
 
     if (!parsedSide.ok) {
       return parsedSide;
@@ -724,9 +725,66 @@ function parseCardLayoutSize(value: unknown): ParseResult<CardLayoutSize> {
   };
 }
 
-function parseCardSideLayout(value: unknown): ParseResult<CardSideLayout> {
+function parseCardLayoutPadding(
+  value: unknown,
+  size: CardLayoutSize
+): ParseResult<CardLayoutPadding> {
+  if (!isRecord(value)) {
+    return { ok: false, error: "Card padding must be an object" };
+  }
+
+  const top = readRequiredNumber(value.topMm, "Card padding top", { min: 0 });
+  const right = readRequiredNumber(value.rightMm, "Card padding right", { min: 0 });
+  const bottom = readRequiredNumber(value.bottomMm, "Card padding bottom", { min: 0 });
+  const left = readRequiredNumber(value.leftMm, "Card padding left", { min: 0 });
+
+  if (!top.ok) {
+    return top;
+  }
+
+  if (!right.ok) {
+    return right;
+  }
+
+  if (!bottom.ok) {
+    return bottom;
+  }
+
+  if (!left.ok) {
+    return left;
+  }
+
+  if (left.value + right.value >= size.widthMm) {
+    return { ok: false, error: "Card horizontal padding must leave room for zones" };
+  }
+
+  if (top.value + bottom.value >= size.heightMm) {
+    return { ok: false, error: "Card vertical padding must leave room for zones" };
+  }
+
+  return {
+    ok: true,
+    value: {
+      topMm: top.value,
+      rightMm: right.value,
+      bottomMm: bottom.value,
+      leftMm: left.value
+    }
+  };
+}
+
+function parseCardSideLayout(
+  value: unknown,
+  size: CardLayoutSize
+): ParseResult<CardSideLayout> {
   if (!isRecord(value)) {
     return { ok: false, error: "Card side layout must be an object" };
+  }
+
+  const padding = parseCardLayoutPadding(value.paddingMm, size);
+
+  if (!padding.ok) {
+    return padding;
   }
 
   const zones = parseCardZones(value.zones);
@@ -738,6 +796,7 @@ function parseCardSideLayout(value: unknown): ParseResult<CardSideLayout> {
   return {
     ok: true,
     value: {
+      paddingMm: padding.value,
       zones: zones.value
     }
   };

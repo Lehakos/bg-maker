@@ -67,6 +67,11 @@ test.describe("project components", () => {
     let form = await detailPage.openNewCardTemplateForm();
     await form.fillCommon({ name: "Spell card template" });
     await form.selectCardSize("Tarot (70 x 121 mm)");
+    await form.fillCardPadding({ top: "6", right: "5", bottom: "6", left: "5" });
+    await form.openCardSide("Back");
+    await expect(form.dialog.getByLabel("Padding top")).toHaveValue("0");
+    await form.fillCardPadding({ top: "3", right: "3", bottom: "3", left: "3" });
+    await form.openCardSide("Front");
     await form.selectZoneTemplate("Split");
     await form.selectPreviewZone("Left");
     await expect(form.selectedZoneInput()).toHaveValue("Left (Text)");
@@ -130,6 +135,14 @@ test.describe("project components", () => {
     await expect(templateEditForm.dialog.getByLabel("Card size")).toHaveValue(
       "Tarot (70 x 121 mm)"
     );
+    await expect(templateEditForm.dialog.getByLabel("Padding top")).toHaveValue("6");
+    await expect(templateEditForm.dialog.getByLabel("Padding right")).toHaveValue("5");
+    await expect(templateEditForm.dialog.getByLabel("Padding bottom")).toHaveValue("6");
+    await expect(templateEditForm.dialog.getByLabel("Padding left")).toHaveValue("5");
+    await templateEditForm.openCardSide("Back");
+    await expect(templateEditForm.dialog.getByLabel("Padding top")).toHaveValue("3");
+    await expect(templateEditForm.dialog.getByLabel("Padding right")).toHaveValue("3");
+    await templateEditForm.openCardSide("Front");
     await templateEditForm.selectPreviewZone("Left");
     await expect(templateEditForm.dialog.getByLabel("Content type")).toHaveValue("Text");
     await expect(templateEditForm.dialog.getByLabel("Content source")).toHaveValue(
@@ -302,6 +315,18 @@ test.describe("project components", () => {
         size: { preset: "poker", widthMm: 63, heightMm: 88 }
       }
     });
+    expect(legacyCardBody.layout.sides.front.paddingMm).toEqual({
+      topMm: 4,
+      rightMm: 4,
+      bottomMm: 4,
+      leftMm: 4
+    });
+    expect(legacyCardBody.layout.sides.back.paddingMm).toEqual({
+      topMm: 0,
+      rightMm: 0,
+      bottomMm: 0,
+      leftMm: 0
+    });
     expect(legacyCardBody.layout.sides.front.zones).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -310,6 +335,16 @@ test.describe("project components", () => {
         })
       ])
     );
+    expect(legacyCardBody.layout.sides.back.zones).toEqual([
+      expect.objectContaining({
+        name: "Art",
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        content: expect.objectContaining({ type: "visual", visualType: "image" })
+      })
+    ]);
 
     const deleteUsedTemplate = await request.delete(
       `/api/projects/${project.id}/card-templates/${legacyCardBody.templateId}`
@@ -341,6 +376,20 @@ test.describe("project components", () => {
         name: "bad custom size",
         layout: { ...validCardLayout(), size: { preset: "custom", widthMm: 10, heightMm: 88 } },
         error: "Card width must be at least 20"
+      },
+      {
+        name: "bad horizontal padding",
+        layout: {
+          ...validCardLayout(),
+          sides: {
+            ...validCardLayout().sides,
+            front: {
+              ...validCardLayout().sides.front,
+              paddingMm: { topMm: 4, rightMm: 40, bottomMm: 4, leftMm: 40 }
+            }
+          }
+        },
+        error: "Card horizontal padding must leave room for zones"
       },
       {
         name: "bad icon id",
@@ -429,35 +478,41 @@ function validCardLayout(elementType: "icon" | "image" | "text" = "text") {
     size: { preset: "poker", widthMm: 63, heightMm: 88 },
     sides: {
       front: {
+        paddingMm: { topMm: 4, rightMm: 4, bottomMm: 4, leftMm: 4 },
         zones: [
           {
             id: "front-body",
             name: "Body",
-            x: 7,
-            y: 7,
-            width: 86,
-            height: 86,
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 100,
             content
           }
         ]
       },
       back: {
+        paddingMm: { topMm: 0, rightMm: 0, bottomMm: 0, leftMm: 0 },
         zones: [
           {
-            id: "back-body",
-            name: "Body",
-            x: 7,
-            y: 7,
-            width: 86,
-            height: 86,
+            id: "back-art",
+            name: "Art",
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 100,
             content: {
-              type: "text",
+              type: "visual",
               source: { mode: "static" },
-              text: "",
-              fontSize: 14,
-              bold: false,
-              align: "center",
-              color: "#1f2937"
+              visualType: "image",
+              dataUrl: "",
+              fileName: "",
+              fit: "contain",
+              iconId: "sword",
+              size: 28,
+              color: "#0f766e",
+              horizontalAlign: "center",
+              verticalAlign: "center"
             }
           }
         ]
