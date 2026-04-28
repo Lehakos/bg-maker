@@ -61,7 +61,12 @@ import {
 } from "@bg-maker/shared";
 import { componentTypeLabels } from "./component-labels";
 import { CardLayoutEditor, CardPreview, ZoneEditorPanel } from "./card-layout-editor";
-import { createId, createTextContent, createZone } from "./layout-zone-utils";
+import {
+  createDefaultLayoutZone,
+  createTextContent,
+  createZone,
+  type ZoneContentKind
+} from "./layout-zone-utils";
 import { CustomPieceShapeEditor, PiecePreview, PieceShapePicker } from "./piece-preview";
 import { ProjectColorValueInput } from "./project-color-value-input";
 import { CustomTileShapeEditor, TilePreview, TileShapePicker } from "./tile-preview";
@@ -1071,16 +1076,8 @@ function PieceTemplateFields({
     }));
   }
 
-  function addZone() {
-    const zone = createZone(
-      createId(`${selectedFace.id}-zone`),
-      "Custom zone",
-      0,
-      0,
-      100,
-      20,
-      createTextContent("New text")
-    );
+  function addZone(kind: ZoneContentKind) {
+    const zone = createDefaultLayoutZone(`${selectedFace.id}-zone`, kind);
 
     updateFace(selectedFace.id, (face) => ({
       ...face,
@@ -1384,16 +1381,8 @@ function TileTemplateFields({
     }));
   }
 
-  function addZone() {
-    const zone = createZone(
-      createId(`${selectedSideId}-zone`),
-      "Custom zone",
-      0,
-      0,
-      100,
-      20,
-      createTextContent("New text")
-    );
+  function addZone(kind: ZoneContentKind) {
+    const zone = createDefaultLayoutZone(`${selectedSideId}-zone`, kind);
 
     updateSide(selectedSideId, (side) => ({
       ...side,

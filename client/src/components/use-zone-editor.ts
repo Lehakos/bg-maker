@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import type { LayoutZone, LayoutZoneContent } from "@bg-maker/shared";
+import type { LayoutZone } from "@bg-maker/shared";
+import { getZoneContentLabel } from "./layout-zone-utils";
 
 export type ZoneEditorState = {
   activeZone: LayoutZone | null;
@@ -38,17 +39,4 @@ export function useZoneEditor({
     zones,
     onSelectedZoneIdChange
   };
-}
-
-function getZoneContentLabel(content: LayoutZoneContent) {
-  return content.type === "text" ? "Text" : titleCase(content.visualType);
-}
-
-function titleCase(value: string) {
-  return value
-    .replace(/[_-]+/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }

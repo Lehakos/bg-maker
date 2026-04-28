@@ -152,6 +152,126 @@
   outline: none;
 }
 
+.zone-list {
+  display: grid;
+  gap: 8px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.zone-list--empty {
+  padding: 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+}
+
+.zone-list-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 10px;
+  color: #0f172a;
+  text-align: left;
+  border: 1px solid #d8dee7;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.zone-list-item:hover:not(:disabled),
+.zone-list-item[data-selected="true"] {
+  border-color: #0f766e;
+  background: #f0fdfa;
+}
+
+.zone-list-item[data-selected="true"] {
+  box-shadow: inset 3px 0 0 #0f766e;
+}
+
+.zone-list-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.zone-list-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #0f766e;
+  border-radius: 8px;
+  background: #ccfbf1;
+}
+
+.zone-list-item-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.zone-list-item-title,
+.zone-list-item-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zone-list-item-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.zone-list-item-meta {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.zone-controls-group {
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.zone-controls-group:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.zone-controls-group-title {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.zone-layout-preset-icon {
+  position: relative;
+  display: inline-block;
+  width: 18px;
+  height: 22px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  opacity: 0.9;
+}
+
+.zone-layout-preset-icon-area {
+  position: absolute;
+  min-width: 3px;
+  min-height: 3px;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.62;
+}
+
 .card-final-preview {
   box-shadow: 0 12px 26px rgba(17, 24, 39, 0.12);
 }

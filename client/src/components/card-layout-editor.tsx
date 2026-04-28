@@ -6,6 +6,7 @@ import {
   Checkbox,
   FileInput,
   Group,
+  Menu,
   NumberInput,
   Select,
   SegmentedControl,
@@ -19,6 +20,7 @@ import {
 } from "@mantine/core";
 import {
   AlertTriangle,
+  ChevronDown,
   Coins,
   Heart,
   Image as ImageIcon,
@@ -29,10 +31,17 @@ import {
   Star,
   Sword,
   Trash2,
+  Type as TypeIcon,
   Zap,
   type LucideIcon
 } from "lucide-react";
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent
+} from "react";
 import {
   cardIconIds,
   cardImageFits,
@@ -61,7 +70,17 @@ import {
   type VisualZoneContent,
   type LayoutZoneContent
 } from "@bg-maker/shared";
-import { createId, createTextContent, createVisualContent, createZone } from "./layout-zone-utils";
+import {
+  createContentForZoneKind,
+  createDefaultLayoutZone,
+  createTextContent,
+  createVisualContent,
+  createZone,
+  getZoneContentKind,
+  getZoneContentLabel,
+  zoneContentKindLabels,
+  type ZoneContentKind
+} from "./layout-zone-utils";
 import { ProjectColorValueInput } from "./project-color-value-input";
 import { useZoneEditor, type ZoneEditorState } from "./use-zone-editor";
 import "./card-layout-editor.css";
@@ -97,9 +116,28 @@ const zoneTemplateOptions: { value: CardZoneTemplateId; label: string }[] = [
   { value: "custom", label: "Custom" }
 ];
 
-const zoneContentTypeOptions = [
-  { value: "text", label: "Text" },
-  { value: "visual", label: "Visual" }
+const zoneContentTypeOptions = (["text", "image", "icon"] as const).map((kind) => ({
+  value: kind,
+  label: zoneContentKindLabels[kind]
+}));
+
+const zoneAddOptions: { icon: LucideIcon; label: string; value: ZoneContentKind }[] = [
+  { value: "text", label: "Text", icon: TypeIcon },
+  { value: "image", label: "Image", icon: ImageIcon },
+  { value: "icon", label: "Icon", icon: Star }
+];
+
+const zoneLayoutPresets: {
+  label: string;
+  patch: Pick<LayoutZone, "height" | "width" | "x" | "y">;
+  value: string;
+}[] = [
+  { value: "full", label: "Full", patch: { x: 0, y: 0, width: 100, height: 100 } },
+  { value: "top", label: "Top", patch: { x: 0, y: 0, width: 100, height: 14 } },
+  { value: "center", label: "Center", patch: { x: 12, y: 38, width: 76, height: 24 } },
+  { value: "bottom", label: "Bottom", patch: { x: 0, y: 84, width: 100, height: 16 } },
+  { value: "art", label: "Art", patch: { x: 8, y: 16, width: 84, height: 52 } },
+  { value: "inset", label: "Inset", patch: { x: 8, y: 8, width: 84, height: 84 } }
 ];
 
 const contentSourceOptions = [
@@ -116,11 +154,6 @@ const colorSwatchPalette = [
   "#f59e0b",
   "#16a34a",
   "#f8fafc"
-];
-
-const visualTypeOptions = [
-  { value: "image", label: "Image" },
-  { value: "icon", label: "Icon" }
 ];
 
 const alignmentOptions = cardTextAlignments.map((alignment) => ({
@@ -253,16 +286,8 @@ export function CardLayoutEditor({
     setSelectedZoneId(zones[0].id);
   }
 
-  function addZone() {
-    const zone: LayoutZone = {
-      id: createId(`${selectedSide}-zone`),
-      name: "Custom zone",
-      x: 0,
-      y: 0,
-      width: 100,
-      height: 20,
-      content: createTextContent("New text")
-    };
+  function addZone(kind: ZoneContentKind) {
+    const zone = createDefaultLayoutZone(`${selectedSide}-zone`, kind);
 
     updateSide((currentSide) => ({
       ...currentSide,
@@ -446,7 +471,7 @@ export function CardLayoutEditor({
                   disabled={disabled}
                   editor={zoneEditor}
                   projectParameters={projectParameters}
-                  title="Selected zone"
+                  title="Zones"
                   uploadError={uploadError}
                   onAddZone={addZone}
                   onRemoveZone={removeZone}
@@ -508,50 +533,42 @@ export function ZoneEditorPanel({
   projectParameters: ProjectParameter[];
   title?: string;
   uploadError: string | null;
-  onAddZone: () => void;
+  onAddZone: (kind: ZoneContentKind) => void;
   onRemoveZone: (zoneId: string) => void;
   onUpdateZone: (zoneId: string, patch: Partial<LayoutZone>) => void;
   onUploadError: (error: string | null) => void;
 }) {
-  const { activeZone, zoneOptions, zones, onSelectedZoneIdChange } = editor;
+  const { activeZone, zones, onSelectedZoneIdChange } = editor;
+  const heading = title ?? "Zones";
 
   return (
     <>
-      {title ? <Text className="template-editor-section-title">{title}</Text> : null}
-      <Group align="flex-end" wrap="nowrap">
-        <Select
-          allowDeselect={false}
-          data={zoneOptions}
-          disabled={disabled || zoneOptions.length === 0}
-          label="Selected zone"
-          value={activeZone?.id ?? null}
-          onChange={onSelectedZoneIdChange}
-        />
-        <Button
-          disabled={disabled}
-          leftSection={<Plus size={14} />}
-          radius={8}
-          type="button"
-          variant="light"
-          onClick={onAddZone}
-        >
-          Add zone
-        </Button>
-        <Tooltip label="Remove zone" withArrow>
-          <ActionIcon
-            aria-label="Remove zone"
-            color="red"
-            disabled={disabled || !activeZone || zones.length <= 1}
-            mb={2}
-            radius={8}
-            size={36}
-            variant="subtle"
-            onClick={() => activeZone && onRemoveZone(activeZone.id)}
-          >
-            <Trash2 size={16} />
-          </ActionIcon>
-        </Tooltip>
+      <Group align="center" justify="space-between" wrap="nowrap">
+        <Text className="template-editor-section-title">{heading}</Text>
+        <Group gap="xs" wrap="nowrap">
+          <ZoneAddMenu disabled={disabled} onAddZone={onAddZone} />
+          <Tooltip label="Remove zone" withArrow>
+            <ActionIcon
+              aria-label="Remove zone"
+              color="red"
+              disabled={disabled || !activeZone || zones.length <= 1}
+              radius={8}
+              size={36}
+              variant="subtle"
+              onClick={() => activeZone && onRemoveZone(activeZone.id)}
+            >
+              <Trash2 size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
       </Group>
+
+      <ZoneList
+        activeZoneId={activeZone?.id ?? null}
+        disabled={disabled}
+        zones={zones}
+        onSelectZone={onSelectedZoneIdChange}
+      />
 
       {activeZone ? (
         <ZoneControls
@@ -566,6 +583,107 @@ export function ZoneEditorPanel({
       ) : null}
     </>
   );
+}
+
+function ZoneAddMenu({
+  disabled,
+  onAddZone
+}: {
+  disabled: boolean;
+  onAddZone: (kind: ZoneContentKind) => void;
+}) {
+  return (
+    <Menu position="bottom-end" shadow="md" width={180}>
+      <Menu.Target>
+        <Button
+          disabled={disabled}
+          leftSection={<Plus size={14} />}
+          radius={8}
+          rightSection={<ChevronDown aria-hidden size={14} />}
+          type="button"
+          variant="light"
+        >
+          Add zone
+        </Button>
+      </Menu.Target>
+      <Menu.Dropdown>
+        {zoneAddOptions.map((option) => {
+          const Icon = option.icon;
+
+          return (
+            <Menu.Item
+              key={option.value}
+              leftSection={<Icon size={14} />}
+              onClick={() => onAddZone(option.value)}
+            >
+              {option.label}
+            </Menu.Item>
+          );
+        })}
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
+
+function ZoneList({
+  activeZoneId,
+  disabled,
+  zones,
+  onSelectZone
+}: {
+  activeZoneId: string | null;
+  disabled: boolean;
+  zones: LayoutZone[];
+  onSelectZone: (zoneId: string | null) => void;
+}) {
+  if (zones.length === 0) {
+    return (
+      <Box className="zone-list zone-list--empty">
+        <Text c="dimmed" size="sm">
+          No zones
+        </Text>
+      </Box>
+    );
+  }
+
+  return (
+    <Box aria-label="Zones" className="zone-list" role="listbox">
+      {zones.map((zone) => (
+        <button
+          key={zone.id}
+          aria-selected={zone.id === activeZoneId}
+          className="zone-list-item"
+          data-selected={zone.id === activeZoneId ? "true" : undefined}
+          disabled={disabled}
+          role="option"
+          type="button"
+          onClick={() => onSelectZone(zone.id)}
+        >
+          <span className="zone-list-item-icon">
+            <ZoneTypeIcon content={zone.content} />
+          </span>
+          <span className="zone-list-item-copy">
+            <span className="zone-list-item-title">{zone.name || "Untitled zone"}</span>
+            <span className="zone-list-item-meta">{getZoneContentLabel(zone.content)}</span>
+          </span>
+        </button>
+      ))}
+    </Box>
+  );
+}
+
+function ZoneTypeIcon({ content }: { content: LayoutZoneContent }) {
+  const kind = getZoneContentKind(content);
+
+  if (kind === "text") {
+    return <TypeIcon size={16} />;
+  }
+
+  if (kind === "image") {
+    return <ImageIcon size={16} />;
+  }
+
+  return <Star size={16} />;
 }
 
 export function ZoneControls({
@@ -585,8 +703,25 @@ export function ZoneControls({
   uploadError: string | null;
   zone: LayoutZone;
 }) {
-  function setContentType(type: "text" | "visual") {
-    onContentChange(type === "text" ? createTextContent(zone.name) : createVisualContent("image"));
+  const contentDraftsRef = useRef<
+    Record<string, Partial<Record<ZoneContentKind, LayoutZoneContent>>>
+  >({});
+  const contentKind = getZoneContentKind(zone.content);
+
+  useEffect(() => {
+    const zoneDrafts = (contentDraftsRef.current[zone.id] ??= {});
+    zoneDrafts[contentKind] = zone.content;
+  }, [contentKind, zone.content, zone.id]);
+
+  function setContentKind(kind: ZoneContentKind) {
+    const zoneDrafts = (contentDraftsRef.current[zone.id] ??= {});
+    zoneDrafts[contentKind] = zone.content;
+
+    if (kind !== "image") {
+      onUploadError(null);
+    }
+
+    onContentChange(zoneDrafts[kind] ?? createContentForZoneKind(kind, zone.name));
   }
 
   function updateContentSource(source: LayoutContentSource) {
@@ -597,138 +732,222 @@ export function ZoneControls({
 
   return (
     <Stack gap="md">
-      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-        <TextInput
-          disabled={disabled}
-          label="Zone name"
-          value={zone.name}
-          onChange={(event) => onChange({ name: event.currentTarget.value })}
-        />
-        <Select
-          allowDeselect={false}
-          data={zoneContentTypeOptions}
-          disabled={disabled}
-          label="Content type"
-          value={zone.content.type}
-          onChange={(value) => setContentType((value ?? "text") as "text" | "visual")}
-        />
-        <NumberInput
-          allowDecimal
-          allowNegative={false}
-          disabled={disabled}
-          label="Zone X"
-          max={100}
-          min={0}
-          suffix=" %"
-          value={zone.x}
-          onChange={(value) => onChange({ x: readFormNumber(value, 0) })}
-        />
-        <NumberInput
-          allowDecimal
-          allowNegative={false}
-          disabled={disabled}
-          label="Zone Y"
-          max={100}
-          min={0}
-          suffix=" %"
-          value={zone.y}
-          onChange={(value) => onChange({ y: readFormNumber(value, 0) })}
-        />
-        <NumberInput
-          allowDecimal
-          allowNegative={false}
-          disabled={disabled}
-          label="Zone width"
-          max={100}
-          min={1}
-          suffix=" %"
-          value={zone.width}
-          onChange={(value) => onChange({ width: readFormNumber(value, 1) })}
-        />
-        <NumberInput
-          allowDecimal
-          allowNegative={false}
-          disabled={disabled}
-          label="Zone height"
-          max={100}
-          min={1}
-          suffix=" %"
-          value={zone.height}
-          onChange={(value) => onChange({ height: readFormNumber(value, 1) })}
-        />
-      </SimpleGrid>
+      <Stack className="zone-controls-group" gap="sm">
+        <Text className="zone-controls-group-title">Layout</Text>
+        <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="xs">
+          {zoneLayoutPresets.map((preset) => (
+            <Button
+              key={preset.value}
+              className="zone-layout-preset-button"
+              disabled={disabled}
+              justify="flex-start"
+              leftSection={<ZoneLayoutPresetIcon patch={preset.patch} />}
+              radius={8}
+              size="xs"
+              type="button"
+              variant="light"
+              onClick={() => onChange(preset.patch)}
+            >
+              {preset.label}
+            </Button>
+          ))}
+        </SimpleGrid>
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+          <NumberInput
+            allowDecimal
+            allowNegative={false}
+            disabled={disabled}
+            label="Left"
+            max={100}
+            min={0}
+            suffix=" %"
+            value={zone.x}
+            onChange={(value) => onChange({ x: readFormNumber(value, 0) })}
+          />
+          <NumberInput
+            allowDecimal
+            allowNegative={false}
+            disabled={disabled}
+            label="Top"
+            max={100}
+            min={0}
+            suffix=" %"
+            value={zone.y}
+            onChange={(value) => onChange({ y: readFormNumber(value, 0) })}
+          />
+          <NumberInput
+            allowDecimal
+            allowNegative={false}
+            disabled={disabled}
+            label="Width"
+            max={100}
+            min={1}
+            suffix=" %"
+            value={zone.width}
+            onChange={(value) => onChange({ width: readFormNumber(value, 1) })}
+          />
+          <NumberInput
+            allowDecimal
+            allowNegative={false}
+            disabled={disabled}
+            label="Height"
+            max={100}
+            min={1}
+            suffix=" %"
+            value={zone.height}
+            onChange={(value) => onChange({ height: readFormNumber(value, 1) })}
+          />
+        </SimpleGrid>
+      </Stack>
 
-      <Stack gap="xs">
-        <Text size="sm" fw={500}>
-          Content source
-        </Text>
-        <SegmentedControl
-          aria-label="Content source"
-          data={contentSourceOptions}
-          disabled={disabled}
-          fullWidth
-          value={sourceMode}
-          onChange={(value) =>
-            updateContentSource(
-              value === "field"
-                ? {
-                    mode: "field",
-                    fieldKey:
-                      zone.content.source?.mode === "field"
-                        ? zone.content.source.fieldKey
-                        : normalizeFieldKey(zone.name)
-                  }
-                : { mode: "static" }
-            )
-          }
-        />
-        <Text c="dimmed" size="xs">
-          {sourceMode === "field"
-            ? "Each component using this template fills this in."
-            : "The same value is used on every component."}
-        </Text>
-        {zone.content.source?.mode === "field" ? (
+      <Stack className="zone-controls-group" gap="sm">
+        <Text className="zone-controls-group-title">Content</Text>
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
           <TextInput
             disabled={disabled}
-            label="Field key"
-            value={zone.content.source.fieldKey}
-            onChange={(event) =>
-              updateContentSource({
-                mode: "field",
-                fieldKey: normalizeFieldKey(event.currentTarget.value)
-              })
+            label="Name"
+            value={zone.name}
+            onChange={(event) => onChange({ name: event.currentTarget.value })}
+          />
+          <Select
+            allowDeselect={false}
+            data={zoneContentTypeOptions}
+            disabled={disabled}
+            label="Type"
+            value={contentKind}
+            onChange={(value) => setContentKind((value ?? "text") as ZoneContentKind)}
+          />
+        </SimpleGrid>
+
+        <Stack gap="xs">
+          <Text size="sm" fw={500}>
+            Content source
+          </Text>
+          <SegmentedControl
+            aria-label="Content source"
+            data={contentSourceOptions}
+            disabled={disabled}
+            fullWidth
+            value={sourceMode}
+            onChange={(value) =>
+              updateContentSource(
+                value === "field"
+                  ? {
+                      mode: "field",
+                      fieldKey:
+                        zone.content.source?.mode === "field"
+                          ? zone.content.source.fieldKey
+                          : normalizeFieldKey(zone.name)
+                    }
+                  : { mode: "static" }
+              )
             }
           />
+          <Text c="dimmed" size="xs">
+            {sourceMode === "field"
+              ? "Each component using this template fills this in."
+              : "The same value is used on every component."}
+          </Text>
+          {zone.content.source?.mode === "field" ? (
+            <TextInput
+              disabled={disabled}
+              label="Field key"
+              value={zone.content.source.fieldKey}
+              onChange={(event) =>
+                updateContentSource({
+                  mode: "field",
+                  fieldKey: normalizeFieldKey(event.currentTarget.value)
+                })
+              }
+            />
+          ) : null}
+        </Stack>
+
+        {zone.content.type === "text" ? (
+          <TextContentControls
+            content={zone.content}
+            disabled={disabled}
+            onChange={(content) => onContentChange(content)}
+          />
+        ) : (
+          <VisualContentControls
+            content={zone.content}
+            disabled={disabled}
+            onChange={(content) => onContentChange(content)}
+            onUploadError={onUploadError}
+          />
+        )}
+
+        {uploadError ? (
+          <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
+            {uploadError}
+          </Alert>
         ) : null}
       </Stack>
 
-      {zone.content.type === "text" ? (
-        <TextContentControls
-          content={zone.content}
-          disabled={disabled}
-          projectParameters={projectParameters ?? []}
-          onChange={(content) => onContentChange(content)}
-        />
-      ) : (
-        <VisualContentControls
-          content={zone.content}
-          disabled={disabled}
-          projectParameters={projectParameters ?? []}
-          onChange={(content) => onContentChange(content)}
-          onUploadError={onUploadError}
-        />
-      )}
-
-      {uploadError ? (
-        <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
-          {uploadError}
-        </Alert>
-      ) : null}
+      <Stack className="zone-controls-group" gap="sm">
+        <Text className="zone-controls-group-title">Style</Text>
+        {zone.content.type === "text" ? (
+          <TextStyleControls
+            content={zone.content}
+            disabled={disabled}
+            projectParameters={projectParameters ?? []}
+            onChange={(content) => onContentChange(content)}
+          />
+        ) : (
+          <VisualStyleControls
+            content={zone.content}
+            disabled={disabled}
+            projectParameters={projectParameters ?? []}
+            onChange={(content) => onContentChange(content)}
+          />
+        )}
+      </Stack>
     </Stack>
   );
 }
 
+function ZoneLayoutPresetIcon({
+  patch
+}: {
+  patch: Pick<LayoutZone, "height" | "width" | "x" | "y">;
+}) {
+  return (
+    <span aria-hidden className="zone-layout-preset-icon">
+      <span
+        className="zone-layout-preset-icon-area"
+        style={{
+          height: `${patch.height}%`,
+          left: `${patch.x}%`,
+          top: `${patch.y}%`,
+          width: `${patch.width}%`
+        }}
+      />
+    </span>
+  );
+}
+
 function TextContentControls({
+  content,
+  disabled,
+  onChange
+}: {
+  content: TextZoneContent;
+  disabled: boolean;
+  onChange: (content: TextZoneContent) => void;
+}) {
+  return (
+    <Textarea
+      disabled={disabled}
+      label="Text content"
+      minRows={3}
+      value={content.text}
+      onChange={(event) => onChange({ ...content, text: event.currentTarget.value })}
+    />
+  );
+}
+
+function TextStyleControls({
   content,
   disabled,
   projectParameters,
@@ -741,13 +960,6 @@ function TextContentControls({
 }) {
   return (
     <Stack gap="sm">
-      <Textarea
-        disabled={disabled}
-        label="Text content"
-        minRows={3}
-        value={content.text}
-        onChange={(event) => onChange({ ...content, text: event.currentTarget.value })}
-      />
       <Group grow align="flex-start">
         <NumberInput
           allowDecimal={false}
@@ -792,28 +1004,39 @@ function TextContentControls({
 function VisualContentControls({
   content,
   disabled,
-  projectParameters,
   onChange,
   onUploadError
 }: {
   content: VisualZoneContent;
   disabled: boolean;
-  projectParameters: ProjectParameter[];
   onChange: (content: VisualZoneContent) => void;
   onUploadError: (error: string | null) => void;
 }) {
+  return content.visualType === "image" ? (
+    <ImageContentControls
+      content={content}
+      disabled={disabled}
+      onChange={onChange}
+      onUploadError={onUploadError}
+    />
+  ) : (
+    <IconContentControls content={content} disabled={disabled} onChange={onChange} />
+  );
+}
+
+function VisualStyleControls({
+  content,
+  disabled,
+  projectParameters,
+  onChange
+}: {
+  content: VisualZoneContent;
+  disabled: boolean;
+  projectParameters: ProjectParameter[];
+  onChange: (content: VisualZoneContent) => void;
+}) {
   return (
     <Stack gap="sm">
-      <Select
-        allowDeselect={false}
-        data={visualTypeOptions}
-        disabled={disabled}
-        label="Visual type"
-        value={content.visualType}
-        onChange={(value) =>
-          onChange({ ...content, visualType: (value ?? "image") as "image" | "icon" })
-        }
-      />
       <Group grow align="flex-start">
         <Select
           allowDeselect={false}
@@ -844,19 +1067,38 @@ function VisualContentControls({
       </Group>
 
       {content.visualType === "image" ? (
-        <ImageContentControls
-          content={content}
+        <Select
+          allowDeselect={false}
+          data={imageFitOptions}
           disabled={disabled}
-          onChange={onChange}
-          onUploadError={onUploadError}
+          label="Image fit"
+          value={content.fit}
+          onChange={(value) => onChange({ ...content, fit: (value ?? "contain") as CardImageFit })}
         />
       ) : (
-        <IconContentControls
-          content={content}
-          disabled={disabled}
-          projectParameters={projectParameters}
-          onChange={onChange}
-        />
+        <Group grow align="flex-start">
+          <NumberInput
+            allowDecimal={false}
+            allowNegative={false}
+            disabled={disabled}
+            label="Icon size"
+            max={96}
+            min={8}
+            suffix=" px"
+            value={content.size}
+            onChange={(value) =>
+              onChange({ ...content, size: readFormNumber(value, content.size) })
+            }
+          />
+          <ProjectColorValueInput
+            disabled={disabled}
+            label="Icon color"
+            projectParameters={projectParameters}
+            swatches={colorSwatchPalette}
+            value={content.color}
+            onChange={(value) => onChange({ ...content, color: value })}
+          />
+        </Group>
       )}
     </Stack>
   );
@@ -916,14 +1158,6 @@ function ImageContentControls({
         placeholder={content.fileName || "Choose image"}
         onChange={uploadImage}
       />
-      <Select
-        allowDeselect={false}
-        data={imageFitOptions}
-        disabled={disabled}
-        label="Image fit"
-        value={content.fit}
-        onChange={(value) => onChange({ ...content, fit: (value ?? "contain") as CardImageFit })}
-      />
       <Text size="sm" c="dimmed">
         {content.fileName || "No image selected"}
       </Text>
@@ -934,44 +1168,21 @@ function ImageContentControls({
 function IconContentControls({
   content,
   disabled,
-  projectParameters,
   onChange
 }: {
   content: VisualZoneContent;
   disabled: boolean;
-  projectParameters: ProjectParameter[];
   onChange: (content: VisualZoneContent) => void;
 }) {
   return (
-    <Group grow align="flex-start">
-      <Select
-        allowDeselect={false}
-        data={iconOptions}
-        disabled={disabled}
-        label="Icon"
-        value={content.iconId}
-        onChange={(value) => onChange({ ...content, iconId: (value ?? "sword") as CardIconId })}
-      />
-      <NumberInput
-        allowDecimal={false}
-        allowNegative={false}
-        disabled={disabled}
-        label="Icon size"
-        max={96}
-        min={8}
-        suffix=" px"
-        value={content.size}
-        onChange={(value) => onChange({ ...content, size: readFormNumber(value, content.size) })}
-      />
-      <ProjectColorValueInput
-        disabled={disabled}
-        label="Icon color"
-        projectParameters={projectParameters}
-        swatches={colorSwatchPalette}
-        value={content.color}
-        onChange={(value) => onChange({ ...content, color: value })}
-      />
-    </Group>
+    <Select
+      allowDeselect={false}
+      data={iconOptions}
+      disabled={disabled}
+      label="Icon"
+      value={content.iconId}
+      onChange={(value) => onChange({ ...content, iconId: (value ?? "sword") as CardIconId })}
+    />
   );
 }
 
