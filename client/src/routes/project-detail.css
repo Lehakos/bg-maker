@@ -1,0 +1,37 @@
+.component-actions-header,
+.component-actions-cell {
+  width: 116px;
+}
+
+.component-row-actions,
+.card-template-row-actions {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(4px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.component-table-row:hover .component-row-actions,
+.component-table-row:focus-within .component-row-actions,
+.card-template-table-row:hover .card-template-row-actions,
+.card-template-table-row:focus-within .card-template-row-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.component-table-row:hover,
+.card-template-table-row:hover {
+  background: rgba(15, 118, 110, 0.04);
+}
+
+@media (hover: none) {
+  .component-row-actions,
+  .card-template-row-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+}

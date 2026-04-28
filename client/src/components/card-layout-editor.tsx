@@ -61,6 +61,8 @@ import {
   type LayoutZoneContent
 } from "@bg-maker/shared";
 import { createId, createTextContent, createVisualContent, createZone } from "./layout-zone-utils";
+import "./card-layout-editor.css";
+import "./template-editor.css";
 
 type CardLayoutEditorProps = {
   disabled?: boolean;
@@ -352,7 +354,9 @@ export function CardLayoutEditor({
               </Stack>
 
               <Stack className="template-editor-section" gap="sm">
-                <Text className="template-editor-section-title">{titleCase(selectedSide)} side</Text>
+                <Text className="template-editor-section-title">
+                  {titleCase(selectedSide)} side
+                </Text>
                 <Stack gap="xs">
                   <Text size="sm" fw={500}>
                     Padding
@@ -381,7 +385,9 @@ export function CardLayoutEditor({
                       suffix=" mm"
                       value={sideLayout.paddingMm.rightMm}
                       onChange={(value) =>
-                        updatePadding({ rightMm: readFormNumber(value, sideLayout.paddingMm.rightMm) })
+                        updatePadding({
+                          rightMm: readFormNumber(value, sideLayout.paddingMm.rightMm)
+                        })
                       }
                     />
                     <NumberInput
@@ -537,9 +543,7 @@ export function ZoneControls({
   zone: LayoutZone;
 }) {
   function setContentType(type: "text" | "visual") {
-    onContentChange(
-      type === "text" ? createTextContent(zone.name) : createVisualContent("image")
-    );
+    onContentChange(type === "text" ? createTextContent(zone.name) : createVisualContent("image"));
   }
 
   function updateContentSource(source: LayoutContentSource) {
@@ -707,7 +711,9 @@ function TextContentControls({
           min={8}
           suffix=" px"
           value={content.fontSize}
-          onChange={(value) => onChange({ ...content, fontSize: readFormNumber(value, content.fontSize) })}
+          onChange={(value) =>
+            onChange({ ...content, fontSize: readFormNumber(value, content.fontSize) })
+          }
         />
         <ColorInput
           disabled={disabled}
@@ -1041,8 +1047,7 @@ function InteractiveCardPreview({
     const thresholdY = (zoneResizeHandleHitSize / rect.height) * 100;
 
     return (
-      point.x >= zone.x + zone.width - thresholdX &&
-      point.y >= zone.y + zone.height - thresholdY
+      point.x >= zone.x + zone.width - thresholdX && point.y >= zone.y + zone.height - thresholdY
     );
   }
 

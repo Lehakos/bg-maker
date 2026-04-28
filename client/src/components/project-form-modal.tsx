@@ -12,6 +12,7 @@ import {
 import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { projectStatuses, type CreateGameProjectInput, type ProjectStatus } from "@bg-maker/shared";
+import "./form-modal.css";
 
 export type ProjectFormValues = Required<CreateGameProjectInput>;
 
@@ -188,7 +189,6 @@ function ProjectFormContent({
           disabled={loading}
           onChange={(event) => setValues({ ...values, notes: event.currentTarget.value })}
         />
-
       </Stack>
       <Group className="app-form-modal-footer" justify="flex-end">
         <Button type="button" variant="subtle" color="gray" onClick={onClose}>

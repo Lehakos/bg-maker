@@ -6,6 +6,7 @@ import { APP_NAME } from "@bg-maker/shared";
 import { Boxes, Plus } from "lucide-react";
 import { createProject, getApiErrorMessage } from "../api/client";
 import { ProjectFormModal } from "../components/project-form-modal";
+import "./root.css";
 
 export function RootLayout() {
   const [projectModalOpened, { close: closeProjectModal, open: openProjectModal }] =

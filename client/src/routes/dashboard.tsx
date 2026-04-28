@@ -30,6 +30,7 @@ import {
 } from "../api/client";
 import { ProjectFormModal, type ProjectFormValues } from "../components/project-form-modal";
 import { getProjectFormValues } from "../components/project-form-values";
+import "./dashboard.css";
 
 const statusColors: Record<ProjectStatus, string> = {
   draft: "gray",

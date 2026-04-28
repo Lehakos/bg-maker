@@ -50,6 +50,7 @@ import { componentTypeLabels } from "../components/component-labels";
 import { ProjectFormModal, type ProjectFormValues } from "../components/project-form-modal";
 import { getProjectFormValues } from "../components/project-form-values";
 import { useProjectComponents, type ComponentModalState } from "../hooks/use-project-components";
+import "./project-detail.css";
 
 const statusColors: Record<ProjectStatus, string> = {
   draft: "gray",

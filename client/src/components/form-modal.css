@@ -1,0 +1,43 @@
+.app-form-modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+}
+
+.app-form-modal-header {
+  flex: 0 0 auto;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.app-form-modal-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  padding: 0;
+}
+
+.app-form-modal-form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+.app-form-modal-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  padding: 18px 24px;
+  overflow-y: auto;
+}
+
+.app-form-modal-footer {
+  flex: 0 0 auto;
+  padding: 14px 24px;
+  border-top: 1px solid #e2e8f0;
+  background: #ffffff;
+}

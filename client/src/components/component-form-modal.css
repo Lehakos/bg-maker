@@ -1,0 +1,37 @@
+.component-form-type-display {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.component-form-empty-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.component-form-pane {
+  align-items: stretch;
+}
+
+.component-form-controls {
+  min-width: 0;
+}
+
+.component-form-preview-rail {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  width: 100%;
+}

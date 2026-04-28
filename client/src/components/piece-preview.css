@@ -1,0 +1,156 @@
+.piece-preview-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 260px;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background:
+    linear-gradient(45deg, rgba(17, 24, 39, 0.04) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(17, 24, 39, 0.04) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(17, 24, 39, 0.04) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(17, 24, 39, 0.04) 75%);
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  background-size: 16px 16px;
+}
+
+.piece-preview-shell--compact {
+  min-height: 0;
+  padding: 12px;
+}
+
+.piece-preview {
+  position: relative;
+  width: min(100%, 240px);
+  min-width: 180px;
+}
+
+.piece-preview-shell--compact .piece-preview {
+  width: min(100%, 180px);
+  min-width: 140px;
+}
+
+.piece-preview-zone-overlay {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+
+.piece-preview-zone-overlay .card-preview-zone {
+  position: absolute;
+  overflow: hidden;
+  border: 1px dashed rgba(15, 118, 110, 0.52);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.42);
+  cursor: move;
+  touch-action: none;
+}
+
+.piece-preview-zone-overlay .card-preview-zone:hover {
+  border-color: rgba(15, 118, 110, 0.82);
+  background: rgba(240, 253, 250, 0.58);
+}
+
+.piece-preview-zone-overlay .card-preview-zone[data-selected="true"] {
+  border: 2px solid #0f766e;
+  background: rgba(204, 251, 241, 0.4);
+  box-shadow:
+    0 0 0 2px rgba(15, 118, 110, 0.2),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+  z-index: 2;
+}
+
+.piece-preview-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 14px 24px rgba(17, 24, 39, 0.16));
+}
+
+.piece-preview-face {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.piece-preview-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.piece-shape-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 76px;
+  padding: 8px 6px;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.piece-shape-option:hover {
+  border-color: #0f766e;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.12);
+  transform: translateY(-1px);
+}
+
+.piece-shape-option[data-selected="true"] {
+  border-color: #0f766e;
+  background: #f0fdfa;
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.2);
+}
+
+.piece-shape-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.piece-shape-icon {
+  display: block;
+  width: 38px;
+  height: 38px;
+}
+
+.custom-piece-shape-editor {
+  display: block;
+  width: min(100%, 260px);
+  aspect-ratio: 1;
+  touch-action: none;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.custom-piece-shape-polygon {
+  fill: rgba(20, 184, 166, 0.14);
+  stroke: #0f766e;
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+.custom-piece-shape-point {
+  fill: #ffffff;
+  stroke: #0f766e;
+  stroke-width: 2;
+  cursor: grab;
+}
+
+.custom-piece-shape-point[data-selected="true"] {
+  fill: #0f766e;
+}

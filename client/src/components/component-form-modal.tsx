@@ -53,11 +53,7 @@ import {
   type TileShape
 } from "@bg-maker/shared";
 import { componentTypeLabels } from "./component-labels";
-import {
-  CardLayoutEditor,
-  CardPreview,
-  ZoneControls
-} from "./card-layout-editor";
+import { CardLayoutEditor, CardPreview, ZoneControls } from "./card-layout-editor";
 import { createId, createTextContent, createZone } from "./layout-zone-utils";
 import { CustomPieceShapeEditor, PiecePreview, PieceShapePicker } from "./piece-preview";
 import {
@@ -67,6 +63,9 @@ import {
   type ComponentFormSubmitValues,
   type ComponentFormValues
 } from "../hooks/use-component-form";
+import "./component-form-modal.css";
+import "./form-modal.css";
+import "./template-editor.css";
 
 export type { ComponentFormSubmitValues } from "../hooks/use-component-form";
 
@@ -290,119 +289,119 @@ function ComponentFormContent({
       }}
     >
       <Stack className="app-form-modal-scroll" gap="md">
-          {error ? (
-            <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
-              {error}
-            </Alert>
-          ) : null}
+        {error ? (
+          <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
+            {error}
+          </Alert>
+        ) : null}
 
-          <Group grow align="flex-start">
-            <TextInput
-              data-autofocus
-              disabled={loading}
-              error={nameIsEmpty && values.name.length > 0 ? "Name must not be empty" : undefined}
-              label={getNameLabel(formKind)}
-              placeholder={getNamePlaceholder(formKind)}
-              required
-              value={values.name}
-              onChange={(event) => setValues({ ...values, name: event.currentTarget.value })}
-            />
-            {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : mode ===
-              "create" && isComponentForm ? (
-              <Select
-                allowDeselect={false}
-                data={typeOptions}
-                disabled={loading}
-                label="Type"
-                value={values.type}
-                onChange={(value) =>
-                  setValues(
-                    getValuesForTypeSelection(values, value ?? "card", cardTemplates, pieceTemplates)
-                  )
-                }
-              />
-            ) : (
-              <Stack gap={6}>
-                <Text size="sm" fw={500}>
-                  Type
-                </Text>
-                <div className="component-form-type-display">
-                  {componentFormTypeLabels[values.type]}
-                </div>
-              </Stack>
-            )}
-          </Group>
-
-          {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : (
-            <Group grow align="flex-start">
-              {formKind === "component" ? (
-                <NumberInput
-                  allowDecimal={false}
-                  allowNegative={false}
-                  disabled={loading}
-                  label="Quantity"
-                  min={1}
-                  value={values.quantity}
-                  onChange={(value) => setValues({ ...values, quantity: readNumber(value, 1) })}
-                />
-              ) : null}
-              <TagsInput
-                clearable
-                disabled={loading}
-                label="Tags"
-                placeholder="starter, enemy, market"
-                splitChars={[","]}
-                value={parseTagsText(values.tagsText)}
-                onChange={(tags) => setValues({ ...values, tagsText: tags.join(", ") })}
-              />
-            </Group>
-          )}
-
-          {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : (
-            <Textarea
-              disabled={loading}
-              label="Description"
-              minRows={2}
-              placeholder="What this item represents"
-              value={values.description}
-              onChange={(event) => setValues({ ...values, description: event.currentTarget.value })}
-            />
-          )}
-
-          <TypeSpecificFields
-            cardTemplates={cardTemplates}
-            componentOptions={componentOptions}
-            loading={loading}
-            pieceTemplates={pieceTemplates}
-            removeCollectionItem={removeCollectionItem}
-            setDieSides={setDieSides}
-            setValues={setValues}
-            updateCollectionItem={updateCollectionItem}
-            values={values}
-            onEditCardTemplate={onEditCardTemplate}
-            onEditPieceTemplate={onEditPieceTemplate}
+        <Group grow align="flex-start">
+          <TextInput
+            data-autofocus
+            disabled={loading}
+            error={nameIsEmpty && values.name.length > 0 ? "Name must not be empty" : undefined}
+            label={getNameLabel(formKind)}
+            placeholder={getNamePlaceholder(formKind)}
+            required
+            value={values.name}
+            onChange={(event) => setValues({ ...values, name: event.currentTarget.value })}
           />
-
-          {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : (
-            <Textarea
+          {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : mode === "create" &&
+            isComponentForm ? (
+            <Select
+              allowDeselect={false}
+              data={typeOptions}
               disabled={loading}
-              label="Notes"
-              minRows={3}
-              placeholder="Behavior, balance notes, setup reminders"
-              value={values.notes}
-              onChange={(event) => setValues({ ...values, notes: event.currentTarget.value })}
+              label="Type"
+              value={values.type}
+              onChange={(value) =>
+                setValues(
+                  getValuesForTypeSelection(values, value ?? "card", cardTemplates, pieceTemplates)
+                )
+              }
             />
+          ) : (
+            <Stack gap={6}>
+              <Text size="sm" fw={500}>
+                Type
+              </Text>
+              <div className="component-form-type-display">
+                {componentFormTypeLabels[values.type]}
+              </div>
+            </Stack>
           )}
+        </Group>
+
+        {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : (
+          <Group grow align="flex-start">
+            {formKind === "component" ? (
+              <NumberInput
+                allowDecimal={false}
+                allowNegative={false}
+                disabled={loading}
+                label="Quantity"
+                min={1}
+                value={values.quantity}
+                onChange={(value) => setValues({ ...values, quantity: readNumber(value, 1) })}
+              />
+            ) : null}
+            <TagsInput
+              clearable
+              disabled={loading}
+              label="Tags"
+              placeholder="starter, enemy, market"
+              splitChars={[","]}
+              value={parseTagsText(values.tagsText)}
+              onChange={(tags) => setValues({ ...values, tagsText: tags.join(", ") })}
+            />
+          </Group>
+        )}
+
+        {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : (
+          <Textarea
+            disabled={loading}
+            label="Description"
+            minRows={2}
+            placeholder="What this item represents"
+            value={values.description}
+            onChange={(event) => setValues({ ...values, description: event.currentTarget.value })}
+          />
+        )}
+
+        <TypeSpecificFields
+          cardTemplates={cardTemplates}
+          componentOptions={componentOptions}
+          loading={loading}
+          pieceTemplates={pieceTemplates}
+          removeCollectionItem={removeCollectionItem}
+          setDieSides={setDieSides}
+          setValues={setValues}
+          updateCollectionItem={updateCollectionItem}
+          values={values}
+          onEditCardTemplate={onEditCardTemplate}
+          onEditPieceTemplate={onEditPieceTemplate}
+        />
+
+        {formKind === "cardTemplate" || formKind === "pieceTemplate" ? null : (
+          <Textarea
+            disabled={loading}
+            label="Notes"
+            minRows={3}
+            placeholder="Behavior, balance notes, setup reminders"
+            value={values.notes}
+            onChange={(event) => setValues({ ...values, notes: event.currentTarget.value })}
+          />
+        )}
       </Stack>
 
-        <Group className="app-form-modal-footer" justify="flex-end">
-          <Button type="button" variant="subtle" color="gray" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={loading} disabled={submitDisabled} radius={8}>
-            {mode === "create" ? getCreateButtonLabel(formKind) : "Save changes"}
-          </Button>
-        </Group>
+      <Group className="app-form-modal-footer" justify="flex-end">
+        <Button type="button" variant="subtle" color="gray" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit" loading={loading} disabled={submitDisabled} radius={8}>
+          {mode === "create" ? getCreateButtonLabel(formKind) : "Save changes"}
+        </Button>
+      </Group>
     </form>
   );
 }
@@ -723,9 +722,7 @@ function TypeSpecificFields({
       );
 
     case "pieceTemplate":
-      return (
-        <PieceTemplateFields loading={loading} setValues={setValues} values={values} />
-      );
+      return <PieceTemplateFields loading={loading} setValues={setValues} values={values} />;
 
     case "collection":
       return (
@@ -868,7 +865,10 @@ function PieceTemplateFields({
     updatePieceLayout((layout) => ({
       ...layout,
       shape,
-      customShape: shape === "custom" ? cloneCustomShape(layout.customShape ?? defaultPieceCustomShape) : undefined
+      customShape:
+        shape === "custom"
+          ? cloneCustomShape(layout.customShape ?? defaultPieceCustomShape)
+          : undefined
     }));
   }
 
@@ -941,7 +941,10 @@ function PieceTemplateFields({
 
   function updateSolidFaceText(text: string) {
     updatePieceLayout((layout) => {
-      const frontFace = updateFirstTextZone(layout.faces[0] ?? createPieceFace("front", "Front"), text);
+      const frontFace = updateFirstTextZone(
+        layout.faces[0] ?? createPieceFace("front", "Front"),
+        text
+      );
 
       return {
         ...layout,
@@ -1201,7 +1204,10 @@ function getPieceFormStateFromLayout(layout: PieceLayout): Partial<ComponentForm
   };
 }
 
-function getPieceLayoutWithAppearance(layout: PieceLayout, appearance: PieceAppearance): PieceLayout {
+function getPieceLayoutWithAppearance(
+  layout: PieceLayout,
+  appearance: PieceAppearance
+): PieceLayout {
   return {
     ...layout,
     appearance: { ...layout.appearance, ...appearance }

@@ -30,6 +30,8 @@ import {
   type TemplateFieldValues
 } from "@bg-maker/shared";
 import { LayoutZoneContentPreview } from "./card-layout-editor";
+import "./card-layout-editor.css";
+import "./piece-preview.css";
 
 type PiecePreviewProps = {
   compact?: boolean;
@@ -80,7 +82,8 @@ export function PiecePreview({
       : previewLayout.faces.some((face) => face.id === internalFaceId)
         ? internalFaceId
         : (previewLayout.faces[0]?.id ?? "front");
-  const selectedFace = previewLayout.faces.find((face) => face.id === selectedId) ?? previewLayout.faces[0];
+  const selectedFace =
+    previewLayout.faces.find((face) => face.id === selectedId) ?? previewLayout.faces[0];
   const clipId = `piece-preview-clip-${generatedId}`;
 
   function updateSelectedFace(faceId: string) {
@@ -380,13 +383,7 @@ export function PieceShapeIcon({
   strokeColor = "#0f766e"
 }: PieceShapeIconProps) {
   return (
-    <svg
-      aria-hidden
-      className="piece-shape-icon"
-      height={size}
-      viewBox="0 0 100 100"
-      width={size}
-    >
+    <svg aria-hidden className="piece-shape-icon" height={size} viewBox="0 0 100 100" width={size}>
       <PieceShapeSvgElement
         customShape={customShape}
         fillColor={fillColor}
@@ -515,7 +512,10 @@ export function CustomPieceShapeEditor({
         onPointerUp={() => setDraggingPointIndex(null)}
         onPointerCancel={() => setDraggingPointIndex(null)}
       >
-        <polygon className="custom-piece-shape-polygon" points={toPolygonPoints(customShape.points)} />
+        <polygon
+          className="custom-piece-shape-polygon"
+          points={toPolygonPoints(customShape.points)}
+        />
         {customShape.points.map((point, index) => (
           <circle
             key={`${point.x}-${point.y}-${index}`}
