@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   createDefaultCardLayout,
   createDefaultPieceLayout,
@@ -43,6 +43,11 @@ export type ComponentFormType =
   | "collection"
   | "pieceTemplate"
   | "tileTemplate";
+
+export type TemplateFormType = Extract<
+  ComponentFormType,
+  "cardTemplate" | "pieceTemplate" | "tileTemplate"
+>;
 
 export type ComponentFormSubmitValues =
   | {
@@ -149,7 +154,7 @@ const defaultValues: ComponentFormValues = {
   tileTemplateName: "Default tile",
   tileFieldValues: {},
   tileLayout: defaultTileLayout,
-  tileShape: "square",
+  tileShape: defaultTileLayout.shape,
   tileWidthMm: defaultTileLayout.sizeMm.widthMm,
   tileHeightMm: defaultTileLayout.sizeMm.heightMm,
   collectionItems: [],
@@ -187,6 +192,7 @@ export function useComponentForm(
       initialComponentType
     )
   );
+  const cachedValuesByTypeRef = useRef<Partial<Record<ComponentFormType, ComponentFormValues>>>({});
   const nameIsEmpty = values.name.trim().length === 0;
 
   function buildSubmitValues(mode: "create" | "edit"): ComponentFormSubmitValues | null {
@@ -296,10 +302,27 @@ export function useComponentForm(
     }));
   }
 
+  function selectType(type: ComponentFormType) {
+    setValues((currentValues) => {
+      if (currentValues.type === type) {
+        return currentValues;
+      }
+
+      cachedValuesByTypeRef.current[currentValues.type] = currentValues;
+
+      const cachedValues = cachedValuesByTypeRef.current[type];
+      const targetValues =
+        cachedValues ?? getNewFormValuesForType(type, cardTemplates, pieceTemplates, tileTemplates);
+
+      return withCurrentCommonValues(currentValues, targetValues);
+    });
+  }
+
   return {
     buildSubmitValues,
     nameIsEmpty,
     removeCollectionItem,
+    selectType,
     setDieSides,
     setValues,
     updateCollectionItem,
@@ -619,6 +642,83 @@ function getNewComponentFormValuesForType(
   return {
     ...defaultValues,
     type: "die"
+  };
+}
+
+function getNewTemplateFormValuesForType(type: TemplateFormType): ComponentFormValues {
+  if (type === "cardTemplate") {
+    return {
+      ...defaultValues,
+      type: "cardTemplate",
+      cardTemplateId: "",
+      cardTemplateName: "",
+      cardFieldValues: {},
+      layout: createDefaultCardLayout()
+    };
+  }
+
+  if (type === "pieceTemplate") {
+    const layout = createDefaultPieceLayout();
+
+    return {
+      ...defaultValues,
+      type: "pieceTemplate",
+      pieceTemplateId: "",
+      pieceTemplateName: "",
+      pieceFieldValues: {},
+      ...getPieceTemplateFormFields(layout)
+    };
+  }
+
+  const layout = createDefaultTileLayout();
+
+  return {
+    ...defaultValues,
+    type: "tileTemplate",
+    tileTemplateId: "",
+    tileTemplateName: "",
+    tileFieldValues: {},
+    ...getTileTemplateFormFields(layout)
+  };
+}
+
+function getNewFormValuesForType(
+  type: ComponentFormType,
+  cardTemplates: CardTemplate[],
+  pieceTemplates: PieceTemplate[],
+  tileTemplates: TileTemplate[]
+): ComponentFormValues {
+  switch (type) {
+    case "card":
+    case "die":
+    case "piece":
+    case "tile":
+      return getNewComponentFormValuesForType(type, cardTemplates, pieceTemplates, tileTemplates);
+    case "cardTemplate":
+    case "pieceTemplate":
+    case "tileTemplate":
+      return getNewTemplateFormValuesForType(type);
+    case "collection":
+      return {
+        ...defaultValues,
+        type: "collection",
+        name: "",
+        collectionItems: []
+      };
+  }
+}
+
+function withCurrentCommonValues(
+  currentValues: ComponentFormValues,
+  targetValues: ComponentFormValues
+): ComponentFormValues {
+  return {
+    ...targetValues,
+    name: currentValues.name,
+    quantity: currentValues.quantity,
+    description: currentValues.description,
+    tagsText: currentValues.tagsText,
+    notes: currentValues.notes
   };
 }
 

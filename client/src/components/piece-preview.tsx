@@ -573,11 +573,8 @@ function PieceShapeSvgElement({
     case "circle":
       return <circle cx="50" cy="50" r="43" {...commonProps} />;
 
-    case "square":
+    case "box":
       return <rect height="84" rx="5" width="84" x="8" y="8" {...commonProps} />;
-
-    case "rectangle":
-      return <rect height="62" rx="5" width="84" x="8" y="19" {...commonProps} />;
 
     case "hex":
       return <polygon points="50,6 88,28 88,72 50,94 12,72 12,28" {...commonProps} />;
@@ -617,20 +614,12 @@ function getPieceShapeClipPath(shape: PieceShape, customShape: PieceCustomShape 
     case "circle":
       return "ellipse(43% 43% at 50% 50%)";
 
-    case "square":
+    case "box":
       return toCssPolygon([
         { x: 8, y: 8 },
         { x: 92, y: 8 },
         { x: 92, y: 92 },
         { x: 8, y: 92 }
-      ]);
-
-    case "rectangle":
-      return toCssPolygon([
-        { x: 8, y: 19 },
-        { x: 92, y: 19 },
-        { x: 92, y: 81 },
-        { x: 8, y: 81 }
       ]);
 
     case "hex":

@@ -35,8 +35,10 @@ test.describe("project components", () => {
 
     form = await detailPage.openNewPieceTemplateForm();
     await form.fillCommon({ name: "Coin piece template" });
-    for (const shape of ["Circle", "Square", "Rectangle", "Hex", "Meeple", "Pawn", "Custom"]) {
-      await expect(form.dialog.getByRole("button", { name: `Select ${shape} shape` })).toBeVisible();
+    for (const shape of ["Circle", "Box", "Hex", "Meeple", "Pawn", "Custom"]) {
+      await expect(
+        form.dialog.getByRole("button", { name: `Select ${shape} shape` })
+      ).toBeVisible();
     }
     await form.fillPieceTemplate({ faceText: "1 coin", shape: "Circle" });
     await form.saveCreate();
@@ -56,6 +58,10 @@ test.describe("project components", () => {
     form = await detailPage.openNewTileTemplateForm();
     await form.fillCommon({ name: "Forest hex template" });
     await form.fillTileTemplate({ shape: "Hex", faceText: "Forest" });
+    await form.selectType("Piece template");
+    await expect(form.dialog.getByRole("button", { name: "Select Circle shape" })).toBeVisible();
+    await form.selectType("Tile template");
+    await expect(form.dialog.locator(".tile-preview").getByText("Forest")).toBeVisible();
     await form.saveCreate();
 
     await expect(form.dialog).toBeHidden();
@@ -155,7 +161,9 @@ test.describe("project components", () => {
     await form.fillCommon({ name: "Firebolt", quantity: "8", tags: "spell, attack" });
     await form.selectCardTemplate("Spell card template");
     await form.fillPerCardValue("Rules", "Deal 3 damage");
-    await expect(form.dialog.locator(".card-final-preview").getByText("Deal 3 damage")).toBeVisible();
+    await expect(
+      form.dialog.locator(".card-final-preview").getByText("Deal 3 damage")
+    ).toBeVisible();
     await form.saveCreate();
 
     await expect(form.dialog).toBeHidden();
@@ -417,7 +425,7 @@ test.describe("project components", () => {
       { name: "Coin template", layout: validPieceLayout("flat", "circle", true, "Heads") },
       { name: "Marker template", layout: validPieceLayout("flat", "hex", false, "Start") },
       { name: "Standee template", layout: validPieceLayout("standee", "pawn", true, "Hero") },
-      { name: "Solid template", layout: validPieceLayout("solid", "square", false, "Block") },
+      { name: "Solid template", layout: validPieceLayout("solid", "box", false, "Block") },
       { name: "Custom template", layout: validPieceLayout("flat", "custom", false, "Shard") },
       {
         name: "Icon template",
@@ -456,12 +464,15 @@ test.describe("project components", () => {
       });
     }
 
-    const colorTemplateResponse = await request.post(`/api/projects/${project.id}/piece-templates`, {
-      data: {
-        name: "Meeple color template",
-        layout: validPieceLayout("solid", "meeple", false, "Meeple")
+    const colorTemplateResponse = await request.post(
+      `/api/projects/${project.id}/piece-templates`,
+      {
+        data: {
+          name: "Meeple color template",
+          layout: validPieceLayout("solid", "meeple", false, "Meeple")
+        }
       }
-    });
+    );
     expect(colorTemplateResponse.status()).toBe(201);
     const colorTemplate = (await colorTemplateResponse.json()) as { id: string };
     const coloredPieceResponse = await request.post(`/api/projects/${project.id}/components`, {
@@ -563,7 +574,12 @@ test.describe("project components", () => {
         name: "Invalid custom shape",
         layout: {
           ...validPieceLayout("flat", "custom", false, "Bad"),
-          customShape: { points: [{ x: 50, y: 10 }, { x: 90, y: 90 }] }
+          customShape: {
+            points: [
+              { x: 50, y: 10 },
+              { x: 90, y: 90 }
+            ]
+          }
         }
       }
     });
@@ -804,14 +820,7 @@ function validCardLayout(elementType: "icon" | "image" | "text" = "text") {
 
 function validPieceLayout(
   formFactor: "flat" | "solid" | "standee",
-  shape:
-    | "circle"
-    | "custom"
-    | "hex"
-    | "meeple"
-    | "pawn"
-    | "rectangle"
-    | "square",
+  shape: "circle" | "box" | "custom" | "hex" | "meeple" | "pawn",
   twoSided: boolean,
   text: string
 ) {

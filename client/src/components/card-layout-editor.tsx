@@ -63,6 +63,7 @@ import {
 } from "@bg-maker/shared";
 import { createId, createTextContent, createVisualContent, createZone } from "./layout-zone-utils";
 import { ProjectColorValueInput } from "./project-color-value-input";
+import { useZoneEditor, type ZoneEditorState } from "./use-zone-editor";
 import "./card-layout-editor.css";
 import "./template-editor.css";
 
@@ -172,13 +173,12 @@ export function CardLayoutEditor({
   const [controlsTab, setControlsTab] = useState<"layout" | "zones">("layout");
 
   const sideLayout = layout.sides[selectedSide];
-  const selectedZone = sideLayout.zones.find((zone) => zone.id === selectedZoneId);
-  const activeZone = selectedZone ?? sideLayout.zones[0] ?? null;
-
-  const zoneOptions = sideLayout.zones.map((zone) => ({
-    value: zone.id,
-    label: `${zone.name} (${getZoneContentLabel(zone.content)})`
-  }));
+  const zoneEditor = useZoneEditor({
+    selectedZoneId,
+    zones: sideLayout.zones,
+    onSelectedZoneIdChange: setSelectedZoneId
+  });
+  const activeZone = zoneEditor.activeZone;
 
   function updateLayout(patch: Partial<CardLayout>) {
     onChange({ ...layout, ...patch });
@@ -278,10 +278,6 @@ export function CardLayoutEditor({
       zones: currentSide.zones.map((zone) => (zone.id === zoneId ? { ...zone, ...patch } : zone))
     }));
     setZoneTemplate("custom");
-  }
-
-  function updateZoneContent(zoneId: string, content: LayoutZoneContent) {
-    updateZone(zoneId, { content });
   }
 
   function removeZone(zoneId: string) {
@@ -433,67 +429,30 @@ export function CardLayoutEditor({
           <Tabs.Panel value="zones" pt="md">
             <Stack gap="lg">
               <Stack className="template-editor-section" gap="sm">
-                <Group align="flex-end" wrap="nowrap">
-                  <Select
-                    allowDeselect={false}
-                    data={zoneTemplateOptions}
-                    disabled={disabled}
-                    label="Zone template"
-                    value={zoneTemplate}
-                    onChange={(value) =>
-                      applyZoneTemplate((value ?? "classic") as CardZoneTemplateId)
-                    }
-                  />
-                  <Button
-                    disabled={disabled}
-                    leftSection={<Plus size={14} />}
-                    radius={8}
-                    variant="light"
-                    onClick={addZone}
-                  >
-                    Add zone
-                  </Button>
-                </Group>
+                <Select
+                  allowDeselect={false}
+                  data={zoneTemplateOptions}
+                  disabled={disabled}
+                  label="Zone template"
+                  value={zoneTemplate}
+                  onChange={(value) =>
+                    applyZoneTemplate((value ?? "classic") as CardZoneTemplateId)
+                  }
+                />
               </Stack>
 
               <Stack className="template-editor-section" gap="sm">
-                <Text className="template-editor-section-title">Selected zone</Text>
-                <Group align="flex-end" wrap="nowrap">
-                  <Select
-                    allowDeselect={false}
-                    data={zoneOptions}
-                    disabled={disabled || zoneOptions.length === 0}
-                    label="Selected zone"
-                    value={activeZone?.id ?? null}
-                    onChange={(value) => setSelectedZoneId(value)}
-                  />
-                  <Tooltip label="Remove zone" withArrow>
-                    <ActionIcon
-                      aria-label="Remove zone"
-                      color="red"
-                      disabled={disabled || !activeZone || sideLayout.zones.length <= 1}
-                      mb={2}
-                      radius={8}
-                      size={36}
-                      variant="subtle"
-                      onClick={() => activeZone && removeZone(activeZone.id)}
-                    >
-                      <Trash2 size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                </Group>
-
-                {activeZone ? (
-                  <ZoneControls
-                    disabled={disabled}
-                    uploadError={uploadError}
-                    zone={activeZone}
-                    projectParameters={projectParameters}
-                    onChange={(patch) => updateZone(activeZone.id, patch)}
-                    onContentChange={(content) => updateZoneContent(activeZone.id, content)}
-                    onUploadError={setUploadError}
-                  />
-                ) : null}
+                <ZoneEditorPanel
+                  disabled={disabled}
+                  editor={zoneEditor}
+                  projectParameters={projectParameters}
+                  title="Selected zone"
+                  uploadError={uploadError}
+                  onAddZone={addZone}
+                  onRemoveZone={removeZone}
+                  onUpdateZone={updateZone}
+                  onUploadError={setUploadError}
+                />
               </Stack>
             </Stack>
           </Tabs.Panel>
@@ -530,6 +489,82 @@ export function CardLayoutEditor({
         />
       </Stack>
     </SimpleGrid>
+  );
+}
+
+export function ZoneEditorPanel({
+  disabled = false,
+  editor,
+  projectParameters,
+  title,
+  uploadError,
+  onAddZone,
+  onRemoveZone,
+  onUpdateZone,
+  onUploadError
+}: {
+  disabled?: boolean;
+  editor: ZoneEditorState;
+  projectParameters: ProjectParameter[];
+  title?: string;
+  uploadError: string | null;
+  onAddZone: () => void;
+  onRemoveZone: (zoneId: string) => void;
+  onUpdateZone: (zoneId: string, patch: Partial<LayoutZone>) => void;
+  onUploadError: (error: string | null) => void;
+}) {
+  const { activeZone, zoneOptions, zones, onSelectedZoneIdChange } = editor;
+
+  return (
+    <>
+      {title ? <Text className="template-editor-section-title">{title}</Text> : null}
+      <Group align="flex-end" wrap="nowrap">
+        <Select
+          allowDeselect={false}
+          data={zoneOptions}
+          disabled={disabled || zoneOptions.length === 0}
+          label="Selected zone"
+          value={activeZone?.id ?? null}
+          onChange={onSelectedZoneIdChange}
+        />
+        <Button
+          disabled={disabled}
+          leftSection={<Plus size={14} />}
+          radius={8}
+          type="button"
+          variant="light"
+          onClick={onAddZone}
+        >
+          Add zone
+        </Button>
+        <Tooltip label="Remove zone" withArrow>
+          <ActionIcon
+            aria-label="Remove zone"
+            color="red"
+            disabled={disabled || !activeZone || zones.length <= 1}
+            mb={2}
+            radius={8}
+            size={36}
+            variant="subtle"
+            onClick={() => activeZone && onRemoveZone(activeZone.id)}
+          >
+            <Trash2 size={16} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+
+      {activeZone ? (
+        <ZoneControls
+          disabled={disabled}
+          projectParameters={projectParameters}
+          uploadError={uploadError}
+          zone={activeZone}
+          onChange={(patch) => onUpdateZone(activeZone.id, patch)}
+          onContentChange={(content) => onUpdateZone(activeZone.id, { content })}
+          onUploadError={onUploadError}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -1398,10 +1433,6 @@ function normalizePaddingPair(start: number, end: number, total: number) {
 
 function roundMm(value: number) {
   return Math.round(value * 10) / 10;
-}
-
-function getZoneContentLabel(content: LayoutZoneContent) {
-  return content.type === "text" ? "Text" : titleCase(content.visualType);
 }
 
 function normalizeFieldKey(value: string) {

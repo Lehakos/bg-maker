@@ -174,12 +174,12 @@ class ComponentFormObject {
 
   get dialog() {
     return this.page.getByRole("dialog", {
-      name: /^(New component|Edit component|New card template|Edit card template|New tile template|Edit tile template|New piece template|Edit piece template|New collection|Edit collection)$/
+      name: /^(New component|Edit component|New template|New card template|Edit card template|New tile template|Edit tile template|New piece template|Edit piece template|New collection|Edit collection)$/
     });
   }
 
   async selectType(type: string) {
-    await this.dialog.getByLabel("Type").click();
+    await this.dialog.getByLabel("Type", { exact: true }).click();
     await this.page.getByRole("option", { name: type }).click();
   }
 
@@ -473,7 +473,7 @@ class ComponentFormObject {
     }
   }
 
-  async fillTile(values: { edgeLabels?: string; faceLabel?: string; shape?: "Hex" | "Square" }) {
+  async fillTile(values: { edgeLabels?: string; faceLabel?: string; shape?: "Box" | "Hex" }) {
     if (values.shape !== undefined) {
       await this.dialog.getByLabel("Shape").click();
       await this.page.getByRole("option", { name: values.shape }).click();

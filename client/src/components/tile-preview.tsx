@@ -579,11 +579,8 @@ function TileShapeSvgElement({
   };
 
   switch (shape) {
-    case "square":
+    case "box":
       return <rect height="84" rx="4" width="84" x="8" y="8" {...commonProps} />;
-
-    case "rectangle":
-      return <rect height="62" rx="4" width="84" x="8" y="19" {...commonProps} />;
 
     case "triangle":
       return <polygon points="50,8 91,88 9,88" {...commonProps} />;
@@ -611,7 +608,7 @@ function getTileShapeClipPath(
   rotationDeg: number
 ) {
   switch (shape) {
-    case "square":
+    case "box":
       return toCssPolygon(
         rotateClipPoints(
           [
@@ -619,19 +616,6 @@ function getTileShapeClipPath(
             { x: 92, y: 8 },
             { x: 92, y: 92 },
             { x: 8, y: 92 }
-          ],
-          rotationDeg
-        )
-      );
-
-    case "rectangle":
-      return toCssPolygon(
-        rotateClipPoints(
-          [
-            { x: 8, y: 19 },
-            { x: 92, y: 19 },
-            { x: 92, y: 81 },
-            { x: 8, y: 81 }
           ],
           rotationDeg
         )

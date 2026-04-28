@@ -184,7 +184,7 @@ export const tileLayoutSides = ["front", "back"] as const;
 
 export type TileLayoutSide = (typeof tileLayoutSides)[number];
 
-export const tileShapes = ["square", "rectangle", "triangle", "hex", "custom"] as const;
+export const tileShapes = ["box", "triangle", "hex", "custom"] as const;
 
 export type TileShape = (typeof tileShapes)[number];
 
@@ -243,15 +243,7 @@ export const pieceFormFactors = ["flat", "standee", "solid"] as const;
 
 export type PieceFormFactor = (typeof pieceFormFactors)[number];
 
-export const pieceShapes = [
-  "circle",
-  "square",
-  "rectangle",
-  "hex",
-  "meeple",
-  "pawn",
-  "custom"
-] as const;
+export const pieceShapes = ["circle", "box", "hex", "meeple", "pawn", "custom"] as const;
 
 export type PieceShape = (typeof pieceShapes)[number];
 
@@ -461,7 +453,7 @@ export function createDefaultTileLayout(
     size?: Partial<TileLayoutSize>;
   } = {}
 ): TileLayout {
-  const shape = input.shape ?? "square";
+  const shape = input.shape ?? "box";
 
   return {
     version: 1,
