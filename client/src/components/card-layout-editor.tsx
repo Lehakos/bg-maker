@@ -1415,6 +1415,7 @@ export function CardPreview({
   fieldValues = {},
   layout,
   projectParameters = [],
+  showHeader = true,
   side = "front",
   title = "Final preview"
 }: {
@@ -1422,6 +1423,7 @@ export function CardPreview({
   fieldValues?: TemplateFieldValues;
   layout: CardLayout;
   projectParameters?: ProjectParameter[];
+  showHeader?: boolean;
   side?: CardLayoutSide;
   title?: string;
 }) {
@@ -1433,12 +1435,14 @@ export function CardPreview({
 
   return (
     <Stack gap="sm">
-      <Group justify="space-between" align="center">
-        <Text fw={600}>{title}</Text>
-        <Text c="dimmed" size="sm">
-          {layout.size.widthMm} x {layout.size.heightMm} mm
-        </Text>
-      </Group>
+      {showHeader ? (
+        <Group justify="space-between" align="center">
+          <Text fw={600}>{title}</Text>
+          <Text c="dimmed" size="sm">
+            {layout.size.widthMm} x {layout.size.heightMm} mm
+          </Text>
+        </Group>
+      ) : null}
       <Box className={`card-preview-shell${compact ? " card-preview-shell--compact" : ""}`}>
         <Box
           className="card-preview card-final-preview"

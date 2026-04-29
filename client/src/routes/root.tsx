@@ -3,7 +3,7 @@ import { useDisclosure } from "@mantine/hooks";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { APP_NAME } from "@bg-maker/shared";
-import { Boxes, Plus } from "lucide-react";
+import { ArrowLeft, Boxes, Plus } from "lucide-react";
 import { createProject, getApiErrorMessage } from "../api/client";
 import { ProjectFormModal } from "../components/project-form-modal";
 import "./root.css";
@@ -33,7 +33,8 @@ export function RootLayout() {
             <Title order={3}>{APP_NAME}</Title>
           </Group>
           <Group gap="sm">
-            <Link to="/" className="nav-link">
+            <Link aria-label="Back to workspace" className="site-header-workspace-link" to="/">
+              <ArrowLeft size={16} />
               Workspace
             </Link>
             <Button leftSection={<Plus size={16} />} radius={8} onClick={openProjectModal}>

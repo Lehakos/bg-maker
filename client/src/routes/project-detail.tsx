@@ -56,6 +56,7 @@ import { ComponentFormModal } from "../components/component-form-modal";
 import { collectionTypeLabels, componentTypeLabels } from "../components/component-labels";
 import { ProjectFormModal, type ProjectFormValues } from "../components/project-form-modal";
 import { getProjectFormValues } from "../components/project-form-values";
+import { TableSetupEditor } from "../components/table-setup-editor";
 import { useProjectComponents, type ComponentModalState } from "../hooks/use-project-components";
 import {
   projectDetailTabs,
@@ -232,20 +233,15 @@ export function ProjectDetailRoute() {
   };
 
   return (
-    <Box className="project-detail-page">
-      <Container size="lg" w="100%">
+    <Box
+      className={`project-detail-page${
+        projectSearch.tab === "layout" ? " project-detail-page--layout" : ""
+      }`}
+    >
+      <Container className="project-detail-hero" size="lg" w="100%">
         <Stack gap="xl">
           <Group justify="space-between" align="flex-start">
             <Stack gap={6}>
-              <Button
-                leftSection={<ArrowLeft size={16} />}
-                variant="subtle"
-                color="gray"
-                px={0}
-                onClick={() => void navigate({ to: "/" })}
-              >
-                Workspace
-              </Button>
               <Group gap="sm" align="center">
                 <Title order={1}>{project.name}</Title>
                 <Badge color={statusColors[project.status]} radius={8}>
@@ -352,14 +348,15 @@ export function ProjectDetailRoute() {
             />
           </Container>
         </Tabs.Panel>
-        <Tabs.Panel value="layout" pt="md">
-          <Container size="lg" w="100%">
-            <EmptyProjectSection
-              icon={<FileText size={20} />}
-              title="Layout"
-              description="Table zones and starting setup arrive after project management."
+        <Tabs.Panel className="project-detail-layout-tab-panel" value="layout" pt="md">
+          <Box className="project-detail-layout-panel">
+            <TableSetupEditor
+              collections={componentCatalog.collections}
+              components={componentCatalog.components}
+              projectId={projectId}
+              projectParameters={project.parameters}
             />
-          </Container>
+          </Box>
         </Tabs.Panel>
         <Tabs.Panel value="sessions" pt="md">
           <Container size="lg" w="100%">
@@ -1329,7 +1326,6 @@ function ComponentTable({
           <Table.Tr>
             <Table.Th>Name</Table.Th>
             <Table.Th>Type</Table.Th>
-            <Table.Th>Qty</Table.Th>
             <Table.Th>Details</Table.Th>
             <Table.Th>Updated</Table.Th>
             <Table.Th className="component-actions-header" aria-label="Actions" />
@@ -1344,7 +1340,6 @@ function ComponentTable({
                   {componentTypeLabels[component.type]}
                 </Badge>
               </Table.Td>
-              <Table.Td>{component.quantity}</Table.Td>
               <Table.Td>
                 <Stack gap={4}>
                   <Text size="sm">{getComponentDetails(component)}</Text>

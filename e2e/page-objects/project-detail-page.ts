@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { dragLocator } from "../support/ui-helpers";
 
 export class ProjectDetailPage {
   readonly collectionsHeading: Locator;
@@ -19,6 +20,13 @@ export class ProjectDetailPage {
 
   async openComponents() {
     await this.openCatalogTable("Component catalog");
+  }
+
+  async openLayout() {
+    await this.page.getByRole("tab", { name: "Layout" }).click();
+    await expect(
+      this.page.getByRole("heading", { exact: true, name: "Table layout" })
+    ).toBeVisible();
   }
 
   async openNewComponent(type = "Card") {
@@ -227,17 +235,12 @@ class ComponentFormObject {
   async fillCommon(values: {
     description?: string;
     name?: string;
-    quantity?: string;
     tags?: string;
   }) {
     if (values.name !== undefined) {
       await this.dialog
         .getByRole("textbox", { name: /^(Name|Template name|Collection name)$/ })
         .fill(values.name);
-    }
-
-    if (values.quantity !== undefined) {
-      await this.dialog.getByLabel("Quantity", { exact: true }).fill(values.quantity);
     }
 
     if (values.tags !== undefined) {
@@ -266,7 +269,6 @@ class ComponentFormObject {
     backText?: string;
     frontText?: string;
     name?: string;
-    quantity?: string;
     tags?: string;
   }) {
     await this.fillCommon(values);
@@ -379,7 +381,13 @@ class ComponentFormObject {
   }
 
   async dragPreviewZone(name: string, deltaX: number, deltaY: number) {
-    await this.dragLocator(this.previewZone(name), deltaX, deltaY);
+    await dragLocator(
+      this.page,
+      this.previewZone(name),
+      deltaX,
+      deltaY,
+      "Could not locate draggable preview zone"
+    );
   }
 
   async resizePreviewZone(name: string, deltaX: number, deltaY: number) {
@@ -450,22 +458,6 @@ class ComponentFormObject {
 
   private previewZone(name: string) {
     return this.dialog.locator(`.card-preview-zone[data-zone-name="${name}"]`);
-  }
-
-  private async dragLocator(locator: Locator, deltaX: number, deltaY: number) {
-    const box = await locator.boundingBox();
-
-    if (!box) {
-      throw new Error("Could not locate draggable preview zone");
-    }
-
-    const startX = box.x + box.width / 2;
-    const startY = box.y + box.height / 2;
-
-    await this.page.mouse.move(startX, startY);
-    await this.page.mouse.down();
-    await this.page.mouse.move(startX + deltaX, startY + deltaY, { steps: 5 });
-    await this.page.mouse.up();
   }
 
   async selectPieceTemplate(name: string) {

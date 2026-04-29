@@ -89,7 +89,6 @@ export type ComponentFormSubmitValues =
 export type ComponentFormValues = {
   type: ComponentFormType;
   name: string;
-  quantity: number;
   description: string;
   tagsText: string;
   notes: string;
@@ -129,7 +128,6 @@ const defaultTileLayout = createDefaultTileLayout();
 const defaultValues: ComponentFormValues = {
   type: "card",
   name: "",
-  quantity: 1,
   description: "",
   tagsText: "",
   notes: "",
@@ -535,7 +533,6 @@ function getComponentFormValues(
     ...defaultValues,
     type: component.type,
     name: component.name,
-    quantity: component.quantity,
     description: component.description,
     tagsText: component.tags.join(", "),
     notes: component.notes
@@ -745,7 +742,6 @@ function withCurrentCommonValues(
   return {
     ...targetValues,
     name: currentValues.name,
-    quantity: currentValues.quantity,
     description: currentValues.description,
     tagsText: currentValues.tagsText,
     notes: currentValues.notes
@@ -755,7 +751,6 @@ function withCurrentCommonValues(
 function buildComponentPayload(values: ComponentFormValues): CreateGameComponentInput {
   const base = {
     name: values.name.trim(),
-    quantity: values.quantity,
     description: values.description.trim(),
     tags: parseTags(values.tagsText),
     notes: values.notes.trim()

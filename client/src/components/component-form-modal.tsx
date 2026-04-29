@@ -407,17 +407,6 @@ function ComponentFormContent({
 
         {isTemplateForm ? null : (
           <Group grow align="flex-start">
-            {formKind === "component" ? (
-              <NumberInput
-                allowDecimal={false}
-                allowNegative={false}
-                disabled={loading}
-                label="Quantity"
-                min={1}
-                value={values.quantity}
-                onChange={(value) => setValues({ ...values, quantity: readNumber(value, 1) })}
-              />
-            ) : null}
             <TagsInput
               clearable
               disabled={loading}

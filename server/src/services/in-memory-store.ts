@@ -4,59 +4,41 @@ import type {
   GameComponent,
   GameProject,
   PieceTemplate,
+  TableSetup,
   TileTemplate
 } from "@bg-maker/shared";
-import { createDefaultProjectParameters } from "@bg-maker/shared";
+import { seedDatasets } from "./seed-data.js";
 
-export const seedProjects: GameProject[] = [
-  {
-    id: "solo-dungeon",
-    name: "Solo Dungeon",
-    description: "Compact solo card crawl project.",
-    players: "1",
-    parameters: createDefaultProjectParameters(),
-    status: "draft",
-    notes: "Focus on fast setup and short playtest loops.",
-    componentCount: 0,
-    createdAt: "2026-04-20T09:00:00.000Z",
-    updatedAt: "2026-04-20T09:00:00.000Z"
-  },
-  {
-    id: "market-race",
-    name: "Market Race",
-    description: "Light economy race with a shared market row.",
-    players: "2-4",
-    parameters: createDefaultProjectParameters(),
-    status: "testing",
-    notes: "Needs stronger catch-up pressure after round three.",
-    componentCount: 0,
-    createdAt: "2026-04-22T12:00:00.000Z",
-    updatedAt: "2026-04-24T15:30:00.000Z"
-  }
-];
+export const seedProjects: GameProject[] = seedDatasets.map((dataset) => dataset.project);
 
 export const projects = new Map<string, GameProject>(
   seedProjects.map((project) => [project.id, project])
 );
 
 export const projectComponents = new Map<string, GameComponent[]>(
-  seedProjects.map((project) => [project.id, []])
+  seedDatasets.map((dataset) => [dataset.project.id, dataset.components])
 );
 
 export const projectCardTemplates = new Map<string, CardTemplate[]>(
-  seedProjects.map((project) => [project.id, []])
+  seedDatasets.map((dataset) => [dataset.project.id, dataset.cardTemplates])
 );
 
 export const projectPieceTemplates = new Map<string, PieceTemplate[]>(
-  seedProjects.map((project) => [project.id, []])
+  seedDatasets.map((dataset) => [dataset.project.id, dataset.pieceTemplates])
 );
 
 export const projectTileTemplates = new Map<string, TileTemplate[]>(
-  seedProjects.map((project) => [project.id, []])
+  seedDatasets.map((dataset) => [dataset.project.id, dataset.tileTemplates])
 );
 
 export const projectCollections = new Map<string, ComponentCollection[]>(
-  seedProjects.map((project) => [project.id, []])
+  seedDatasets.map((dataset) => [dataset.project.id, dataset.collections])
+);
+
+export const projectTableSetups = new Map<string, TableSetup>(
+  seedDatasets.flatMap((dataset) =>
+    dataset.tableSetup ? [[dataset.project.id, dataset.tableSetup]] : []
+  )
 );
 
 export function getProjectComponents(projectId: string) {
@@ -97,4 +79,12 @@ export function getProjectCollections(projectId: string) {
 
 export function setProjectCollections(projectId: string, collections: ComponentCollection[]) {
   projectCollections.set(projectId, collections);
+}
+
+export function getProjectTableSetup(projectId: string) {
+  return projectTableSetups.get(projectId);
+}
+
+export function setProjectTableSetup(projectId: string, setup: TableSetup) {
+  projectTableSetups.set(projectId, setup);
 }

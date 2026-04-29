@@ -15,6 +15,8 @@ import {
   projectCollections,
   projectComponents,
   projectPieceTemplates,
+  projectTableSetups,
+  projectTileTemplates,
   projects
 } from "./in-memory-store.js";
 import { fail, ok, type ServiceResult } from "./service-result.js";
@@ -65,6 +67,7 @@ export function createProject(value: unknown): ServiceResult<GameProject> {
   projectComponents.set(project.id, []);
   projectCardTemplates.set(project.id, []);
   projectPieceTemplates.set(project.id, []);
+  projectTileTemplates.set(project.id, []);
   projectCollections.set(project.id, []);
 
   return ok(project);
@@ -113,7 +116,9 @@ export function deleteProject(projectId: string): ServiceResult<undefined> {
   projectComponents.delete(projectId);
   projectCardTemplates.delete(projectId);
   projectPieceTemplates.delete(projectId);
+  projectTileTemplates.delete(projectId);
   projectCollections.delete(projectId);
+  projectTableSetups.delete(projectId);
 
   return ok(undefined);
 }
@@ -314,7 +319,9 @@ function parseProjectParameterValue(
   value: unknown,
   type: ProjectParameterType
 ): ParseResult<string> {
-  const text = readRequiredString(value, "Project parameter value", { allowEmpty: type === "text" });
+  const text = readRequiredString(value, "Project parameter value", {
+    allowEmpty: type === "text"
+  });
 
   if (!text.ok) {
     return text;

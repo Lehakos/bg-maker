@@ -370,7 +370,6 @@ export type GameComponentBase = {
   projectId: string;
   type: ComponentType;
   name: string;
-  quantity: number;
   description: string;
   tags: string[];
   notes: string;
@@ -415,7 +414,6 @@ export type GameComponent = CardComponent | TileComponent | PieceComponent | Die
 export type CreateGameComponentInput = {
   type: ComponentType;
   name: string;
-  quantity?: number;
   description?: string;
   tags?: string[];
   notes?: string;

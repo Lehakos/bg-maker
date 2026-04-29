@@ -1,9 +1,19 @@
-.nav-link {
+.site-header-workspace-link {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  gap: 8px;
+  padding-inline: 12px;
+  border-radius: 8px;
   color: #374151;
   font-weight: 600;
   text-decoration: none;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
 }
 
-.nav-link:hover {
+.site-header-workspace-link:hover {
+  background: rgba(15, 118, 110, 0.08);
   color: #0f766e;
 }

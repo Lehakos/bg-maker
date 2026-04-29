@@ -40,6 +40,7 @@ type TilePreviewProps = {
   rotationDeg?: number;
   selectedSideId?: TileLayoutSide;
   selectedZoneId?: string | null;
+  showHeader?: boolean;
   showSideTabs?: boolean;
   title?: string;
   onSelectZone?: (zoneId: string) => void;
@@ -67,6 +68,7 @@ export function TilePreview({
   rotationDeg,
   selectedSideId,
   selectedZoneId = null,
+  showHeader = true,
   showSideTabs = true,
   title = "Final preview",
   onSelectZone,
@@ -215,12 +217,14 @@ export function TilePreview({
         </Tabs>
       ) : null}
 
-      <Group justify="space-between" align="center">
-        <Text fw={600}>{title}</Text>
-        <Text c="dimmed" size="sm">
-          {layout.sizeMm.widthMm} x {layout.sizeMm.heightMm} mm
-        </Text>
-      </Group>
+      {showHeader ? (
+        <Group justify="space-between" align="center">
+          <Text fw={600}>{title}</Text>
+          <Text c="dimmed" size="sm">
+            {layout.sizeMm.widthMm} x {layout.sizeMm.heightMm} mm
+          </Text>
+        </Group>
+      ) : null}
 
       <Box className={`tile-preview-shell${compact ? " tile-preview-shell--compact" : ""}`}>
         <Box

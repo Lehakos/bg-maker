@@ -26,7 +26,7 @@ test.describe("project components", () => {
     await expect(form.dialog).toBeHidden();
 
     form = await detailPage.openNewComponentForm();
-    await form.fillCommon({ name: "Strike", quantity: "12", tags: "starter, attack" });
+    await form.fillCommon({ name: "Strike", tags: "starter, attack" });
     await form.saveCreate();
 
     await expect(form.dialog).toBeHidden();
@@ -47,7 +47,7 @@ test.describe("project components", () => {
     await expect(detailPage.pieceTemplateRow("Coin piece template")).toContainText("Flat Circle");
 
     form = await detailPage.openNewComponentForm("Piece");
-    await form.fillCommon({ name: "Coin", quantity: "20", tags: "resource" });
+    await form.fillCommon({ name: "Coin", tags: "resource" });
     await form.selectPieceTemplate("Coin piece template");
     await expect(form.dialog.locator(".piece-preview").getByText("1 coin")).toBeVisible();
     await form.saveCreate();
@@ -67,7 +67,7 @@ test.describe("project components", () => {
     await expect(form.dialog).toBeHidden();
 
     form = await detailPage.openNewComponentForm("Tile");
-    await form.fillCommon({ name: "Forest hex", quantity: "19" });
+    await form.fillCommon({ name: "Forest hex" });
     await form.selectTileTemplate("Forest hex template");
     await form.saveCreate();
 
@@ -171,7 +171,7 @@ test.describe("project components", () => {
     await expect(form.dialog).toBeHidden();
 
     form = await detailPage.openNewComponentForm();
-    await form.fillCommon({ name: "Firebolt", quantity: "8", tags: "spell, attack" });
+    await form.fillCommon({ name: "Firebolt", tags: "spell, attack" });
     await form.selectCardTemplate("Spell card template");
     await form.fillPerCardValue("Rules", "Deal 3 damage");
     await expect(
@@ -296,7 +296,7 @@ test.describe("project components", () => {
     );
 
     form = await detailPage.openNewComponentForm("Piece");
-    await form.fillCommon({ name: "Ancient key", quantity: "1" });
+    await form.fillCommon({ name: "Ancient key" });
     await form.selectPieceTemplate("Artifact token template");
     await form.fillPerCardValue("Label", "Ancient Key");
     await expect(form.dialog.locator(".piece-preview").getByText("Ancient Key")).toBeVisible();
@@ -549,7 +549,6 @@ test.describe("project components", () => {
       data: {
         type: "piece",
         name: "Green meeples",
-        quantity: 10,
         templateId: colorTemplate.id,
         appearance: {
           fillColor: "#16a34a",
@@ -575,7 +574,6 @@ test.describe("project components", () => {
       data: {
         type: "piece",
         name: "Player one meeple",
-        quantity: 10,
         templateId: colorTemplate.id,
         appearance: {
           fillColor: { source: "project", key: "player_1_color" },
@@ -797,7 +795,6 @@ test.describe("project components", () => {
       await expect(response.json()).resolves.toEqual({ error: item.error });
     }
   });
-
 });
 
 function validCardLayout(elementType: "icon" | "image" | "text" = "text") {

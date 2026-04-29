@@ -575,7 +575,6 @@ function toDuplicateInput(component: GameComponent): CreateGameComponentInput {
   const base = {
     type: component.type,
     name: `Copy of ${component.name}`,
-    quantity: component.quantity,
     description: component.description,
     tags: component.tags,
     notes: component.notes

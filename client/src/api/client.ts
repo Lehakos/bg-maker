@@ -14,12 +14,14 @@ import {
   type GameProjectSummary,
   type HealthResponse,
   type PieceTemplate,
+  type TableSetup,
   type TileTemplate,
   type UpdateCardTemplateInput,
   type UpdateComponentCollectionInput,
   type UpdateGameComponentInput,
   type UpdateGameProjectInput,
   type UpdatePieceTemplateInput,
+  type UpdateTableSetupInput,
   type UpdateTileTemplateInput
 } from "@bg-maker/shared";
 
@@ -78,6 +80,16 @@ export async function getTileTemplates(projectId: string) {
 
 export async function getCollections(projectId: string) {
   const response = await http.get<ComponentCollection[]>(apiPaths.collections(projectId));
+  return response.data;
+}
+
+export async function getTableSetup(projectId: string) {
+  const response = await http.get<TableSetup>(apiPaths.tableSetup(projectId));
+  return response.data;
+}
+
+export async function updateTableSetup(projectId: string, input: UpdateTableSetupInput) {
+  const response = await http.put<TableSetup>(apiPaths.tableSetup(projectId), input);
   return response.data;
 }
 

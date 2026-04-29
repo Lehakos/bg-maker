@@ -37,6 +37,7 @@ type PiecePreviewProps = {
   selectedFaceId?: string;
   selectedZoneId?: string | null;
   footerExtra?: ReactNode;
+  showHeader?: boolean;
   showFaceTabs?: boolean;
   title?: string;
   onSelectedFaceIdChange?: (faceId: string) => void;
@@ -63,6 +64,7 @@ export function PiecePreview({
   selectedFaceId,
   selectedZoneId = null,
   footerExtra,
+  showHeader = true,
   showFaceTabs = true,
   title = "Final preview",
   onSelectedFaceIdChange,
@@ -223,12 +225,14 @@ export function PiecePreview({
         </Tabs>
       ) : null}
 
-      <Group justify="space-between" align="center">
-        <Text fw={600}>{title}</Text>
-        <Text c="dimmed" size="sm">
-          {layout.sizeMm.widthMm} x {layout.sizeMm.heightMm} mm
-        </Text>
-      </Group>
+      {showHeader ? (
+        <Group justify="space-between" align="center">
+          <Text fw={600}>{title}</Text>
+          <Text c="dimmed" size="sm">
+            {layout.sizeMm.widthMm} x {layout.sizeMm.heightMm} mm
+          </Text>
+        </Group>
+      ) : null}
 
       <Box className={`piece-preview-shell${compact ? " piece-preview-shell--compact" : ""}`}>
         <Box

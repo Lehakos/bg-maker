@@ -84,12 +84,12 @@ import {
 } from "./in-memory-store.js";
 import { touchProject } from "./project-service.js";
 import { fail, ok, type ServiceResult } from "./service-result.js";
+import { tableSetupUsesComponent } from "./table-setup-service.js";
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
 type CommonComponentInput = {
   name: string;
-  quantity: number;
   description: string;
   tags: string[];
   notes: string;
@@ -269,6 +269,10 @@ export function deleteComponent(projectId: string, componentId: string): Service
     )
   ) {
     return fail(400, "Component is used by a collection");
+  }
+
+  if (tableSetupUsesComponent(projectId, component.id)) {
+    return fail(400, "Component is used by table setup");
   }
 
   setProjectComponents(
@@ -557,7 +561,6 @@ function parseCreateComponentInput(
 
   const base: CommonComponentInput = {
     name: common.value.name,
-    quantity: common.value.quantity ?? 1,
     description: common.value.description ?? "",
     tags: common.value.tags ?? [],
     notes: common.value.notes ?? ""
@@ -611,10 +614,6 @@ function parseUpdateComponentInput(
     input.name = common.value.name;
   }
 
-  if (common.value.quantity !== undefined) {
-    input.quantity = common.value.quantity;
-  }
-
   if (common.value.description !== undefined) {
     input.description = common.value.description;
   }
@@ -656,15 +655,14 @@ function parseCommonComponentFields(
   const name = readOptionalString(value.name);
   const description = readOptionalString(value.description);
   const notes = readOptionalString(value.notes);
-  const quantity = readOptionalInteger(value.quantity, "Component quantity", { min: 1 });
   const tags = readOptionalStringArray(value.tags, "Component tags");
+
+  if ("quantity" in value) {
+    return { ok: false, error: "Component quantity is no longer supported" };
+  }
 
   if (value.name !== undefined && !name) {
     return { ok: false, error: "Component name must not be empty" };
-  }
-
-  if (!quantity.ok) {
-    return quantity;
   }
 
   if (!tags.ok) {
@@ -677,7 +675,6 @@ function parseCommonComponentFields(
       name,
       description,
       notes,
-      quantity: quantity.value,
       tags: tags.value
     }
   };

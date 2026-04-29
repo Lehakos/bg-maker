@@ -16,6 +16,7 @@ import {
 } from "./in-memory-store.js";
 import { touchProject } from "./project-service.js";
 import { fail, ok, type ServiceResult } from "./service-result.js";
+import { tableSetupUsesCollection } from "./table-setup-service.js";
 
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -58,6 +59,7 @@ export function createCollection(
     createdAt: timestamp,
     updatedAt: timestamp
   };
+
   setProjectCollections(projectId, [...getProjectCollections(projectId), collection]);
   touchProject(projectId);
 
@@ -115,6 +117,9 @@ export function deleteCollection(projectId: string, collectionId: string): Servi
     return fail(404, "Collection not found");
   }
 
+  if (tableSetupUsesCollection(projectId, collection.id)) {
+    return fail(400, "Collection is used by table setup");
+  }
 
   setProjectCollections(
     projectId,

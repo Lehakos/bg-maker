@@ -16,5 +16,6 @@ export const apiPaths = {
     `/api/projects/${projectId}/components/${componentId}`,
   collections: (projectId: string) => `/api/projects/${projectId}/collections`,
   collection: (projectId: string, collectionId: string) =>
-    `/api/projects/${projectId}/collections/${collectionId}`
+    `/api/projects/${projectId}/collections/${collectionId}`,
+  tableSetup: (projectId: string) => `/api/projects/${projectId}/table-setup`
 } as const;
