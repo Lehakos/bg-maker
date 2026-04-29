@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { DashboardRoute } from "./routes/dashboard";
 import { ProjectDetailRoute } from "./routes/project-detail";
+import { validateProjectDetailSearch } from "./routes/project-detail-search";
 import { RootLayout } from "./routes/root";
 
 const rootRoute = createRootRoute({
@@ -16,6 +17,7 @@ const indexRoute = createRoute({
 const projectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects/$projectId",
+  validateSearch: validateProjectDetailSearch,
   component: ProjectDetailRoute
 });
 

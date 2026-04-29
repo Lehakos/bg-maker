@@ -22,6 +22,7 @@ import { AlertTriangle, Plus, Trash2 } from "lucide-react";
 import { useState, type Dispatch, type SetStateAction } from "react";
 import {
   cardIconIds,
+  collectionTypes,
   componentTypes,
   createDefaultCardLayout,
   createDefaultTileLayout,
@@ -43,6 +44,7 @@ import {
   type CardTemplateField,
   type ComponentCollection,
   type ComponentCollectionItem,
+  type ComponentCollectionType,
   type ComponentType,
   type GameComponent,
   type LayoutZone,
@@ -59,7 +61,7 @@ import {
   type TileShape,
   type TileTemplate
 } from "@bg-maker/shared";
-import { componentTypeLabels } from "./component-labels";
+import { collectionTypeLabels, componentTypeLabels } from "./component-labels";
 import { CardLayoutEditor, CardPreview, ZoneEditorPanel } from "./card-layout-editor";
 import {
   createDefaultLayoutZone,
@@ -136,6 +138,10 @@ const templateTypeOptions: { label: string; value: TemplateFormType }[] = [
   { value: "tileTemplate", label: componentFormTypeLabels.tileTemplate },
   { value: "pieceTemplate", label: componentFormTypeLabels.pieceTemplate }
 ];
+const collectionTypeOptions = collectionTypes.map((type) => ({
+  value: type,
+  label: collectionTypeLabels[type]
+}));
 const pieceFormFactorOptions = pieceFormFactors.map((formFactor) => ({
   value: formFactor,
   label: titleCase(formFactor)
@@ -279,6 +285,7 @@ function ComponentFormContent({
     buildSubmitValues,
     nameIsEmpty,
     removeCollectionItem,
+    selectCollectionType,
     selectType,
     setDieSides,
     setValues,
@@ -296,10 +303,6 @@ function ComponentFormContent({
     formKind,
     initialComponentType
   );
-  const componentOptions = availableComponents.map((item) => ({
-    value: item.id,
-    label: `${item.name} (${componentTypeLabels[item.type]})`
-  }));
   const isComponentForm = formKind === "component";
   const isTemplateForm = isTemplateFormKind(formKind);
   const namePlaceholder = isTemplateForm
@@ -344,7 +347,31 @@ function ComponentFormContent({
             value={values.name}
             onChange={(event) => setValues({ ...values, name: event.currentTarget.value })}
           />
-          {mode === "create" && isComponentForm ? (
+          {formKind === "collection" ? (
+            <Select
+              allowDeselect={false}
+              data={collectionTypeOptions}
+              disabled={loading}
+              label="Collection type"
+              value={values.collectionType}
+              onChange={(value) => {
+                const collectionType = readSelectOptionValue<ComponentCollectionType>(
+                  collectionTypeOptions,
+                  value,
+                  "deck"
+                );
+
+                selectCollectionType(
+                  collectionType,
+                  getCompatibleCollectionItems(
+                    values.collectionItems,
+                    collectionType,
+                    availableComponents
+                  )
+                );
+              }}
+            />
+          ) : mode === "create" && isComponentForm ? (
             <Select
               allowDeselect={false}
               data={typeOptions}
@@ -415,8 +442,8 @@ function ComponentFormContent({
         )}
 
         <TypeSpecificFields
+          availableComponents={availableComponents}
           cardTemplates={cardTemplates}
-          componentOptions={componentOptions}
           loading={loading}
           pieceTemplates={pieceTemplates}
           projectParameters={projectParameters}
@@ -557,8 +584,8 @@ function MissingTemplateAlert({
 }
 
 function TypeSpecificFields({
+  availableComponents,
   cardTemplates,
-  componentOptions,
   loading,
   pieceTemplates,
   projectParameters,
@@ -575,8 +602,8 @@ function TypeSpecificFields({
   onNewPieceTemplate,
   onNewTileTemplate
 }: {
+  availableComponents: GameComponent[];
   cardTemplates: CardTemplate[];
-  componentOptions: { value: string; label: string }[];
   loading: boolean;
   pieceTemplates: PieceTemplate[];
   projectParameters: ProjectParameter[];
@@ -897,7 +924,12 @@ function TypeSpecificFields({
         />
       );
 
-    case "collection":
+    case "collection": {
+      const componentOptions = getCollectionComponentOptions(
+        availableComponents,
+        values.collectionType
+      );
+
       return (
         <Stack gap="xs">
           <Group justify="space-between">
@@ -966,6 +998,47 @@ function TypeSpecificFields({
           )}
         </Stack>
       );
+    }
+  }
+}
+
+function getCollectionComponentOptions(
+  components: GameComponent[],
+  collectionType: ComponentCollectionType
+) {
+  return components
+    .filter((component) => collectionTypeAllowsComponent(collectionType, component))
+    .map((item) => ({
+      value: item.id,
+      label: `${item.name} (${componentTypeLabels[item.type]})`
+    }));
+}
+
+function getCompatibleCollectionItems(
+  items: ComponentCollectionItem[],
+  collectionType: ComponentCollectionType,
+  components: GameComponent[]
+) {
+  const allowedComponentIds = new Set(
+    components
+      .filter((component) => collectionTypeAllowsComponent(collectionType, component))
+      .map((component) => component.id)
+  );
+
+  return items.filter((item) => allowedComponentIds.has(item.componentId));
+}
+
+function collectionTypeAllowsComponent(
+  collectionType: ComponentCollectionType,
+  component: GameComponent
+) {
+  switch (collectionType) {
+    case "deck":
+      return component.type === "card";
+    case "bag":
+      return component.type === "tile" || component.type === "piece" || component.type === "die";
+    case "custom":
+      return true;
   }
 }
 

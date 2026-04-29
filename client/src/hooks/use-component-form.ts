@@ -17,6 +17,7 @@ import {
   type CardTemplate,
   type ComponentCollection,
   type ComponentCollectionItem,
+  type ComponentCollectionType,
   type ComponentType,
   type CreateComponentCollectionInput,
   type CreateGameComponentInput,
@@ -31,7 +32,6 @@ import {
   type TileLayout,
   type TileShape,
   type TileTemplate,
-  type UpdateComponentCollectionInput,
   type UpdateGameComponentInput,
   type UpdatePieceTemplateInput,
   type UpdateTileTemplateInput
@@ -79,7 +79,7 @@ export type ComponentFormSubmitValues =
       };
     }
   | {
-      collection: (CreateComponentCollectionInput | UpdateComponentCollectionInput) & {
+      collection: CreateComponentCollectionInput & {
         id?: string;
         name: string;
       };
@@ -118,6 +118,7 @@ export type ComponentFormValues = {
   tileShape: TileShape;
   tileWidthMm: number;
   tileHeightMm: number;
+  collectionType: ComponentCollectionType;
   collectionItems: ComponentCollectionItem[];
   sides: number;
 };
@@ -157,6 +158,7 @@ const defaultValues: ComponentFormValues = {
   tileShape: defaultTileLayout.shape,
   tileWidthMm: defaultTileLayout.sizeMm.widthMm,
   tileHeightMm: defaultTileLayout.sizeMm.heightMm,
+  collectionType: "deck",
   collectionItems: [],
   sides: 6
 };
@@ -193,6 +195,9 @@ export function useComponentForm(
     )
   );
   const cachedValuesByTypeRef = useRef<Partial<Record<ComponentFormType, ComponentFormValues>>>({});
+  const cachedCollectionItemsByTypeRef = useRef<
+    Partial<Record<ComponentCollectionType, ComponentCollectionItem[]>>
+  >({});
   const nameIsEmpty = values.name.trim().length === 0;
 
   function buildSubmitValues(mode: "create" | "edit"): ComponentFormSubmitValues | null {
@@ -238,6 +243,7 @@ export function useComponentForm(
         kind: "collection",
         collection: {
           id: collection?.id,
+          type: values.collectionType,
           name: values.name.trim(),
           description: values.description.trim(),
           tags: parseTags(values.tagsText),
@@ -295,6 +301,26 @@ export function useComponentForm(
     }));
   }
 
+  function selectCollectionType(
+    collectionType: ComponentCollectionType,
+    seedItems: ComponentCollectionItem[] = []
+  ) {
+    setValues((currentValues) => {
+      if (currentValues.collectionType === collectionType) {
+        return currentValues;
+      }
+
+      cachedCollectionItemsByTypeRef.current[currentValues.collectionType] =
+        currentValues.collectionItems;
+
+      return {
+        ...currentValues,
+        collectionType,
+        collectionItems: cachedCollectionItemsByTypeRef.current[collectionType] ?? seedItems
+      };
+    });
+  }
+
   function setDieSides(sides: number) {
     setValues((currentValues) => ({
       ...currentValues,
@@ -322,6 +348,7 @@ export function useComponentForm(
     buildSubmitValues,
     nameIsEmpty,
     removeCollectionItem,
+    selectCollectionType,
     selectType,
     setDieSides,
     setValues,
@@ -398,6 +425,7 @@ function getComponentFormValues(
       description: collection.description,
       tagsText: collection.tags.join(", "),
       notes: collection.notes,
+      collectionType: collection.type,
       collectionItems: collection.items
     };
   }
@@ -447,6 +475,7 @@ function getComponentFormValues(
       ...defaultValues,
       type: "collection",
       name: "",
+      collectionType: "deck",
       collectionItems: []
     };
   }
@@ -703,6 +732,7 @@ function getNewFormValuesForType(
         ...defaultValues,
         type: "collection",
         name: "",
+        collectionType: "deck",
         collectionItems: []
       };
   }

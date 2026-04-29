@@ -1,3 +1,38 @@
+.project-detail-page {
+  padding-block: var(--mantine-spacing-xl);
+}
+
+.project-detail-tabs {
+  margin-top: var(--mantine-spacing-xl);
+}
+
+.catalog-panel-switch {
+  width: 100%;
+  text-align: left;
+}
+
+.catalog-panel-card {
+  height: 100%;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.catalog-panel-card[data-active="true"] {
+  border-color: var(--mantine-color-teal-5);
+  box-shadow: 0 0 0 1px var(--mantine-color-teal-5);
+}
+
+.catalog-panel-switch:hover .catalog-panel-card {
+  transform: translateY(-1px);
+}
+
+.catalog-table-pagination {
+  border-top: 1px solid var(--mantine-color-gray-2);
+  padding-top: var(--mantine-spacing-sm);
+}
+
 .component-actions-header,
 .component-actions-cell {
   width: 116px;

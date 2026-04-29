@@ -8,6 +8,7 @@ import {
   Group,
   Menu,
   Paper,
+  Pagination,
   Select,
   SimpleGrid,
   Stack,
@@ -16,13 +17,14 @@ import {
   Text,
   ThemeIcon,
   Tooltip,
-  Title
+  Title,
+  UnstyledButton
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -37,6 +39,7 @@ import {
   Users
 } from "lucide-react";
 import {
+  collectionTypes,
   componentTypes,
   type CardTemplate,
   type ComponentCollection,
@@ -50,10 +53,22 @@ import {
 } from "@bg-maker/shared";
 import { deleteProject, getApiErrorMessage, getProject, updateProject } from "../api/client";
 import { ComponentFormModal } from "../components/component-form-modal";
-import { componentTypeLabels } from "../components/component-labels";
+import { collectionTypeLabels, componentTypeLabels } from "../components/component-labels";
 import { ProjectFormModal, type ProjectFormValues } from "../components/project-form-modal";
 import { getProjectFormValues } from "../components/project-form-values";
 import { useProjectComponents, type ComponentModalState } from "../hooks/use-project-components";
+import {
+  projectDetailTabs,
+  tablePageSizeOptions,
+  type CatalogPanel,
+  type CollectionTypeFilter,
+  type ComponentTypeFilter,
+  type ProjectDetailSearch,
+  type ProjectDetailTab,
+  type TablePageSize,
+  type TemplateCatalogType,
+  type TemplateTypeFilter
+} from "./project-detail-search";
 import "./project-detail.css";
 
 const statusColors: Record<ProjectStatus, string> = {
@@ -61,10 +76,6 @@ const statusColors: Record<ProjectStatus, string> = {
   testing: "yellow",
   ready: "teal"
 };
-
-type TemplateCatalogType = "card" | "piece" | "tile";
-
-type TemplateTypeFilter = "all" | TemplateCatalogType;
 
 type TemplateCatalogRow =
   | { template: CardTemplate; type: "card" }
@@ -76,6 +87,14 @@ const templateTypeOptions: { label: string; value: TemplateTypeFilter }[] = [
   { value: "card", label: "Cards" },
   { value: "tile", label: "Tiles" },
   { value: "piece", label: "Pieces" }
+];
+
+const collectionTypeOptions: { label: string; value: CollectionTypeFilter }[] = [
+  { value: "all", label: "All collections" },
+  ...collectionTypes.map((type) => ({
+    value: type,
+    label: type === "custom" ? collectionTypeLabels[type] : `${collectionTypeLabels[type]}s`
+  }))
 ];
 
 const templateTypeOrder: Record<TemplateCatalogType, number> = {
@@ -124,6 +143,7 @@ export function ProjectDetailRoute() {
   const params = useParams({ strict: false });
   const projectId = String(params.projectId ?? "");
   const navigate = useNavigate();
+  const projectSearch = useSearch({ from: "/projects/$projectId" });
   const queryClient = useQueryClient();
   const [editModalOpened, { close: closeEditModal, open: openEditModal }] = useDisclosure(false);
 
@@ -196,53 +216,78 @@ export function ProjectDetailRoute() {
     }
   };
 
+  const updateProjectSearch = (patch: Partial<ProjectDetailSearch>) => {
+    void navigate({
+      from: "/projects/$projectId",
+      to: ".",
+      replace: true,
+      search: (current) => ({ ...current, ...patch })
+    });
+  };
+
+  const handleProjectTabChange = (value: string | null) => {
+    if (isProjectDetailTab(value)) {
+      updateProjectSearch({ tab: value });
+    }
+  };
+
   return (
-    <Container size="lg" py="xl">
-      <Stack gap="xl">
-        <Group justify="space-between" align="flex-start">
-          <Stack gap={6}>
-            <Button
-              leftSection={<ArrowLeft size={16} />}
-              variant="subtle"
-              color="gray"
-              px={0}
-              onClick={() => void navigate({ to: "/" })}
-            >
-              Workspace
-            </Button>
-            <Group gap="sm" align="center">
-              <Title order={1}>{project.name}</Title>
-              <Badge color={statusColors[project.status]} radius={8}>
-                {project.status}
-              </Badge>
+    <Box className="project-detail-page">
+      <Container size="lg" w="100%">
+        <Stack gap="xl">
+          <Group justify="space-between" align="flex-start">
+            <Stack gap={6}>
+              <Button
+                leftSection={<ArrowLeft size={16} />}
+                variant="subtle"
+                color="gray"
+                px={0}
+                onClick={() => void navigate({ to: "/" })}
+              >
+                Workspace
+              </Button>
+              <Group gap="sm" align="center">
+                <Title order={1}>{project.name}</Title>
+                <Badge color={statusColors[project.status]} radius={8}>
+                  {project.status}
+                </Badge>
+              </Group>
+              <Text c="dimmed">{project.description || "No description"}</Text>
+            </Stack>
+
+            <Group gap="sm">
+              <Button leftSection={<Edit size={16} />} radius={8} onClick={openEditModal}>
+                Edit
+              </Button>
+              <Button
+                color="red"
+                leftSection={<Trash2 size={16} />}
+                loading={deleteProjectMutation.isPending}
+                radius={8}
+                variant="light"
+                onClick={handleDelete}
+              >
+                Delete
+              </Button>
             </Group>
-            <Text c="dimmed">{project.description || "No description"}</Text>
-          </Stack>
-
-          <Group gap="sm">
-            <Button leftSection={<Edit size={16} />} radius={8} onClick={openEditModal}>
-              Edit
-            </Button>
-            <Button
-              color="red"
-              leftSection={<Trash2 size={16} />}
-              loading={deleteProjectMutation.isPending}
-              radius={8}
-              variant="light"
-              onClick={handleDelete}
-            >
-              Delete
-            </Button>
           </Group>
-        </Group>
 
-        {deleteProjectMutation.isError ? (
-          <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
-            {getApiErrorMessage(deleteProjectMutation.error)}
-          </Alert>
-        ) : null}
+          {deleteProjectMutation.isError ? (
+            <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
+              {getApiErrorMessage(deleteProjectMutation.error)}
+            </Alert>
+          ) : null}
+        </Stack>
+      </Container>
 
-        <Tabs defaultValue="overview" radius={8} variant="outline">
+      <Tabs
+        className="project-detail-tabs"
+        radius={8}
+        value={projectSearch.tab}
+        variant="outline"
+        onChange={handleProjectTabChange}
+      >
+        <Container size="lg" w="100%">
           <Tabs.List>
             <Tabs.Tab value="overview" leftSection={<Activity size={14} />}>
               Overview
@@ -260,11 +305,15 @@ export function ProjectDetailRoute() {
               Notes
             </Tabs.Tab>
           </Tabs.List>
+        </Container>
 
-          <Tabs.Panel value="overview" pt="md">
+        <Tabs.Panel value="overview" pt="md">
+          <Container size="lg" w="100%">
             <ProjectOverview project={project} />
-          </Tabs.Panel>
-          <Tabs.Panel value="components" pt="md">
+          </Container>
+        </Tabs.Panel>
+        <Tabs.Panel value="components" pt="md">
+          <Container size="lg" w="100%">
             <ProjectComponents
               actionError={componentCatalog.actionError}
               cardTemplates={componentCatalog.cardTemplates}
@@ -276,14 +325,13 @@ export function ProjectDetailRoute() {
               deletingPieceTemplateId={componentCatalog.deletingPieceTemplateId}
               deletingTileTemplateId={componentCatalog.deletingTileTemplateId}
               duplicatingComponentId={componentCatalog.duplicatingComponentId}
-              filter={componentCatalog.componentTypeFilter}
-              filteredComponents={componentCatalog.filteredComponents}
               getCollectionDetails={componentCatalog.getCollectionDetails}
               loading={componentCatalog.componentsQuery.isLoading}
               pieceTemplates={componentCatalog.pieceTemplates}
               tileTemplates={componentCatalog.tileTemplates}
               queryError={componentCatalog.queryError}
               getComponentDetails={componentCatalog.getComponentDetails}
+              search={projectSearch}
               onDeleteCardTemplate={componentCatalog.requestDeleteCardTemplate}
               onDeleteCollection={componentCatalog.requestDeleteCollection}
               onDeleteComponent={componentCatalog.requestDeleteComponent}
@@ -295,37 +343,43 @@ export function ProjectDetailRoute() {
               onEditCardTemplate={componentCatalog.openEditCardTemplate}
               onEditPieceTemplate={componentCatalog.openEditPieceTemplate}
               onEditTileTemplate={componentCatalog.openEditTileTemplate}
-              onFilterChange={componentCatalog.setComponentTypeFilter}
               onNewCardTemplate={componentCatalog.openNewCardTemplate}
               onNewCollection={componentCatalog.openNewCollection}
               onNewComponent={componentCatalog.openNewComponent}
               onNewPieceTemplate={componentCatalog.openNewPieceTemplate}
               onNewTileTemplate={componentCatalog.openNewTileTemplate}
+              onSearchChange={updateProjectSearch}
             />
-          </Tabs.Panel>
-          <Tabs.Panel value="layout" pt="md">
+          </Container>
+        </Tabs.Panel>
+        <Tabs.Panel value="layout" pt="md">
+          <Container size="lg" w="100%">
             <EmptyProjectSection
               icon={<FileText size={20} />}
               title="Layout"
               description="Table zones and starting setup arrive after project management."
             />
-          </Tabs.Panel>
-          <Tabs.Panel value="sessions" pt="md">
+          </Container>
+        </Tabs.Panel>
+        <Tabs.Panel value="sessions" pt="md">
+          <Container size="lg" w="100%">
             <EmptyProjectSection
               icon={<Users size={20} />}
               title="Sessions"
               description="Playable sessions are outside phase one."
             />
-          </Tabs.Panel>
-          <Tabs.Panel value="notes" pt="md">
+          </Container>
+        </Tabs.Panel>
+        <Tabs.Panel value="notes" pt="md">
+          <Container size="lg" w="100%">
             <EmptyProjectSection
               icon={<FileText size={20} />}
               title="Notes"
               description={project.notes || "No notes yet"}
             />
-          </Tabs.Panel>
-        </Tabs>
-      </Stack>
+          </Container>
+        </Tabs.Panel>
+      </Tabs>
 
       <ProjectFormModal
         opened={editModalOpened}
@@ -369,7 +423,7 @@ export function ProjectDetailRoute() {
         onNewTileTemplate={componentCatalog.openNewTileTemplate}
         onSubmit={componentCatalog.submitComponentForm}
       />
-    </Container>
+    </Box>
   );
 }
 
@@ -488,8 +542,6 @@ function ProjectComponents({
   deletingPieceTemplateId,
   deletingTileTemplateId,
   duplicatingComponentId,
-  filter,
-  filteredComponents,
   getCollectionDetails,
   getComponentDetails,
   loading,
@@ -504,13 +556,14 @@ function ProjectComponents({
   onEditCardTemplate,
   onEditPieceTemplate,
   onEditTileTemplate,
-  onFilterChange,
   onNewCardTemplate,
   onNewCollection,
   onNewComponent,
   onNewPieceTemplate,
   onNewTileTemplate,
+  onSearchChange,
   pieceTemplates,
+  search,
   tileTemplates,
   queryError
 }: {
@@ -524,8 +577,6 @@ function ProjectComponents({
   deletingPieceTemplateId: string | null;
   deletingTileTemplateId: string | null;
   duplicatingComponentId: string | null;
-  filter: ComponentType | "all";
-  filteredComponents: GameComponent[];
   getCollectionDetails: (collection: ComponentCollection) => string;
   getComponentDetails: (component: GameComponent) => string;
   loading: boolean;
@@ -540,40 +591,93 @@ function ProjectComponents({
   onEditCardTemplate: (template: CardTemplate) => void;
   onEditPieceTemplate: (template: PieceTemplate) => void;
   onEditTileTemplate: (template: TileTemplate) => void;
-  onFilterChange: (filter: ComponentType | "all") => void;
   onNewCardTemplate: () => void;
   onNewCollection: () => void;
   onNewComponent: (type?: ComponentType) => void;
   onNewPieceTemplate: () => void;
   onNewTileTemplate: () => void;
+  onSearchChange: (patch: Partial<ProjectDetailSearch>) => void;
   pieceTemplates: PieceTemplate[];
+  search: ProjectDetailSearch;
   tileTemplates: TileTemplate[];
   queryError: string | null;
 }) {
-  const [templateFilter, setTemplateFilter] = useState<TemplateTypeFilter>("all");
-  const filterOptions = [
+  const componentFilterOptions: { label: string; value: ComponentTypeFilter }[] = [
     { value: "all", label: "All types" },
     ...componentTypes.map((type) => ({ value: type, label: componentTypeLabels[type] }))
   ];
-  const templates = buildTemplateCatalogRows(cardTemplates, tileTemplates, pieceTemplates);
-  const filteredTemplates =
-    templateFilter === "all"
-      ? templates
-      : templates.filter((template) => template.type === templateFilter);
+  const templates = useMemo(
+    () => buildTemplateCatalogRows(cardTemplates, tileTemplates, pieceTemplates),
+    [cardTemplates, pieceTemplates, tileTemplates]
+  );
+  const filteredComponents = useMemo(
+    () =>
+      search.componentType === "all"
+        ? components
+        : components.filter((component) => component.type === search.componentType),
+    [components, search.componentType]
+  );
+  const filteredTemplates = useMemo(
+    () =>
+      search.templateType === "all"
+        ? templates
+        : templates.filter((template) => template.type === search.templateType),
+    [search.templateType, templates]
+  );
+  const filteredCollections = useMemo(
+    () =>
+      search.collectionType === "all"
+        ? collections
+        : collections.filter((collection) => collection.type === search.collectionType),
+    [collections, search.collectionType]
+  );
+
+  const componentPage = getClampedPage(search.page, filteredComponents.length, search.pageSize);
+  const templatePage = getClampedPage(search.page, filteredTemplates.length, search.pageSize);
+  const collectionPage = getClampedPage(search.page, filteredCollections.length, search.pageSize);
+  const paginatedComponents = getPaginatedItems(filteredComponents, componentPage, search.pageSize);
+  const paginatedTemplates = getPaginatedItems(filteredTemplates, templatePage, search.pageSize);
+  const paginatedCollections = getPaginatedItems(
+    filteredCollections,
+    collectionPage,
+    search.pageSize
+  );
+
+  const handlePanelChange = (panel: CatalogPanel) => {
+    onSearchChange({ page: 1, panel, tab: "components" });
+  };
+
+  const handlePageSizeChange = (pageSize: TablePageSize) => {
+    onSearchChange({ page: 1, pageSize });
+  };
 
   return (
     <Stack gap="md">
-      <SimpleGrid cols={{ base: 2, sm: 3, md: 6 }}>
-        {componentTypes.map((type) => (
-          <Paper key={type} withBorder radius={8} p="md">
-            <Text size="sm" c="dimmed">
-              {componentTypeLabels[type]}
-            </Text>
-            <Title order={3} size="h3" mt={4}>
-              {components.filter((component) => component.type === type).length}
-            </Title>
-          </Paper>
-        ))}
+      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        <CatalogPanelSwitch
+          active={search.panel === "components"}
+          color="teal"
+          count={components.length}
+          icon={<Layers size={18} />}
+          label="Component catalog"
+          onClick={() => handlePanelChange("components")}
+        />
+        <CatalogPanelSwitch
+          active={search.panel === "templates"}
+          color="blue"
+          count={templates.length}
+          icon={<FileText size={18} />}
+          label="Templates"
+          onClick={() => handlePanelChange("templates")}
+        />
+        <CatalogPanelSwitch
+          active={search.panel === "collections"}
+          color="indigo"
+          count={collections.length}
+          icon={<Layers size={18} />}
+          label="Collections"
+          onClick={() => handlePanelChange("collections")}
+        />
       </SimpleGrid>
 
       {actionError ? (
@@ -582,146 +686,316 @@ function ProjectComponents({
         </Alert>
       ) : null}
 
-      <Paper withBorder radius={8} p="md">
-        <Stack gap="md">
-          <Group justify="space-between" align="flex-start">
-            <Group gap="sm">
-              <ThemeIcon color="blue" variant="light" radius={8}>
-                <FileText size={18} />
-              </ThemeIcon>
-              <Box>
-                <Title order={2} size="h3">
-                  Templates
-                </Title>
-                <Text c="dimmed" size="sm">
-                  {templates.length} total
-                </Text>
-              </Box>
+      {search.panel === "components" ? (
+        <Paper withBorder radius={8} p="md">
+          <Stack gap="md">
+            <Group justify="space-between" align="flex-start">
+              <Group gap="sm">
+                <ThemeIcon color="teal" variant="light" radius={8}>
+                  <Layers size={18} />
+                </ThemeIcon>
+                <Box>
+                  <Title order={2} size="h3">
+                    Component catalog
+                  </Title>
+                  <Text c="dimmed" size="sm">
+                    {components.length} total
+                  </Text>
+                </Box>
+              </Group>
+              <Group gap="sm">
+                <Select
+                  allowDeselect={false}
+                  aria-label="Filter components by type"
+                  data={componentFilterOptions}
+                  value={search.componentType}
+                  w={170}
+                  onChange={(value) =>
+                    onSearchChange({
+                      componentType: (value ?? "all") as ComponentTypeFilter,
+                      page: 1
+                    })
+                  }
+                />
+                <CreateMenu
+                  label="New component"
+                  items={componentTypes.map((type) => ({
+                    label: `${componentTypeLabels[type]} component`,
+                    onClick: () => onNewComponent(type)
+                  }))}
+                />
+              </Group>
             </Group>
-            <Group gap="sm">
-              <Select
-                allowDeselect={false}
-                aria-label="Filter templates by type"
-                data={templateTypeOptions}
-                value={templateFilter}
-                w={170}
-                onChange={(value) => setTemplateFilter((value ?? "all") as TemplateTypeFilter)}
+
+            {queryError ? (
+              <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
+                {queryError}
+              </Alert>
+            ) : null}
+
+            <ComponentTable
+              components={paginatedComponents}
+              deletingComponentId={deletingComponentId}
+              duplicatingComponentId={duplicatingComponentId}
+              emptyLabel={
+                search.componentType === "all"
+                  ? "No components yet"
+                  : "No components of this type yet"
+              }
+              getComponentDetails={getComponentDetails}
+              loading={loading}
+              onDeleteComponent={onDeleteComponent}
+              onDuplicateComponent={onDuplicateComponent}
+              onEditComponent={onEditComponent}
+            />
+            {!loading && filteredComponents.length > 0 ? (
+              <TablePagination
+                page={componentPage}
+                pageSize={search.pageSize}
+                totalItems={filteredComponents.length}
+                onPageChange={(page) => onSearchChange({ page })}
+                onPageSizeChange={handlePageSizeChange}
               />
-              <CreateMenu
-                label="New template"
-                items={[
-                  { label: "Card template", onClick: onNewCardTemplate },
-                  { label: "Tile template", onClick: onNewTileTemplate },
-                  { label: "Piece template", onClick: onNewPieceTemplate }
-                ]}
+            ) : null}
+          </Stack>
+        </Paper>
+      ) : null}
+
+      {search.panel === "templates" ? (
+        <Paper withBorder radius={8} p="md">
+          <Stack gap="md">
+            <Group justify="space-between" align="flex-start">
+              <Group gap="sm">
+                <ThemeIcon color="blue" variant="light" radius={8}>
+                  <FileText size={18} />
+                </ThemeIcon>
+                <Box>
+                  <Title order={2} size="h3">
+                    Templates
+                  </Title>
+                  <Text c="dimmed" size="sm">
+                    {templates.length} total
+                  </Text>
+                </Box>
+              </Group>
+              <Group gap="sm">
+                <Select
+                  allowDeselect={false}
+                  aria-label="Filter templates by type"
+                  data={templateTypeOptions}
+                  value={search.templateType}
+                  w={170}
+                  onChange={(value) =>
+                    onSearchChange({
+                      page: 1,
+                      templateType: (value ?? "all") as TemplateTypeFilter
+                    })
+                  }
+                />
+                <CreateMenu
+                  label="New template"
+                  items={[
+                    { label: "Card template", onClick: onNewCardTemplate },
+                    { label: "Tile template", onClick: onNewTileTemplate },
+                    { label: "Piece template", onClick: onNewPieceTemplate }
+                  ]}
+                />
+              </Group>
+            </Group>
+
+            <TemplateTable
+              deletingCardTemplateId={deletingCardTemplateId}
+              deletingPieceTemplateId={deletingPieceTemplateId}
+              deletingTileTemplateId={deletingTileTemplateId}
+              emptyLabel={
+                search.templateType === "all" ? "No templates yet" : "No templates of this type yet"
+              }
+              templates={paginatedTemplates}
+              onDeleteCardTemplate={onDeleteCardTemplate}
+              onDeletePieceTemplate={onDeletePieceTemplate}
+              onDeleteTileTemplate={onDeleteTileTemplate}
+              onEditCardTemplate={onEditCardTemplate}
+              onEditPieceTemplate={onEditPieceTemplate}
+              onEditTileTemplate={onEditTileTemplate}
+            />
+            {filteredTemplates.length > 0 ? (
+              <TablePagination
+                page={templatePage}
+                pageSize={search.pageSize}
+                totalItems={filteredTemplates.length}
+                onPageChange={(page) => onSearchChange({ page })}
+                onPageSizeChange={handlePageSizeChange}
               />
+            ) : null}
+          </Stack>
+        </Paper>
+      ) : null}
+
+      {search.panel === "collections" ? (
+        <Paper withBorder radius={8} p="md">
+          <Stack gap="md">
+            <Group justify="space-between" align="flex-start">
+              <Group gap="sm">
+                <ThemeIcon color="indigo" variant="light" radius={8}>
+                  <Layers size={18} />
+                </ThemeIcon>
+                <Box>
+                  <Title order={2} size="h3">
+                    Collections
+                  </Title>
+                  <Text c="dimmed" size="sm">
+                    {collections.length} total
+                  </Text>
+                </Box>
+              </Group>
+              <Group gap="sm">
+                <Select
+                  allowDeselect={false}
+                  aria-label="Filter collections by type"
+                  data={collectionTypeOptions}
+                  value={search.collectionType}
+                  w={180}
+                  onChange={(value) =>
+                    onSearchChange({
+                      collectionType: (value ?? "all") as CollectionTypeFilter,
+                      page: 1
+                    })
+                  }
+                />
+                <Button leftSection={<Plus size={16} />} radius={8} onClick={onNewCollection}>
+                  New collection
+                </Button>
+              </Group>
             </Group>
-          </Group>
 
-          <TemplateTable
-            deletingCardTemplateId={deletingCardTemplateId}
-            deletingPieceTemplateId={deletingPieceTemplateId}
-            deletingTileTemplateId={deletingTileTemplateId}
-            emptyLabel={
-              templateFilter === "all" ? "No templates yet" : "No templates of this type yet"
-            }
-            templates={filteredTemplates}
-            onDeleteCardTemplate={onDeleteCardTemplate}
-            onDeletePieceTemplate={onDeletePieceTemplate}
-            onDeleteTileTemplate={onDeleteTileTemplate}
-            onEditCardTemplate={onEditCardTemplate}
-            onEditPieceTemplate={onEditPieceTemplate}
-            onEditTileTemplate={onEditTileTemplate}
-          />
-        </Stack>
-      </Paper>
-
-      <Paper withBorder radius={8} p="md">
-        <Stack gap="md">
-          <Group justify="space-between" align="flex-start">
-            <Group gap="sm">
-              <ThemeIcon color="indigo" variant="light" radius={8}>
-                <Layers size={18} />
-              </ThemeIcon>
-              <Box>
-                <Title order={2} size="h3">
-                  Collections
-                </Title>
-                <Text c="dimmed" size="sm">
-                  {collections.length} total
-                </Text>
-              </Box>
-            </Group>
-            <Button leftSection={<Plus size={16} />} radius={8} onClick={onNewCollection}>
-              New collection
-            </Button>
-          </Group>
-
-          <CollectionTable
-            collections={collections}
-            deletingCollectionId={deletingCollectionId}
-            getCollectionDetails={getCollectionDetails}
-            onDeleteCollection={onDeleteCollection}
-            onEditCollection={onEditCollection}
-          />
-        </Stack>
-      </Paper>
-
-      <Paper withBorder radius={8} p="md">
-        <Stack gap="md">
-          <Group justify="space-between" align="flex-start">
-            <Group gap="sm">
-              <ThemeIcon color="teal" variant="light" radius={8}>
-                <Layers size={18} />
-              </ThemeIcon>
-              <Box>
-                <Title order={2} size="h3">
-                  Component catalog
-                </Title>
-                <Text c="dimmed" size="sm">
-                  {components.length} total
-                </Text>
-              </Box>
-            </Group>
-            <Group gap="sm">
-              <Select
-                allowDeselect={false}
-                aria-label="Filter components by type"
-                data={filterOptions}
-                value={filter}
-                w={170}
-                onChange={(value) => onFilterChange((value ?? "all") as ComponentType | "all")}
+            <CollectionTable
+              collections={paginatedCollections}
+              deletingCollectionId={deletingCollectionId}
+              emptyLabel={
+                search.collectionType === "all"
+                  ? "No collections yet"
+                  : "No collections of this type yet"
+              }
+              getCollectionDetails={getCollectionDetails}
+              onDeleteCollection={onDeleteCollection}
+              onEditCollection={onEditCollection}
+            />
+            {filteredCollections.length > 0 ? (
+              <TablePagination
+                page={collectionPage}
+                pageSize={search.pageSize}
+                totalItems={filteredCollections.length}
+                onPageChange={(page) => onSearchChange({ page })}
+                onPageSizeChange={handlePageSizeChange}
               />
-              <CreateMenu
-                label="New component"
-                items={componentTypes.map((type) => ({
-                  label: `${componentTypeLabels[type]} component`,
-                  onClick: () => onNewComponent(type)
-                }))}
-              />
-            </Group>
-          </Group>
-
-          {queryError ? (
-            <Alert color="red" icon={<AlertTriangle size={16} />} radius={8} variant="light">
-              {queryError}
-            </Alert>
-          ) : null}
-
-          <ComponentTable
-            components={filteredComponents}
-            deletingComponentId={deletingComponentId}
-            duplicatingComponentId={duplicatingComponentId}
-            getComponentDetails={getComponentDetails}
-            loading={loading}
-            onDeleteComponent={onDeleteComponent}
-            onDuplicateComponent={onDuplicateComponent}
-            onEditComponent={onEditComponent}
-          />
-        </Stack>
-      </Paper>
+            ) : null}
+          </Stack>
+        </Paper>
+      ) : null}
     </Stack>
   );
+}
+
+function CatalogPanelSwitch({
+  active,
+  color,
+  count,
+  icon,
+  label,
+  onClick
+}: {
+  active: boolean;
+  color: string;
+  count: number;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <UnstyledButton
+      aria-label={`Show ${label} table`}
+      className="catalog-panel-switch"
+      onClick={onClick}
+    >
+      <Paper
+        withBorder
+        className="catalog-panel-card"
+        data-active={active ? "true" : undefined}
+        radius={8}
+        p="md"
+      >
+        <Group gap="sm" wrap="nowrap">
+          <ThemeIcon color={color} variant="light" radius={8}>
+            {icon}
+          </ThemeIcon>
+          <Box>
+            <Text size="sm" c="dimmed">
+              {label}
+            </Text>
+            <Title order={3} size="h3" mt={4}>
+              {count}
+            </Title>
+          </Box>
+        </Group>
+      </Paper>
+    </UnstyledButton>
+  );
+}
+
+function TablePagination({
+  page,
+  pageSize,
+  totalItems,
+  onPageChange,
+  onPageSizeChange
+}: {
+  page: number;
+  pageSize: TablePageSize;
+  totalItems: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (pageSize: TablePageSize) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const fromItem = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const toItem = Math.min(totalItems, page * pageSize);
+
+  return (
+    <Group className="catalog-table-pagination" justify="space-between" gap="sm">
+      <Text c="dimmed" size="sm">
+        {fromItem}-{toItem} of {totalItems}
+      </Text>
+      <Group gap="sm">
+        <Select
+          allowDeselect={false}
+          aria-label="Rows per page"
+          data={tablePageSizeOptions.map((value) => ({
+            value: String(value),
+            label: `${value} per page`
+          }))}
+          value={String(pageSize)}
+          w={140}
+          onChange={(value) => onPageSizeChange(Number(value ?? pageSize) as TablePageSize)}
+        />
+        {totalPages > 1 ? (
+          <Pagination radius={8} total={totalPages} value={page} onChange={onPageChange} />
+        ) : null}
+      </Group>
+    </Group>
+  );
+}
+
+function getPaginatedItems<T>(items: T[], page: number, pageSize: number) {
+  const startIndex = (page - 1) * pageSize;
+  return items.slice(startIndex, startIndex + pageSize);
+}
+
+function getClampedPage(page: number, totalItems: number, pageSize: number) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  return Math.min(Math.max(1, page), totalPages);
+}
+
+function isProjectDetailTab(value: string | null): value is ProjectDetailTab {
+  return value !== null && projectDetailTabs.includes(value as ProjectDetailTab);
 }
 
 function buildTemplateCatalogRows(
@@ -912,15 +1186,28 @@ function getTemplateTypeColor(type: TemplateCatalogType) {
   }
 }
 
+function getCollectionTypeColor(type: ComponentCollection["type"]) {
+  switch (type) {
+    case "deck":
+      return "blue";
+    case "bag":
+      return "teal";
+    case "custom":
+      return "gray";
+  }
+}
+
 function CollectionTable({
   collections,
   deletingCollectionId,
+  emptyLabel,
   getCollectionDetails,
   onDeleteCollection,
   onEditCollection
 }: {
   collections: ComponentCollection[];
   deletingCollectionId: string | null;
+  emptyLabel: string;
   getCollectionDetails: (collection: ComponentCollection) => string;
   onDeleteCollection: (collection: ComponentCollection) => void;
   onEditCollection: (collection: ComponentCollection) => void;
@@ -928,7 +1215,7 @@ function CollectionTable({
   if (collections.length === 0) {
     return (
       <Text c="dimmed" py="lg" ta="center">
-        No collections yet
+        {emptyLabel}
       </Text>
     );
   }
@@ -939,6 +1226,7 @@ function CollectionTable({
         <Table.Thead>
           <Table.Tr>
             <Table.Th>Name</Table.Th>
+            <Table.Th>Type</Table.Th>
             <Table.Th>Items</Table.Th>
             <Table.Th>Updated</Table.Th>
             <Table.Th className="component-actions-header" aria-label="Actions" />
@@ -949,6 +1237,11 @@ function CollectionTable({
             <Table.Tr key={collection.id} className="collection-table-row">
               <Table.Td>
                 <Text fw={600}>{collection.name}</Text>
+              </Table.Td>
+              <Table.Td>
+                <Badge color={getCollectionTypeColor(collection.type)} radius={8} variant="light">
+                  {collectionTypeLabels[collection.type]}
+                </Badge>
               </Table.Td>
               <Table.Td>{getCollectionDetails(collection)}</Table.Td>
               <Table.Td>{formatDate(collection.updatedAt)}</Table.Td>
@@ -990,6 +1283,7 @@ function ComponentTable({
   components,
   deletingComponentId,
   duplicatingComponentId,
+  emptyLabel,
   getComponentDetails,
   loading,
   onDeleteComponent,
@@ -999,6 +1293,7 @@ function ComponentTable({
   components: GameComponent[];
   deletingComponentId: string | null;
   duplicatingComponentId: string | null;
+  emptyLabel: string;
   getComponentDetails: (component: GameComponent) => string;
   loading: boolean;
   onDeleteComponent: (component: GameComponent) => void;
@@ -1016,7 +1311,7 @@ function ComponentTable({
   if (components.length === 0) {
     return (
       <Text c="dimmed" py="lg" ta="center">
-        No components yet
+        {emptyLabel}
       </Text>
     );
   }

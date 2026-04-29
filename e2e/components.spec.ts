@@ -76,11 +76,24 @@ test.describe("project components", () => {
     await expect(detailPage.componentRow("Forest hex")).toContainText("Forest");
 
     form = await detailPage.openNewCollectionForm();
-    await form.fillCollection({ name: "Player deck", componentName: "Strike", quantity: "12" });
+    await form.addCollectionItem("Strike", "12");
+    await form.selectCollectionType("Bag");
+    await form.addCollectionItem("Coin", "4");
+    await form.selectCollectionType("Deck");
+    await expect(form.dialog.getByLabel("Component")).toHaveValue(/Strike/);
+    await expect(form.dialog.getByLabel("Quantity")).toHaveValue("12");
+    await form.fillCommon({ name: "Player deck" });
     await form.saveCreate();
 
     await expect(form.dialog).toBeHidden();
     await expect(detailPage.collectionRow("Player deck")).toContainText("Strike x12");
+    await detailPage.filterCollectionsByType("Bags");
+    await expect(page).toHaveURL(/panel=collections/);
+    await expect(page).toHaveURL(/collectionType=bag/);
+    await expect(detailPage.collectionRow("Player deck")).toHaveCount(0);
+    await expect(page.getByText("No collections of this type yet")).toBeVisible();
+    await detailPage.filterCollectionsByType("Decks");
+    await expect(detailPage.collectionRow("Player deck")).toBeVisible();
 
     form = await detailPage.openNewComponentForm("Die");
     await expect(form.dialog.getByLabel("Face labels")).toHaveCount(0);
@@ -117,7 +130,7 @@ test.describe("project components", () => {
     await form.openCardSide("Front");
     await form.selectZoneTemplate("Split");
     await form.selectPreviewZone("Left");
-    await expect(form.selectedZoneInput()).toHaveValue("Left (Text)");
+    await expect(form.selectedZoneOption("Left Text")).toHaveAttribute("aria-selected", "true");
 
     const initialZoneWidth = await form.zoneNumberValue("Zone width");
     const initialZoneHeight = await form.zoneNumberValue("Zone height");
@@ -197,13 +210,12 @@ test.describe("project components", () => {
     await expect(templateEditForm.dialog.getByLabel("Field key")).toHaveValue("rules");
     await expect(templateEditForm.dialog.getByLabel("Text content")).toHaveValue("Deal 3 damage");
     await templateEditForm.selectPreviewZone("Top");
-    await expect(templateEditForm.dialog.getByLabel("Content type")).toHaveValue("Visual");
-    await expect(templateEditForm.dialog.getByLabel("Visual type")).toHaveValue("Image");
+    await expect(templateEditForm.dialog.getByLabel("Content type")).toHaveValue("Image");
     await expect(templateEditForm.dialog.getByLabel("Horizontal position")).toHaveValue("Left");
     await expect(templateEditForm.dialog.getByLabel("Vertical position")).toHaveValue("Top");
     await expect(templateEditForm.dialog.getByText("pixel.png").last()).toBeVisible();
     await templateEditForm.selectPreviewZone("Right");
-    await expect(templateEditForm.dialog.getByLabel("Visual type")).toHaveValue("Icon");
+    await expect(templateEditForm.dialog.getByLabel("Content type")).toHaveValue("Icon");
     await expect(templateEditForm.dialog.getByRole("combobox", { name: "Icon" })).toHaveValue(
       "Heart"
     );
@@ -311,6 +323,7 @@ test.describe("project components", () => {
     const card = (await cardResponse.json()) as { id: string };
     const collectionResponse = await request.post(`/api/projects/${project.id}/collections`, {
       data: {
+        type: "deck",
         name: "Defense deck",
         items: [{ componentId: card.id, quantity: 3 }]
       }
@@ -385,8 +398,64 @@ test.describe("project components", () => {
     expect(cardResponse.status()).toBe(201);
     const card = (await cardResponse.json()) as { id: string };
 
+    const dieResponse = await request.post(`/api/projects/${project.id}/components`, {
+      data: { type: "die", name: "Valid die", sides: 6 }
+    });
+    expect(dieResponse.status()).toBe(201);
+    const die = (await dieResponse.json()) as { id: string };
+
+    const missingCollectionType = await request.post(`/api/projects/${project.id}/collections`, {
+      data: { name: "Untyped collection" }
+    });
+    expect(missingCollectionType.status()).toBe(400);
+    await expect(missingCollectionType.json()).resolves.toEqual({
+      error: "Collection type is required"
+    });
+
+    const invalidCollectionType = await request.post(`/api/projects/${project.id}/collections`, {
+      data: { type: "pile", name: "Invalid collection type" }
+    });
+    expect(invalidCollectionType.status()).toBe(400);
+    await expect(invalidCollectionType.json()).resolves.toEqual({
+      error: "Collection type is invalid"
+    });
+
+    const invalidDeckItem = await request.post(`/api/projects/${project.id}/collections`, {
+      data: {
+        type: "deck",
+        name: "Bad deck",
+        items: [{ componentId: die.id, quantity: 1 }]
+      }
+    });
+    expect(invalidDeckItem.status()).toBe(400);
+    await expect(invalidDeckItem.json()).resolves.toEqual({
+      error: "Deck collections can only include cards"
+    });
+
+    const invalidBagItem = await request.post(`/api/projects/${project.id}/collections`, {
+      data: {
+        type: "bag",
+        name: "Bad bag",
+        items: [{ componentId: card.id, quantity: 1 }]
+      }
+    });
+    expect(invalidBagItem.status()).toBe(400);
+    await expect(invalidBagItem.json()).resolves.toEqual({
+      error: "Bag collections can only include tiles, pieces, or dice"
+    });
+
+    const validBagItem = await request.post(`/api/projects/${project.id}/collections`, {
+      data: {
+        type: "bag",
+        name: "Dice bag",
+        items: [{ componentId: die.id, quantity: 2 }]
+      }
+    });
+    expect(validBagItem.status()).toBe(201);
+
     const duplicateCollectionItem = await request.post(`/api/projects/${project.id}/collections`, {
       data: {
+        type: "deck",
         name: "Duplicate collection",
         items: [
           { componentId: card.id, quantity: 1 },
@@ -401,6 +470,7 @@ test.describe("project components", () => {
 
     const missingCollectionItem = await request.post(`/api/projects/${project.id}/collections`, {
       data: {
+        type: "deck",
         name: "Missing item collection",
         items: [{ componentId: "missing-component", quantity: 1 }]
       }
@@ -727,6 +797,7 @@ test.describe("project components", () => {
       await expect(response.json()).resolves.toEqual({ error: item.error });
     }
   });
+
 });
 
 function validCardLayout(elementType: "icon" | "image" | "text" = "text") {

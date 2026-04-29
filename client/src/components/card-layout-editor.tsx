@@ -811,6 +811,7 @@ export function ZoneControls({
           />
           <Select
             allowDeselect={false}
+            aria-label="Content type"
             data={zoneContentTypeOptions}
             disabled={disabled}
             label="Type"

@@ -337,9 +337,14 @@ export type ComponentCollectionItem = {
   quantity: number;
 };
 
+export const collectionTypes = ["deck", "bag", "custom"] as const;
+
+export type ComponentCollectionType = (typeof collectionTypes)[number];
+
 export type ComponentCollection = {
   id: string;
   projectId: string;
+  type: ComponentCollectionType;
   name: string;
   description: string;
   tags: string[];
@@ -350,6 +355,7 @@ export type ComponentCollection = {
 };
 
 export type CreateComponentCollectionInput = {
+  type: ComponentCollectionType;
   name: string;
   description?: string;
   tags?: string[];

@@ -1,12 +1,16 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 export class ProjectDetailPage {
+  readonly collectionsHeading: Locator;
   readonly componentsHeading: Locator;
   readonly componentForm: ComponentFormObject;
+  readonly templatesHeading: Locator;
 
   constructor(private readonly page: Page) {
+    this.collectionsHeading = page.getByRole("heading", { name: "Collections" });
     this.componentsHeading = page.getByRole("heading", { name: "Component catalog" });
     this.componentForm = new ComponentFormObject(page);
+    this.templatesHeading = page.getByRole("heading", { name: "Templates" });
   }
 
   async goto(projectId: string) {
@@ -14,10 +18,11 @@ export class ProjectDetailPage {
   }
 
   async openComponents() {
-    await this.page.getByRole("tab", { name: "Components" }).click();
+    await this.openCatalogTable("Component catalog");
   }
 
   async openNewComponent(type = "Card") {
+    await this.openCatalogTable("Component catalog");
     await this.openCreateMenuItem("New component", `${type} component`);
   }
 
@@ -27,23 +32,33 @@ export class ProjectDetailPage {
   }
 
   async openNewCardTemplateForm() {
+    await this.openCatalogTable("Templates");
     await this.openCreateMenuItem("New template", "Card template");
     return this.componentForm;
   }
 
   async openNewPieceTemplateForm() {
+    await this.openCatalogTable("Templates");
     await this.openCreateMenuItem("New template", "Piece template");
     return this.componentForm;
   }
 
   async openNewTileTemplateForm() {
+    await this.openCatalogTable("Templates");
     await this.openCreateMenuItem("New template", "Tile template");
     return this.componentForm;
   }
 
   async openNewCollectionForm() {
+    await this.openCatalogTable("Collections");
     await this.page.getByRole("button", { name: "New collection" }).click();
     return this.componentForm;
+  }
+
+  async filterCollectionsByType(type: "All collections" | "Bags" | "Custom" | "Decks") {
+    await this.openCatalogTable("Collections");
+    await this.page.getByRole("combobox", { name: "Filter collections by type" }).click();
+    await this.page.getByRole("option", { exact: true, name: type }).click();
   }
 
   componentRow(name: string) {
@@ -74,12 +89,14 @@ export class ProjectDetailPage {
   }
 
   async duplicateComponent(name: string) {
+    await this.openCatalogTable("Component catalog");
     const row = this.componentRow(name);
     await row.hover();
     await row.getByRole("button", { name: `Duplicate ${name}` }).click({ force: true });
   }
 
   async openComponentEditor(name: string) {
+    await this.openCatalogTable("Component catalog");
     const row = this.componentRow(name);
     await row.hover();
     await row.getByRole("button", { name: `Edit ${name}` }).click({ force: true });
@@ -87,6 +104,7 @@ export class ProjectDetailPage {
   }
 
   async openCardTemplateEditor(name: string) {
+    await this.openCatalogTable("Templates");
     const row = this.cardTemplateRow(name);
     await row.hover();
     await row.getByRole("button", { name: `Edit card template ${name}` }).click({ force: true });
@@ -94,6 +112,7 @@ export class ProjectDetailPage {
   }
 
   async openPieceTemplateEditor(name: string) {
+    await this.openCatalogTable("Templates");
     const row = this.pieceTemplateRow(name);
     await row.hover();
     await row.getByRole("button", { name: `Edit piece template ${name}` }).click({ force: true });
@@ -101,6 +120,7 @@ export class ProjectDetailPage {
   }
 
   async openCollectionEditor(name: string) {
+    await this.openCatalogTable("Collections");
     const row = this.collectionRow(name);
     await row.hover();
     await row.getByRole("button", { name: `Edit collection ${name}` }).click({ force: true });
@@ -108,24 +128,28 @@ export class ProjectDetailPage {
   }
 
   async deleteComponent(name: string) {
+    await this.openCatalogTable("Component catalog");
     const row = this.componentRow(name);
     await row.hover();
     await row.getByRole("button", { name: `Delete ${name}` }).click({ force: true });
   }
 
   async deleteCardTemplate(name: string) {
+    await this.openCatalogTable("Templates");
     const row = this.cardTemplateRow(name);
     await row.hover();
     await row.getByRole("button", { name: `Delete card template ${name}` }).click({ force: true });
   }
 
   async deletePieceTemplate(name: string) {
+    await this.openCatalogTable("Templates");
     const row = this.pieceTemplateRow(name);
     await row.hover();
     await row.getByRole("button", { name: `Delete piece template ${name}` }).click({ force: true });
   }
 
   async deleteCollection(name: string) {
+    await this.openCatalogTable("Collections");
     const row = this.collectionRow(name);
     await row.hover();
     await row.getByRole("button", { name: `Delete collection ${name}` }).click({ force: true });
@@ -166,6 +190,23 @@ export class ProjectDetailPage {
   private async openCreateMenuItem(buttonName: string, itemName: string) {
     await this.page.getByRole("button", { name: buttonName }).click();
     await this.page.getByRole("menuitem", { name: itemName }).click();
+  }
+
+  private async openCatalogTable(table: "Collections" | "Component catalog" | "Templates") {
+    await this.page.getByRole("tab", { name: "Components" }).click();
+    await this.page.getByRole("button", { name: `Show ${table} table` }).click();
+    await expect(this.getCatalogTableHeading(table)).toBeVisible();
+  }
+
+  private getCatalogTableHeading(table: "Collections" | "Component catalog" | "Templates") {
+    switch (table) {
+      case "Collections":
+        return this.collectionsHeading;
+      case "Templates":
+        return this.templatesHeading;
+      case "Component catalog":
+        return this.componentsHeading;
+    }
   }
 }
 
@@ -359,38 +400,52 @@ class ComponentFormObject {
 
   async zoneNumberValue(label: string) {
     await this.openZonesTab();
-    return Number.parseFloat(await this.dialog.getByLabel(label).inputValue());
+    return Number.parseFloat(
+      await this.dialog
+        .getByRole("textbox", { exact: true, name: toCurrentZoneNumberLabel(label) })
+        .inputValue()
+    );
   }
 
-  selectedZoneInput() {
-    return this.dialog.getByRole("combobox", { name: "Selected zone" });
+  selectedZoneOption(name: string) {
+    return this.dialog.getByRole("option", { name });
   }
 
   async selectZoneContentType(type: "Text" | "Visual") {
     await this.openZonesTab();
-    if ((await this.dialog.getByLabel("Content type").count()) === 0) {
+    const contentType = this.contentTypeSelect();
+
+    if ((await contentType.count()) === 0) {
       await this.dialog.getByRole("button", { name: "Add zone" }).click();
+      await this.page.getByRole("menuitem", { name: type === "Text" ? "Text" : "Image" }).click();
     }
-    await this.dialog.getByLabel("Content type").click();
-    await this.page.getByRole("option", { name: type }).click();
+
+    await this.contentTypeSelect().click();
+    await this.page
+      .getByRole("option", { exact: true, name: type === "Text" ? "Text" : "Image" })
+      .click();
   }
 
   async selectVisualType(type: "Icon" | "Image") {
     await this.openZonesTab();
-    await this.dialog.getByLabel("Visual type").click();
-    await this.page.getByRole("option", { name: type }).click();
+    await this.contentTypeSelect().click();
+    await this.page.getByRole("option", { exact: true, name: type }).click();
+  }
+
+  private contentTypeSelect() {
+    return this.dialog.getByLabel("Content type");
   }
 
   async selectVisualHorizontalPosition(position: "Center" | "Left" | "Right") {
     await this.openZonesTab();
     await this.dialog.getByLabel("Horizontal position").click();
-    await this.page.getByRole("option", { name: position }).click();
+    await this.page.getByRole("option", { exact: true, name: position }).click();
   }
 
   async selectVisualVerticalPosition(position: "Bottom" | "Center" | "Top") {
     await this.openZonesTab();
     await this.dialog.getByLabel("Vertical position").click();
-    await this.page.getByRole("option", { name: position }).click();
+    await this.page.getByRole("option", { exact: true, name: position }).click();
   }
 
   private previewZone(name: string) {
@@ -452,6 +507,7 @@ class ComponentFormObject {
       } else {
         if ((await this.dialog.getByLabel("Text content").count()) === 0) {
           await this.dialog.getByRole("button", { name: "Add zone" }).click();
+          await this.page.getByRole("menuitem", { name: "Text" }).click();
         }
         await this.dialog.getByLabel("Text content").fill(values.faceText);
       }
@@ -494,6 +550,11 @@ class ComponentFormObject {
     await this.dialog.getByLabel("Quantity").fill(quantity);
   }
 
+  async selectCollectionType(type: "Bag" | "Custom" | "Deck") {
+    await this.dialog.getByLabel("Collection type").click();
+    await this.page.getByRole("option", { name: type }).click();
+  }
+
   async fillCollection(values: { componentName: string; name: string; quantity: string }) {
     await this.addCollectionItem(values.componentName, values.quantity);
     await this.fillCommon({ name: values.name });
@@ -512,5 +573,20 @@ class ComponentFormObject {
 
   async saveEdit() {
     await this.dialog.getByRole("button", { name: "Save changes" }).click();
+  }
+}
+
+function toCurrentZoneNumberLabel(label: string) {
+  switch (label) {
+    case "Zone X":
+      return "Left";
+    case "Zone Y":
+      return "Top";
+    case "Zone width":
+      return "Width";
+    case "Zone height":
+      return "Height";
+    default:
+      return label;
   }
 }

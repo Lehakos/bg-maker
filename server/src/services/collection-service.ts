@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type {
-  ComponentCollection,
-  ComponentCollectionItem,
-  CreateComponentCollectionInput,
-  UpdateComponentCollectionInput
+import {
+  collectionTypes,
+  type ComponentCollection,
+  type ComponentCollectionType,
+  type ComponentCollectionItem,
+  type CreateComponentCollectionInput,
+  type GameComponent,
+  type UpdateComponentCollectionInput
 } from "@bg-maker/shared";
 import {
   getProjectCollections,
@@ -17,6 +20,7 @@ import { fail, ok, type ServiceResult } from "./service-result.js";
 type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
 type CommonCollectionFields = {
+  type: ComponentCollectionType;
   name: string;
   description: string;
   tags: string[];
@@ -54,7 +58,6 @@ export function createCollection(
     createdAt: timestamp,
     updatedAt: timestamp
   };
-
   setProjectCollections(projectId, [...getProjectCollections(projectId), collection]);
   touchProject(projectId);
 
@@ -77,7 +80,7 @@ export function updateCollection(
     return fail(404, "Collection not found");
   }
 
-  const input = parseUpdateCollectionInput(value, projectId);
+  const input = parseUpdateCollectionInput(value, projectId, currentCollection);
 
   if (!input.ok) {
     return fail(400, input.error);
@@ -112,6 +115,7 @@ export function deleteCollection(projectId: string, collectionId: string): Servi
     return fail(404, "Collection not found");
   }
 
+
   setProjectCollections(
     projectId,
     collections.filter((item) => item.id !== collectionId)
@@ -139,9 +143,14 @@ function parseCreateCollectionInput(
     return { ok: false, error: "Collection name must not be empty" };
   }
 
+  if (!input.value.type) {
+    return { ok: false, error: "Collection type is required" };
+  }
+
   return {
     ok: true,
     value: {
+      type: input.value.type,
       name: input.value.name,
       description: input.value.description ?? "",
       tags: input.value.tags ?? [],
@@ -153,13 +162,14 @@ function parseCreateCollectionInput(
 
 function parseUpdateCollectionInput(
   value: unknown,
-  projectId: string
+  projectId: string,
+  currentCollection: ComponentCollection
 ): ParseResult<UpdateComponentCollectionInput> {
   if (!isRecord(value)) {
     return { ok: false, error: "Request body must be an object" };
   }
 
-  const input = parseCollectionFields(value, projectId);
+  const input = parseCollectionFields(value, projectId, currentCollection);
 
   if (!input.ok) {
     return input;
@@ -170,13 +180,21 @@ function parseUpdateCollectionInput(
 
 function parseCollectionFields(
   value: Record<string, unknown>,
-  projectId: string
+  projectId: string,
+  currentCollection?: ComponentCollection
 ): ParseResult<Partial<CommonCollectionFields>> {
+  const type = readOptionalCollectionType(value.type);
   const name = readOptionalString(value.name);
   const description = readOptionalString(value.description);
   const notes = readOptionalString(value.notes);
   const tags = readOptionalStringArray(value.tags, "Collection tags");
-  const items = readOptionalCollectionItems(value.items, projectId);
+
+  if (!type.ok) {
+    return type;
+  }
+
+  const nextType = type.value ?? currentCollection?.type;
+  const items = readOptionalCollectionItems(value.items, projectId, nextType);
 
   if (value.name !== undefined && !name) {
     return { ok: false, error: "Collection name must not be empty" };
@@ -190,9 +208,22 @@ function parseCollectionFields(
     return items;
   }
 
+  if (currentCollection && type.value && items.value === undefined) {
+    const currentItems = validateCollectionItemsForType(
+      currentCollection.items,
+      projectId,
+      type.value
+    );
+
+    if (!currentItems.ok) {
+      return currentItems;
+    }
+  }
+
   return {
     ok: true,
     value: {
+      type: type.value,
       name,
       description,
       notes,
@@ -204,7 +235,8 @@ function parseCollectionFields(
 
 function readOptionalCollectionItems(
   value: unknown,
-  projectId: string
+  projectId: string,
+  collectionType?: ComponentCollectionType
 ): ParseResult<ComponentCollectionItem[] | undefined> {
   if (value === undefined) {
     return { ok: true, value: undefined };
@@ -244,11 +276,77 @@ function readOptionalCollectionItems(
       return { ok: false, error: "Collection items must reference components in the same project" };
     }
 
+    const typeError = getCollectionItemTypeError(collectionType, component);
+
+    if (typeError) {
+      return { ok: false, error: typeError };
+    }
+
     seenComponentIds.add(componentId);
     items.push({ componentId, quantity: quantity.value ?? 1 });
   }
 
   return { ok: true, value: items };
+}
+
+function validateCollectionItemsForType(
+  items: ComponentCollectionItem[],
+  projectId: string,
+  collectionType: ComponentCollectionType
+): ParseResult<undefined> {
+  const components = getProjectComponents(projectId);
+
+  for (const item of items) {
+    const component = components.find((entry) => entry.id === item.componentId);
+
+    if (!component) {
+      return { ok: false, error: "Collection items must reference components in the same project" };
+    }
+
+    const typeError = getCollectionItemTypeError(collectionType, component);
+
+    if (typeError) {
+      return { ok: false, error: typeError };
+    }
+  }
+
+  return { ok: true, value: undefined };
+}
+
+function getCollectionItemTypeError(
+  collectionType: ComponentCollectionType | undefined,
+  component: GameComponent
+) {
+  if (!collectionType || collectionType === "custom") {
+    return null;
+  }
+
+  if (collectionType === "deck" && component.type !== "card") {
+    return "Deck collections can only include cards";
+  }
+
+  if (collectionType === "bag" && !["tile", "piece", "die"].includes(component.type)) {
+    return "Bag collections can only include tiles, pieces, or dice";
+  }
+
+  return null;
+}
+
+function readOptionalCollectionType(
+  value: unknown
+): ParseResult<ComponentCollectionType | undefined> {
+  if (value === undefined) {
+    return { ok: true, value: undefined };
+  }
+
+  if (
+    typeof value !== "string" ||
+    !collectionTypes.includes(value as ComponentCollectionType)
+  ) {
+    return { ok: false, error: "Collection type is invalid" };
+  }
+
+  return { ok: true, value: value as ComponentCollectionType };
 }
 
 function readOptionalStringArray(value: unknown, label: string): ParseResult<string[] | undefined> {

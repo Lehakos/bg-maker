@@ -66,7 +66,6 @@ export type ComponentModalState =
 export function useProjectComponents(projectId: string) {
   const queryClient = useQueryClient();
   const [componentModal, setComponentModal] = useState<ComponentModalState>(null);
-  const [componentTypeFilter, setComponentTypeFilter] = useState<ComponentType | "all">("all");
 
   const componentsQuery = useQuery({
     queryKey: ["components", projectId],
@@ -104,13 +103,6 @@ export function useProjectComponents(projectId: string) {
   const pieceTemplates = useMemo(() => pieceTemplatesQuery.data ?? [], [pieceTemplatesQuery.data]);
   const tileTemplates = useMemo(() => tileTemplatesQuery.data ?? [], [tileTemplatesQuery.data]);
   const collections = useMemo(() => collectionsQuery.data ?? [], [collectionsQuery.data]);
-  const filteredComponents = useMemo(
-    () =>
-      componentTypeFilter === "all"
-        ? components
-        : components.filter((component) => component.type === componentTypeFilter),
-    [componentTypeFilter, components]
-  );
   const componentsById = useMemo(
     () => new Map(components.map((component) => [component.id, component])),
     [components]
@@ -452,7 +444,6 @@ export function useProjectComponents(projectId: string) {
     collections,
     collectionsQuery,
     componentModal,
-    componentTypeFilter,
     components,
     componentsById,
     componentsQuery,
@@ -480,7 +471,6 @@ export function useProjectComponents(projectId: string) {
     editingComponent,
     editingPieceTemplate,
     editingTileTemplate,
-    filteredComponents,
     formError,
     formIsPending:
       createComponentMutation.isPending ||
@@ -520,7 +510,6 @@ export function useProjectComponents(projectId: string) {
     requestDeleteComponent,
     requestDeletePieceTemplate,
     requestDeleteTileTemplate,
-    setComponentTypeFilter,
     submitComponentForm,
     tileTemplates,
     tileTemplatesQuery
