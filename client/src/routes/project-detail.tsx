@@ -1176,6 +1176,10 @@ function getTemplateDetails(row: TemplateCatalogRow) {
 }
 
 function getTemplateTypeColor(type: TemplateCatalogType) {
+  return getComponentTypeColor(type);
+}
+
+function getComponentTypeColor(type: ComponentType) {
   switch (type) {
     case "card":
       return "blue";
@@ -1183,6 +1187,8 @@ function getTemplateTypeColor(type: TemplateCatalogType) {
       return "teal";
     case "piece":
       return "violet";
+    case "die":
+      return "orange";
   }
 }
 
@@ -1334,7 +1340,7 @@ function ComponentTable({
             <Table.Tr key={component.id} className="component-table-row">
               <Table.Td fw={600}>{component.name}</Table.Td>
               <Table.Td>
-                <Badge color="teal" radius={8} variant="light">
+                <Badge color={getComponentTypeColor(component.type)} radius={8} variant="light">
                   {componentTypeLabels[component.type]}
                 </Badge>
               </Table.Td>
