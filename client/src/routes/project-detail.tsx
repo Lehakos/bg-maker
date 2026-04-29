@@ -22,7 +22,7 @@ import {
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import {
@@ -60,11 +60,14 @@ import { TableSetupEditor } from "../components/table-setup-editor";
 import { useProjectComponents, type ComponentModalState } from "../hooks/use-project-components";
 import {
   projectDetailTabs,
+  serializeProjectDetailSearch,
   tablePageSizeOptions,
+  validateProjectDetailSearch,
   type CatalogPanel,
   type CollectionTypeFilter,
   type ComponentTypeFilter,
   type ProjectDetailSearch,
+  type ProjectDetailSearchInput,
   type ProjectDetailTab,
   type TablePageSize,
   type TemplateCatalogType,
@@ -144,7 +147,11 @@ export function ProjectDetailRoute() {
   const params = useParams({ strict: false });
   const projectId = String(params.projectId ?? "");
   const navigate = useNavigate();
-  const projectSearch = useSearch({ from: "/projects/$projectId" });
+  const location = useLocation();
+  const activeTab = getProjectDetailTabFromPath(location.pathname, projectId);
+  const projectSearch = validateProjectDetailSearch(
+    useSearch({ strict: false }) as ProjectDetailSearchInput
+  );
   const queryClient = useQueryClient();
   const [editModalOpened, { close: closeEditModal, open: openEditModal }] = useDisclosure(false);
 
@@ -219,24 +226,39 @@ export function ProjectDetailRoute() {
 
   const updateProjectSearch = (patch: Partial<ProjectDetailSearch>) => {
     void navigate({
-      from: "/projects/$projectId",
+      from: "/projects/$projectId/components",
       to: ".",
-      replace: true,
-      search: (current) => ({ ...current, ...patch })
+      search: (current) => serializeProjectDetailSearch({ ...current, ...patch })
     });
   };
 
   const handleProjectTabChange = (value: string | null) => {
-    if (isProjectDetailTab(value)) {
-      updateProjectSearch({ tab: value });
+    if (!isProjectDetailTab(value) || value === activeTab) {
+      return;
+    }
+
+    switch (value) {
+      case "overview":
+        void navigate({ to: "/projects/$projectId", params: { projectId } });
+        break;
+      case "components":
+        void navigate({ to: "/projects/$projectId/components", params: { projectId } });
+        break;
+      case "layout":
+        void navigate({ to: "/projects/$projectId/layout", params: { projectId } });
+        break;
+      case "sessions":
+        void navigate({ to: "/projects/$projectId/sessions", params: { projectId } });
+        break;
+      case "notes":
+        void navigate({ to: "/projects/$projectId/notes", params: { projectId } });
+        break;
     }
   };
 
   return (
     <Box
-      className={`project-detail-page${
-        projectSearch.tab === "layout" ? " project-detail-page--layout" : ""
-      }`}
+      className={`project-detail-page${activeTab === "layout" ? " project-detail-page--layout" : ""}`}
     >
       <Container className="project-detail-hero" size="lg" w="100%">
         <Stack gap="xl">
@@ -279,7 +301,7 @@ export function ProjectDetailRoute() {
       <Tabs
         className="project-detail-tabs"
         radius={8}
-        value={projectSearch.tab}
+        value={activeTab}
         variant="outline"
         onChange={handleProjectTabChange}
       >
@@ -641,7 +663,7 @@ function ProjectComponents({
   );
 
   const handlePanelChange = (panel: CatalogPanel) => {
-    onSearchChange({ page: 1, panel, tab: "components" });
+    onSearchChange({ page: 1, panel });
   };
 
   const handlePageSizeChange = (pageSize: TablePageSize) => {
@@ -993,6 +1015,24 @@ function getClampedPage(page: number, totalItems: number, pageSize: number) {
 
 function isProjectDetailTab(value: string | null): value is ProjectDetailTab {
   return value !== null && projectDetailTabs.includes(value as ProjectDetailTab);
+}
+
+function getProjectDetailTabFromPath(pathname: string, projectId: string): ProjectDetailTab {
+  const projectPath = `/projects/${projectId}`;
+  const tabPath = pathname.slice(projectPath.length);
+
+  switch (tabPath) {
+    case "/components":
+      return "components";
+    case "/layout":
+      return "layout";
+    case "/sessions":
+      return "sessions";
+    case "/notes":
+      return "notes";
+    default:
+      return "overview";
+  }
 }
 
 function buildTemplateCatalogRows(

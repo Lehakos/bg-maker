@@ -2,6 +2,61 @@ import { expect, test } from "./fixtures/projects-test";
 import { ProjectDetailPage } from "./page-objects/project-detail-page";
 
 test.describe("project components", () => {
+  test("clears catalog query parameters when switching project tabs", async ({
+    page,
+    projectsApi
+  }) => {
+    const project = await projectsApi.create({
+      name: "Project Tab Query Project",
+      players: "2",
+      status: "draft"
+    });
+    const detailPage = new ProjectDetailPage(page);
+
+    await detailPage.goto(project.id);
+    await detailPage.openComponents();
+    await page.getByRole("button", { name: "Show Templates table" }).click();
+    await expect(detailPage.templatesHeading).toBeVisible();
+    await page.getByRole("combobox", { name: "Filter templates by type" }).click();
+    await page.getByRole("option", { exact: true, name: "Cards" }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/components`));
+    await expect(page).toHaveURL(/panel=templates/);
+    await expect(page).toHaveURL(/templateType=card/);
+
+    await detailPage.openLayout();
+
+    const layoutUrl = new URL(page.url());
+    expect(layoutUrl.pathname).toBe(`/projects/${project.id}/layout`);
+    for (const key of [
+      "panel",
+      "componentType",
+      "collectionType",
+      "templateType",
+      "page",
+      "pageSize"
+    ]) {
+      expect(layoutUrl.searchParams.has(key)).toBe(false);
+    }
+
+    await page.getByRole("tab", { name: "Components" }).click();
+    await expect(detailPage.componentsHeading).toBeVisible();
+
+    const componentsUrl = new URL(page.url());
+    expect(componentsUrl.pathname).toBe(`/projects/${project.id}/components`);
+    expect(componentsUrl.searchParams.toString()).toBe("");
+
+    await page.goBack();
+    await expect(page.getByRole("heading", { exact: true, name: "Table layout" })).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe(`/projects/${project.id}/layout`);
+
+    await page.goBack();
+    await expect(detailPage.templatesHeading).toBeVisible();
+    const restoredComponentsUrl = new URL(page.url());
+    expect(restoredComponentsUrl.pathname).toBe(`/projects/${project.id}/components`);
+    expect(restoredComponentsUrl.searchParams.get("panel")).toBe("templates");
+    expect(restoredComponentsUrl.searchParams.get("templateType")).toBe("card");
+  });
+
   test("creates cards, pieces, tiles, collections, dice, and duplicates components", async ({
     page,
     projectsApi

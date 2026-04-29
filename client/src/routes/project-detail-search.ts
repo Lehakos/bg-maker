@@ -34,22 +34,85 @@ export type ProjectDetailSearch = {
   page: number;
   pageSize: TablePageSize;
   panel: CatalogPanel;
-  tab: ProjectDetailTab;
   templateType: TemplateTypeFilter;
 };
 
 export type ProjectDetailSearchInput = Partial<ProjectDetailSearch> & SearchSchemaInput;
 
+export const defaultProjectDetailSearch = {
+  panel: "components",
+  componentType: "all",
+  collectionType: "all",
+  templateType: "all",
+  page: 1,
+  pageSize: 10
+} satisfies ProjectDetailSearch;
+
 export function validateProjectDetailSearch(search: ProjectDetailSearchInput): ProjectDetailSearch {
   return {
-    tab: pickValue(projectDetailTabs, search.tab, "overview"),
-    panel: pickValue(catalogPanels, search.panel, "components"),
-    componentType: pickValue(["all", ...componentTypes], search.componentType, "all"),
-    collectionType: pickValue(["all", ...collectionTypes], search.collectionType, "all"),
-    templateType: pickValue(["all", ...templateCatalogTypes], search.templateType, "all"),
-    page: parsePositiveInteger(search.page, 1),
-    pageSize: pickNumberValue(tablePageSizeOptions, search.pageSize, 10)
+    panel: pickValue(catalogPanels, search.panel, defaultProjectDetailSearch.panel),
+    componentType: pickValue(
+      ["all", ...componentTypes],
+      search.componentType,
+      defaultProjectDetailSearch.componentType
+    ),
+    collectionType: pickValue(
+      ["all", ...collectionTypes],
+      search.collectionType,
+      defaultProjectDetailSearch.collectionType
+    ),
+    templateType: pickValue(
+      ["all", ...templateCatalogTypes],
+      search.templateType,
+      defaultProjectDetailSearch.templateType
+    ),
+    page: parsePositiveInteger(search.page, defaultProjectDetailSearch.page),
+    pageSize: pickNumberValue(
+      tablePageSizeOptions,
+      search.pageSize,
+      defaultProjectDetailSearch.pageSize
+    )
   };
+}
+
+export function serializeProjectDetailSearch(
+  search: Partial<ProjectDetailSearch>
+): ProjectDetailSearchInput {
+  const normalizedSearch = validateProjectDetailSearch(search as ProjectDetailSearchInput);
+  const serializedSearch = {} as ProjectDetailSearchInput;
+
+  if (normalizedSearch.panel !== defaultProjectDetailSearch.panel) {
+    serializedSearch.panel = normalizedSearch.panel;
+  }
+
+  if (normalizedSearch.page !== defaultProjectDetailSearch.page) {
+    serializedSearch.page = normalizedSearch.page;
+  }
+
+  if (normalizedSearch.pageSize !== defaultProjectDetailSearch.pageSize) {
+    serializedSearch.pageSize = normalizedSearch.pageSize;
+  }
+
+  switch (normalizedSearch.panel) {
+    case "collections":
+      if (normalizedSearch.collectionType !== defaultProjectDetailSearch.collectionType) {
+        serializedSearch.collectionType = normalizedSearch.collectionType;
+      }
+      break;
+    case "templates":
+      if (normalizedSearch.templateType !== defaultProjectDetailSearch.templateType) {
+        serializedSearch.templateType = normalizedSearch.templateType;
+      }
+      break;
+    case "components":
+    default:
+      if (normalizedSearch.componentType !== defaultProjectDetailSearch.componentType) {
+        serializedSearch.componentType = normalizedSearch.componentType;
+      }
+      break;
+  }
+
+  return serializedSearch;
 }
 
 function pickValue<const T extends string>(
