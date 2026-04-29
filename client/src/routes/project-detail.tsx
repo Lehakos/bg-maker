@@ -41,6 +41,10 @@ import {
 import {
   collectionTypes,
   componentTypes,
+  formatCardLayoutSize,
+  formatPieceLayoutSize,
+  formatTileLayoutSize,
+  titleCase,
   type CardTemplate,
   type ComponentCollection,
   type ComponentType,
@@ -1489,24 +1493,13 @@ function formatDate(value: string) {
 }
 
 function formatCardTemplateSize(template: CardTemplate) {
-  return `${template.layout.size.widthMm} x ${template.layout.size.heightMm} mm`;
+  return formatCardLayoutSize(template.layout);
 }
 
 function formatPieceTemplateSize(template: PieceTemplate) {
-  const { depthMm, heightMm, widthMm } = template.layout.sizeMm;
-  return `${widthMm} x ${heightMm} x ${depthMm} mm`;
+  return formatPieceLayoutSize(template.layout);
 }
 
 function formatTileTemplateSize(template: TileTemplate) {
-  const { heightMm, widthMm } = template.layout.sizeMm;
-  return `${widthMm} x ${heightMm} mm`;
-}
-
-function titleCase(value: string) {
-  return value
-    .replace(/[_-]+/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  return formatTileLayoutSize(template.layout);
 }

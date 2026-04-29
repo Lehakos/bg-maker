@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   collectionTypes,
+  collectionTypeAllowsComponent,
   type ComponentCollection,
   type ComponentCollectionType,
   type ComponentCollectionItem,
@@ -326,11 +327,11 @@ function getCollectionItemTypeError(
     return null;
   }
 
-  if (collectionType === "deck" && component.type !== "card") {
+  if (collectionType === "deck" && !collectionTypeAllowsComponent(collectionType, component.type)) {
     return "Deck collections can only include cards";
   }
 
-  if (collectionType === "bag" && !["tile", "piece", "die"].includes(component.type)) {
+  if (collectionType === "bag" && !collectionTypeAllowsComponent(collectionType, component.type)) {
     return "Bag collections can only include tiles, pieces, or dice";
   }
 
@@ -344,10 +345,7 @@ function readOptionalCollectionType(
     return { ok: true, value: undefined };
   }
 
-  if (
-    typeof value !== "string" ||
-    !collectionTypes.includes(value as ComponentCollectionType)
-  ) {
+  if (typeof value !== "string" || !collectionTypes.includes(value as ComponentCollectionType)) {
     return { ok: false, error: "Collection type is invalid" };
   }
 

@@ -3,6 +3,7 @@ import {
   type ProjectColorValue,
   type ProjectParameter
 } from "./projects.js";
+import { normalizeIntegerDegrees, titleCase } from "./formatting.js";
 
 export const componentTypes = ["card", "tile", "piece", "die"] as const;
 
@@ -430,6 +431,47 @@ export type CreateGameComponentInput = {
 
 export type UpdateGameComponentInput = Partial<Omit<CreateGameComponentInput, "type">>;
 
+export function collectionTypeAllowsComponent(
+  collectionType: ComponentCollectionType | undefined,
+  componentType: ComponentType
+) {
+  if (!collectionType || collectionType === "custom") {
+    return true;
+  }
+
+  if (collectionType === "deck") {
+    return componentType === "card";
+  }
+
+  return componentType === "tile" || componentType === "piece" || componentType === "die";
+}
+
+export function formatCardLayoutSize(layout: CardLayout) {
+  return `${layout.size.widthMm} x ${layout.size.heightMm} mm`;
+}
+
+export function formatPieceLayoutSize(layout: PieceLayout) {
+  const { depthMm, heightMm, widthMm } = layout.sizeMm;
+  return `${widthMm} x ${heightMm} x ${depthMm} mm`;
+}
+
+export function formatTileLayoutSize(layout: TileLayout) {
+  const { heightMm, widthMm } = layout.sizeMm;
+  return `${widthMm} x ${heightMm} mm`;
+}
+
+export function cloneCardLayout(layout: CardLayout): CardLayout {
+  return JSON.parse(JSON.stringify(layout)) as CardLayout;
+}
+
+export function cloneTileLayout(layout: TileLayout): TileLayout {
+  return JSON.parse(JSON.stringify(layout)) as TileLayout;
+}
+
+export function clonePieceLayout(layout: PieceLayout): PieceLayout {
+  return JSON.parse(JSON.stringify(layout)) as PieceLayout;
+}
+
 export function createDefaultCardLayout(
   input: {
     backText?: string;
@@ -470,7 +512,7 @@ export function createDefaultTileLayout(
       ...defaultTileAppearance,
       ...input.appearance
     },
-    rotationDeg: normalizeDegrees(input.rotationDeg ?? 0),
+    rotationDeg: normalizeIntegerDegrees(input.rotationDeg ?? 0),
     customShape:
       shape === "custom"
         ? cloneTileCustomShape(input.customShape ?? defaultTileCustomShape)
@@ -556,13 +598,13 @@ export function createDefaultPieceLayout(
   };
 }
 
-function clonePieceCustomShape(customShape: PieceCustomShape): PieceCustomShape {
+export function clonePieceCustomShape(customShape: PieceCustomShape): PieceCustomShape {
   return {
     points: customShape.points.map((point) => ({ ...point }))
   };
 }
 
-function cloneTileCustomShape(customShape: TileCustomShape): TileCustomShape {
+export function cloneTileCustomShape(customShape: TileCustomShape): TileCustomShape {
   return {
     points: customShape.points.map((point) => ({ ...point }))
   };
@@ -738,7 +780,7 @@ export function resolveTileLayout(
         "#0f766e"
       )
     },
-    rotationDeg: normalizeDegrees(layout.rotationDeg ?? 0),
+    rotationDeg: normalizeIntegerDegrees(layout.rotationDeg ?? 0),
     customShape: layout.customShape
       ? { points: layout.customShape.points.map((point) => ({ ...point })) }
       : undefined,
@@ -946,7 +988,7 @@ function createImageContent(): VisualZoneContent {
   };
 }
 
-function isCardImageFieldValue(value: unknown): value is TemplateImageFieldValue {
+export function isCardImageFieldValue(value: unknown): value is TemplateImageFieldValue {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -955,17 +997,4 @@ function isCardImageFieldValue(value: unknown): value is TemplateImageFieldValue
     typeof (value as TemplateImageFieldValue).dataUrl === "string" &&
     typeof (value as TemplateImageFieldValue).fileName === "string"
   );
-}
-
-function normalizeDegrees(value: number) {
-  return ((Math.round(value) % 360) + 360) % 360;
-}
-
-function titleCase(value: string) {
-  return value
-    .replace(/[_-]+/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }

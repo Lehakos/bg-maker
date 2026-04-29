@@ -22,7 +22,10 @@ import { AlertTriangle, Plus, Trash2 } from "lucide-react";
 import { useState, type Dispatch, type SetStateAction } from "react";
 import {
   cardIconIds,
+  clonePieceCustomShape,
+  cloneTileCustomShape,
   collectionTypes,
+  collectionTypeAllowsComponent,
   componentTypes,
   createDefaultCardLayout,
   createDefaultTileLayout,
@@ -34,9 +37,12 @@ import {
   getDefaultTileFieldValues,
   getPieceTemplateFields,
   getTileTemplateFields,
-  getFirstPieceFaceText,
+  isCardImageFieldValue,
+  normalizeIntegerDegrees,
+  parseTagsText,
   pieceFormFactors,
   resolveProjectColorValue,
+  titleCase,
   type TemplateFieldValue,
   type TemplateFieldValues,
   type TemplateImageFieldValue,
@@ -49,7 +55,6 @@ import {
   type GameComponent,
   type LayoutZone,
   type PieceAppearance,
-  type PieceCustomShape,
   type PieceFormFactor,
   type PieceLayout,
   type PieceLayoutFace,
@@ -74,6 +79,9 @@ import { ProjectColorValueInput } from "./project-color-value-input";
 import { CustomTileShapeEditor, TilePreview, TileShapePicker } from "./tile-preview";
 import { useZoneEditor } from "./use-zone-editor";
 import {
+  getCompatibleCollectionItems,
+  getPieceFormStateFromLayout,
+  getTileFormStateFromLayout,
   readNumber,
   useComponentForm,
   type ComponentFormType,
@@ -996,39 +1004,11 @@ function getCollectionComponentOptions(
   collectionType: ComponentCollectionType
 ) {
   return components
-    .filter((component) => collectionTypeAllowsComponent(collectionType, component))
+    .filter((component) => collectionTypeAllowsComponent(collectionType, component.type))
     .map((item) => ({
       value: item.id,
       label: `${item.name} (${componentTypeLabels[item.type]})`
     }));
-}
-
-function getCompatibleCollectionItems(
-  items: ComponentCollectionItem[],
-  collectionType: ComponentCollectionType,
-  components: GameComponent[]
-) {
-  const allowedComponentIds = new Set(
-    components
-      .filter((component) => collectionTypeAllowsComponent(collectionType, component))
-      .map((component) => component.id)
-  );
-
-  return items.filter((item) => allowedComponentIds.has(item.componentId));
-}
-
-function collectionTypeAllowsComponent(
-  collectionType: ComponentCollectionType,
-  component: GameComponent
-) {
-  switch (collectionType) {
-    case "deck":
-      return component.type === "card";
-    case "bag":
-      return component.type === "tile" || component.type === "piece" || component.type === "die";
-    case "custom":
-      return true;
-  }
 }
 
 function PieceTemplateFields({
@@ -1102,7 +1082,7 @@ function PieceTemplateFields({
       shape,
       customShape:
         shape === "custom"
-          ? cloneCustomShape(layout.customShape ?? defaultPieceCustomShape)
+          ? clonePieceCustomShape(layout.customShape ?? defaultPieceCustomShape)
           : undefined
     }));
   }
@@ -1563,7 +1543,7 @@ function TileTemplateFields({
                     onChange={(rotationDeg) =>
                       updateTileLayout((layout) => ({
                         ...layout,
-                        rotationDeg: normalizeRotation(rotationDeg)
+                        rotationDeg: normalizeIntegerDegrees(rotationDeg)
                       }))
                     }
                   />
@@ -1580,7 +1560,7 @@ function TileTemplateFields({
                     onChange={(value) =>
                       updateTileLayout((layout) => ({
                         ...layout,
-                        rotationDeg: normalizeRotation(readNumber(value, 0))
+                        rotationDeg: normalizeIntegerDegrees(readNumber(value, 0))
                       }))
                     }
                   />
@@ -1685,28 +1665,6 @@ const tileColorSwatches = [
   "#16a34a"
 ];
 
-function getPieceFormStateFromLayout(layout: PieceLayout): Partial<ComponentFormValues> {
-  return {
-    pieceLayout: layout,
-    pieceFormFactor: layout.formFactor,
-    pieceShape: layout.shape,
-    pieceWidthMm: layout.sizeMm.widthMm,
-    pieceHeightMm: layout.sizeMm.heightMm,
-    pieceDepthMm: layout.sizeMm.depthMm,
-    pieceTwoSided: layout.formFactor !== "solid" && layout.faces.length > 1,
-    pieceFaceText: getFirstPieceFaceText(layout)
-  };
-}
-
-function getTileFormStateFromLayout(layout: TileLayout): Partial<ComponentFormValues> {
-  return {
-    tileLayout: layout,
-    tileShape: layout.shape,
-    tileWidthMm: layout.sizeMm.widthMm,
-    tileHeightMm: layout.sizeMm.heightMm
-  };
-}
-
 function getPieceLayoutWithAppearance(
   layout: PieceLayout,
   appearance: PieceAppearance
@@ -1749,18 +1707,6 @@ function updateFirstTextZone(face: PieceLayoutFace, text: string): PieceLayoutFa
         ? { ...zone, content: { ...zone.content, text } }
         : zone
     )
-  };
-}
-
-function cloneCustomShape(customShape: PieceCustomShape): PieceCustomShape {
-  return {
-    points: customShape.points.map((point) => ({ ...point }))
-  };
-}
-
-function cloneTileCustomShape(customShape: typeof defaultTileCustomShape) {
-  return {
-    points: customShape.points.map((point) => ({ ...point }))
   };
 }
 
@@ -1888,50 +1834,4 @@ function readImageFieldValue(file: File) {
     reader.onerror = () => reject(new Error("Could not read image file"));
     reader.readAsDataURL(file);
   });
-}
-
-function isCardImageFieldValue(value: unknown): value is TemplateImageFieldValue {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "dataUrl" in value &&
-    "fileName" in value &&
-    typeof (value as TemplateImageFieldValue).dataUrl === "string" &&
-    typeof (value as TemplateImageFieldValue).fileName === "string"
-  );
-}
-
-function titleCase(value: string) {
-  return value
-    .replace(/[_-]+/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function normalizeRotation(value: number) {
-  return ((Math.round(value) % 360) + 360) % 360;
-}
-
-function parseTagsText(value: string): string[] {
-  if (!value) {
-    return [];
-  }
-
-  const seen = new Set<string>();
-  const tags: string[] = [];
-
-  for (const part of value.split(",")) {
-    const trimmed = part.trim();
-
-    if (trimmed.length === 0 || seen.has(trimmed)) {
-      continue;
-    }
-
-    seen.add(trimmed);
-    tags.push(trimmed);
-  }
-
-  return tags;
 }

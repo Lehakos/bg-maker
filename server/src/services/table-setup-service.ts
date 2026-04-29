@@ -1,5 +1,7 @@
 import {
+  collectionMatchesZoneChildType,
   defaultTableSetupSize,
+  normalizeDegrees,
   tablePlacementFaces,
   zoneBackgroundImageFits,
   zoneChildTypes,
@@ -572,7 +574,9 @@ function readTableSource(
       return componentId;
     }
 
-    const component = getProjectComponents(projectId).find((entry) => entry.id === componentId.value);
+    const component = getProjectComponents(projectId).find(
+      (entry) => entry.id === componentId.value
+    );
 
     if (!component) {
       return { ok: false, error: "Table source must reference a component in the same project" };
@@ -624,9 +628,10 @@ function getCollectionZoneCompatibility(
   zoneChildType: Exclude<ZoneChildType, "zone">
 ): ParseResult<undefined> {
   const components = getProjectComponents(projectId);
+  const componentsById = new Map(components.map((component) => [component.id, component]));
 
   for (const item of collection.items) {
-    const component = components.find((entry) => entry.id === item.componentId);
+    const component = componentsById.get(item.componentId);
 
     if (!component) {
       return { ok: false, error: "Table source collection contains a missing component" };
@@ -635,19 +640,16 @@ function getCollectionZoneCompatibility(
     if (component.type === "die") {
       return { ok: false, error: "Dice cannot be used as zone sources" };
     }
+  }
 
-    if (component.type !== zoneChildType) {
-      return { ok: false, error: "Table source collection type does not match zone child type" };
-    }
+  if (!collectionMatchesZoneChildType(collection, zoneChildType, componentsById)) {
+    return { ok: false, error: "Table source collection type does not match zone child type" };
   }
 
   return { ok: true, value: undefined };
 }
 
-export function getTableSourceQuantity(
-  source: TableSource | undefined,
-  projectId: string
-): number {
+export function getTableSourceQuantity(source: TableSource | undefined, projectId: string): number {
   if (!source) {
     return 0;
   }
@@ -658,7 +660,9 @@ export function getTableSourceQuantity(
       : 0;
   }
 
-  const collection = getProjectCollections(projectId).find((item) => item.id === source.collectionId);
+  const collection = getProjectCollections(projectId).find(
+    (item) => item.id === source.collectionId
+  );
 
   return collection?.items.reduce((total, item) => total + item.quantity, 0) ?? 0;
 }
@@ -878,10 +882,6 @@ function readRequiredImageDataUrl(value: unknown): ParseResult<string> {
   }
 
   return dataUrl;
-}
-
-function normalizeDegrees(value: number) {
-  return ((value % 360) + 360) % 360;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

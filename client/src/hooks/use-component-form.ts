@@ -3,12 +3,15 @@ import {
   createDefaultCardLayout,
   createDefaultPieceLayout,
   createDefaultTileLayout,
+  collectionTypeAllowsComponent,
   getDefaultCardFieldValues,
   getDefaultPieceFieldValues,
   getDefaultTileFieldValues,
   getFirstCardSideText,
   getFirstPieceFaceText,
   getFirstTileSideText,
+  normalizeIntegerDegrees,
+  parseTagsText,
   resolveCardLayout,
   resolvePieceLayout,
   resolveTileLayout,
@@ -244,7 +247,7 @@ export function useComponentForm(
           type: values.collectionType,
           name: values.name.trim(),
           description: values.description.trim(),
-          tags: parseTags(values.tagsText),
+          tags: parseTagsText(values.tagsText),
           notes: values.notes.trim(),
           items: values.collectionItems.filter((item) => item.componentId.length > 0)
         }
@@ -362,6 +365,42 @@ export function readNumber(value: number | string, fallback: number) {
 
   const parsedValue = Number(value);
   return Number.isFinite(parsedValue) ? parsedValue : fallback;
+}
+
+export function getCompatibleCollectionItems(
+  items: ComponentCollectionItem[],
+  collectionType: ComponentCollectionType,
+  components: GameComponent[]
+) {
+  const allowedComponentIds = new Set(
+    components
+      .filter((component) => collectionTypeAllowsComponent(collectionType, component.type))
+      .map((component) => component.id)
+  );
+
+  return items.filter((item) => allowedComponentIds.has(item.componentId));
+}
+
+export function getPieceFormStateFromLayout(layout: PieceLayout): Partial<ComponentFormValues> {
+  return {
+    pieceLayout: layout,
+    pieceFormFactor: layout.formFactor,
+    pieceShape: layout.shape,
+    pieceWidthMm: layout.sizeMm.widthMm,
+    pieceHeightMm: layout.sizeMm.heightMm,
+    pieceDepthMm: layout.sizeMm.depthMm,
+    pieceTwoSided: layout.formFactor !== "solid" && layout.faces.length > 1,
+    pieceFaceText: getFirstPieceFaceText(layout)
+  };
+}
+
+export function getTileFormStateFromLayout(layout: TileLayout): Partial<ComponentFormValues> {
+  return {
+    tileLayout: layout,
+    tileShape: layout.shape,
+    tileWidthMm: layout.sizeMm.widthMm,
+    tileHeightMm: layout.sizeMm.heightMm
+  };
 }
 
 function getComponentFormValues(
@@ -752,7 +791,7 @@ function buildComponentPayload(values: ComponentFormValues): CreateGameComponent
   const base = {
     name: values.name.trim(),
     description: values.description.trim(),
-    tags: parseTags(values.tagsText),
+    tags: parseTagsText(values.tagsText),
     notes: values.notes.trim()
   };
 
@@ -870,7 +909,7 @@ function buildTileTemplateLayout(values: ComponentFormValues): TileLayout {
       widthMm: values.tileWidthMm,
       heightMm: values.tileHeightMm
     },
-    rotationDeg: normalizeRotation(values.tileLayout.rotationDeg ?? 0),
+    rotationDeg: normalizeIntegerDegrees(values.tileLayout.rotationDeg ?? 0),
     appearance: { ...values.tileLayout.appearance },
     customShape:
       values.tileShape === "custom" && values.tileLayout.customShape
@@ -887,25 +926,13 @@ function buildTileTemplateLayout(values: ComponentFormValues): TileLayout {
 
 function getPieceTemplateFormFields(layout: PieceLayout) {
   return {
-    pieceLayout: layout,
-    pieceAppearance: { ...layout.appearance },
-    pieceFormFactor: layout.formFactor,
-    pieceShape: layout.shape,
-    pieceWidthMm: layout.sizeMm.widthMm,
-    pieceHeightMm: layout.sizeMm.heightMm,
-    pieceDepthMm: layout.sizeMm.depthMm,
-    pieceTwoSided: layout.faces.length > 1,
-    pieceFaceText: getFirstPieceFaceText(layout)
+    ...getPieceFormStateFromLayout(layout),
+    pieceAppearance: { ...layout.appearance }
   };
 }
 
 function getTileTemplateFormFields(layout: TileLayout) {
-  return {
-    tileLayout: layout,
-    tileShape: layout.shape,
-    tileWidthMm: layout.sizeMm.widthMm,
-    tileHeightMm: layout.sizeMm.heightMm
-  };
+  return getTileFormStateFromLayout(layout);
 }
 
 function cloneTileSide(side: TileLayout["sides"]["front"]) {
@@ -920,15 +947,4 @@ function cloneTileSide(side: TileLayout["sides"]["front"]) {
       }
     }))
   };
-}
-
-function normalizeRotation(value: number) {
-  return ((Math.round(value) % 360) + 360) % 360;
-}
-
-function parseTags(value: string) {
-  return value
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter((tag, index, tags) => tag.length > 0 && tags.indexOf(tag) === index);
 }

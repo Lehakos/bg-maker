@@ -16,6 +16,7 @@ import {
   defaultPieceCustomShape,
   pieceShapes,
   resolvePieceLayout,
+  titleCase,
   type LayoutZone,
   type PieceCustomShape,
   type PieceLayout,
@@ -655,13 +656,4 @@ function clamp(value: number, min = 0, max = 100) {
 
 function roundPercent(value: number) {
   return Math.round(value * 10) / 10;
-}
-
-function titleCase(value: string) {
-  return value
-    .replace(/[_-]+/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }

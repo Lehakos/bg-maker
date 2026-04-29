@@ -1,3 +1,5 @@
+import type { ComponentCollection, GameComponent } from "./components.js";
+
 export const zoneChildTypes = ["zone", "card", "piece", "tile"] as const;
 
 export type ZoneChildType = (typeof zoneChildTypes)[number];
@@ -126,3 +128,29 @@ export const defaultTableSetupSize = {
   width: 1600,
   height: 1000
 } as const;
+
+export function collectionMatchesZoneChildType(
+  collection: ComponentCollection,
+  childrenType: Exclude<ZoneChildType, "zone">,
+  componentsById: Map<string, GameComponent>
+) {
+  return collection.items.every(
+    (item) => componentsById.get(item.componentId)?.type === childrenType
+  );
+}
+
+export function tableSourceMatchesZoneChildType(
+  source: TableSource,
+  childrenType: Exclude<ZoneChildType, "zone">,
+  componentsById: Map<string, GameComponent>,
+  collectionsById: Map<string, ComponentCollection>
+) {
+  if (source.kind === "component") {
+    return componentsById.get(source.componentId)?.type === childrenType;
+  }
+
+  const collection = collectionsById.get(source.collectionId);
+  return collection
+    ? collectionMatchesZoneChildType(collection, childrenType, componentsById)
+    : false;
+}

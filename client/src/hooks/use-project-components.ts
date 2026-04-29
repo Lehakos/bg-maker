@@ -25,9 +25,15 @@ import {
 } from "../api/client";
 import type { ComponentFormSubmitValues } from "./use-component-form";
 import {
+  cloneCardLayout,
+  clonePieceLayout,
+  cloneTileLayout,
   createDefaultCardLayout,
   createDefaultPieceLayout,
   createDefaultTileLayout,
+  formatCardLayoutSize,
+  formatPieceLayoutSize,
+  formatTileLayoutSize,
   getFirstCardSideText,
   getFirstPieceFaceText,
   getFirstTileSideText,
@@ -40,9 +46,7 @@ import {
   type CreatePieceTemplateInput,
   type CreateTileTemplateInput,
   type GameComponent,
-  type PieceLayout,
   type PieceTemplate,
-  type TileLayout,
   type TileTemplate,
   type UpdateComponentCollectionInput,
   type UpdateGameComponentInput,
@@ -525,7 +529,7 @@ function getComponentDetails(component: GameComponent) {
   switch (component.type) {
     case "card":
       return [
-        formatCardSize(component.layout),
+        formatCardLayoutSize(component.layout),
         getFirstCardSideText(component.layout.sides.front) || component.frontText
       ]
         .filter(Boolean)
@@ -534,7 +538,7 @@ function getComponentDetails(component: GameComponent) {
     case "tile":
       return [
         `${component.layout.shape} tile`,
-        formatTileSize(component.layout),
+        formatTileLayoutSize(component.layout),
         component.layout.rotationDeg ? `${component.layout.rotationDeg} deg` : "",
         getFirstTileSideText(component.layout) || component.labelText
       ]
@@ -544,7 +548,7 @@ function getComponentDetails(component: GameComponent) {
     case "piece":
       return [
         `${component.layout.formFactor} ${component.layout.shape}`,
-        formatPieceSize(component.layout),
+        formatPieceLayoutSize(component.layout),
         getFirstPieceFaceText(component.layout) || component.labelText
       ]
         .filter(Boolean)
@@ -626,28 +630,4 @@ function toDuplicateInput(component: GameComponent): CreateGameComponentInput {
         sides: component.sides
       };
   }
-}
-
-function formatCardSize(layout: CardLayout) {
-  return `${layout.size.widthMm} x ${layout.size.heightMm} mm`;
-}
-
-function formatPieceSize(layout: PieceLayout) {
-  return `${layout.sizeMm.widthMm} x ${layout.sizeMm.heightMm} x ${layout.sizeMm.depthMm} mm`;
-}
-
-function formatTileSize(layout: TileLayout) {
-  return `${layout.sizeMm.widthMm} x ${layout.sizeMm.heightMm} mm`;
-}
-
-function cloneCardLayout(layout: CardLayout) {
-  return JSON.parse(JSON.stringify(layout)) as CardLayout;
-}
-
-function cloneTileLayout(layout: TileLayout) {
-  return JSON.parse(JSON.stringify(layout)) as TileLayout;
-}
-
-function clonePieceLayout(layout: PieceLayout) {
-  return JSON.parse(JSON.stringify(layout)) as PieceLayout;
 }

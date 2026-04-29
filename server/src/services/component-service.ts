@@ -21,6 +21,7 @@ import {
   getFirstTileSideText,
   getPieceTemplateFields,
   getTileTemplateFields,
+  normalizeIntegerDegrees,
   pieceFormFactors,
   pieceShapes,
   resolveCardLayout,
@@ -1049,7 +1050,7 @@ export function parseTileLayout(value: unknown, projectId?: string): ParseResult
       shape: shape.value,
       sizeMm: sizeMm.value,
       appearance: appearance.value,
-      rotationDeg: normalizeRotation(rotationDeg.value ?? 0),
+      rotationDeg: normalizeIntegerDegrees(rotationDeg.value ?? 0),
       customShape: customShape.value,
       sides
     }
@@ -2098,10 +2099,6 @@ function readRequiredBoolean(value: unknown, label: string): ParseResult<boolean
   }
 
   return { ok: true, value };
-}
-
-function normalizeRotation(value: number) {
-  return ((Math.round(value) % 360) + 360) % 360;
 }
 
 function readRequiredTileShape(value: unknown): ParseResult<TileShape> {

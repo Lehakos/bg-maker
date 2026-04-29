@@ -52,6 +52,7 @@ import {
   cardVisualVerticalAlignments,
   resolveCardLayout,
   resolveProjectColorValue,
+  titleCase,
   type LayoutContentSource,
   type TemplateFieldValues,
   type CardIconId,
@@ -1676,13 +1677,4 @@ function clamp(value: number, min: number, max: number) {
 
 function roundPercent(value: number) {
   return Math.round(value * 10) / 10;
-}
-
-function titleCase(value: string) {
-  return value
-    .replace(/[_-]+/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }

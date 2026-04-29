@@ -1,6 +1,7 @@
 export * from "./api-paths.js";
 export * from "./app.js";
 export * from "./components.js";
+export * from "./formatting.js";
 export * from "./health.js";
 export * from "./projects.js";
 export * from "./table-setup.js";

@@ -13,3 +13,15 @@
 - Treat type selectors inside create/edit forms as non-destructive mode switches. Preserve per-type draft state while the form is open, and restore it when the user switches back.
 - Keep shared fields such as names, descriptions, tags, notes, and quantities separate from type-specific state so switching type does not unexpectedly wipe common input.
 - Prefer reusable hooks, helpers, and small shared components for form-state transitions instead of duplicating branching logic in individual form sections.
+
+## Business Logic Placement
+
+- Do not keep business logic in UI components or controllers; keep those layers focused on rendering, input handling, request/response orchestration, and wiring.
+- On the client, put business logic in reusable hooks, stores or nearby hook-level helpers.
+- On the server, put business logic in services and keep controllers thin.
+
+## Code Decomposition and Reuse
+
+- Avoid very large files when a focused module, hook, helper, service, or component would make the code easier to understand and maintain.
+- Before writing new code, look for existing utilities, hooks, services, components, or patterns that can be reused or extended.
+- When similar logic starts to appear in more than one place, consider extracting a reusable abstraction instead of duplicating the code.
