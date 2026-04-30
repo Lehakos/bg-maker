@@ -1,4 +1,18 @@
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragMoveEvent,
+  type DragStartEvent,
+  type UniqueIdentifier
+} from "@dnd-kit/core";
+import {
   ActionIcon,
   Alert,
   Badge,
@@ -51,9 +65,9 @@ import {
   useMemo,
   useRef,
   useState,
-  type DragEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode
+  type ReactNode,
+  type SyntheticEvent
 } from "react";
 import {
   componentTypes,
@@ -114,15 +128,12 @@ import {
   getZoneBase,
   getZoneItemPoint,
   getZoneLayoutPatch,
-  hasDragSource,
   itemMatchesQuery,
-  libraryDragType,
   materializeZoneItems,
   maxTableZoom,
   minZoneSizeMm,
   minTableZoom,
   readCssPixels,
-  readDragSource,
   readImageBackground,
   removeZoneFromTree,
   selectValueToSource,
@@ -163,11 +174,25 @@ type DraftCommandOptions = {
   mergeKey?: string;
 };
 
+type TableDragData =
+  | {
+      kind: "library-source";
+      source: TableSource;
+    }
+  | {
+      kind: "placement";
+      placementId: string;
+      source: TableSource;
+    };
+
 const allLibraryFilters = ["all", ...componentTypes, "deck", "bag", "custom"] as const;
 
 type LibraryFilter = (typeof allLibraryFilters)[number];
 
 const noSourceOption = "__none__";
+const tablePlacementDragIdPrefix = "table-placement:";
+const tableLibraryDragIdPrefix = "table-library:";
+const tableZoneDropIdPrefix = "table-zone:";
 const tableZoomStep = 0.1;
 const minSurfaceWidthPx = 640;
 
@@ -217,6 +242,87 @@ const imageFitOptions = zoneBackgroundImageFits.map((fit) => ({
   value: fit
 }));
 
+function getTableSourceDragKey(source: TableSource) {
+  return sourceToSelectValue(source);
+}
+
+function getTableLibraryDragId(source: TableSource) {
+  return `${tableLibraryDragIdPrefix}${getTableSourceDragKey(source)}`;
+}
+
+function getTablePlacementDragId(placementId: string) {
+  return `${tablePlacementDragIdPrefix}${placementId}`;
+}
+
+function getTableZoneDropId(zoneId: string) {
+  return `${tableZoneDropIdPrefix}${zoneId}`;
+}
+
+function getTableZoneIdFromDropId(id: UniqueIdentifier | null | undefined) {
+  const value = id?.toString();
+
+  return value?.startsWith(tableZoneDropIdPrefix)
+    ? value.slice(tableZoneDropIdPrefix.length)
+    : null;
+}
+
+function isTableSource(value: unknown): value is TableSource {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const source = value as Record<string, unknown>;
+
+  if (source.kind === "component") {
+    return typeof source.componentId === "string";
+  }
+
+  if (source.kind === "collection") {
+    return typeof source.collectionId === "string";
+  }
+
+  return false;
+}
+
+function readTableDragData(value: unknown): TableDragData | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const data = value as Record<string, unknown>;
+
+  if (data.kind === "library-source" && isTableSource(data.source)) {
+    return { kind: "library-source", source: data.source };
+  }
+
+  if (
+    data.kind === "placement" &&
+    typeof data.placementId === "string" &&
+    isTableSource(data.source)
+  ) {
+    return {
+      kind: "placement",
+      placementId: data.placementId,
+      source: data.source
+    };
+  }
+
+  return null;
+}
+
+function getClientPoint(event: Event) {
+  if ("clientX" in event && "clientY" in event) {
+    const clientX = event.clientX;
+    const clientY = event.clientY;
+
+    if (typeof clientX === "number" && typeof clientY === "number") {
+      return { clientX, clientY };
+    }
+  }
+
+  return null;
+}
+
 const libraryFilterOptions = allLibraryFilters.map((filter) => ({
   label:
     filter === "all"
@@ -249,6 +355,10 @@ export function TableSetupEditor({
   const queryClient = useQueryClient();
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  // dnd-kit drag deltas can diverge from the real pointer in Playwright and scrolled layouts.
+  const lastPointerClientPointRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  // dnd-kit intentionally suppresses the click after a drag; reopen the zone menu for fast follow-up clicks.
+  const tableDragClickSuppressedUntilRef = useRef(0);
   const {
     canRedo,
     canUndo,
@@ -262,6 +372,7 @@ export function TableSetupEditor({
     undoLabel
   } = useTableSetupHistory();
   const [selection, setSelection] = useState<Selection>(null);
+  const [zoneMenuOpened, setZoneMenuOpened] = useState(false);
   const [tableZoom, setTableZoom] = useState(1);
   const [activeDragSource, setActiveDragSource] = useState<TableSource | null>(null);
   const [activePlacementDrag, setActivePlacementDrag] = useState<{
@@ -327,6 +438,24 @@ export function TableSetupEditor({
       ? renderedZones.find((entry) => entry.zone.id === selection.id)
       : undefined;
   const activeDropSource = activeDragSource ?? activePlacementDrag?.source ?? null;
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  useEffect(() => {
+    function rememberPointerPoint(event: PointerEvent) {
+      lastPointerClientPointRef.current = {
+        clientX: event.clientX,
+        clientY: event.clientY
+      };
+    }
+
+    window.addEventListener("pointermove", rememberPointerPoint, { capture: true });
+    window.addEventListener("pointerup", rememberPointerPoint, { capture: true });
+
+    return () => {
+      window.removeEventListener("pointermove", rememberPointerPoint, { capture: true });
+      window.removeEventListener("pointerup", rememberPointerPoint, { capture: true });
+    };
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -380,6 +509,20 @@ export function TableSetupEditor({
 
   function resetTableZoom() {
     setTableZoom(1);
+  }
+
+  function markTableDragClickSuppressionWindow() {
+    tableDragClickSuppressedUntilRef.current = Date.now() + 90;
+  }
+
+  function openZoneMenuDuringSuppressedClick(event: SyntheticEvent) {
+    if (Date.now() > tableDragClickSuppressedUntilRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setZoneMenuOpened(true);
   }
 
   function fitTableToViewport() {
@@ -616,6 +759,35 @@ export function TableSetupEditor({
     });
   }
 
+  function getRenderedZoneAtPoint(point: TablePoint) {
+    return [...renderedZones].reverse().find((renderedZone) => {
+      const zone = renderedZone.zone;
+
+      return (
+        point.x >= renderedZone.absoluteX &&
+        point.x <= renderedZone.absoluteX + zone.width &&
+        point.y >= renderedZone.absoluteY &&
+        point.y <= renderedZone.absoluteY + zone.height
+      );
+    });
+  }
+
+  function dropSourceIntoZone(zone: TableZone, source: TableSource) {
+    if (!canDropSourceOnZone(source, zone) || zone.childrenType === "zone") {
+      return;
+    }
+
+    if (zone.source && !sourcesAreEqual(zone.source, source)) {
+      const replace = window.confirm(`Replace source for "${zone.name}"?`);
+
+      if (!replace) {
+        return;
+      }
+    }
+
+    updateZoneSource(zone, source);
+  }
+
   function movePlacementIntoZone(
     placement: TablePlacement,
     renderedZone: RenderedZone,
@@ -758,9 +930,7 @@ export function TableSetupEditor({
     });
   }
 
-  function getTablePoint(
-    event: Pick<PointerEvent | ReactPointerEvent | DragEvent, "clientX" | "clientY">
-  ) {
+  function getTablePointFromClient(clientX: number, clientY: number) {
     const rect = surfaceRef.current?.getBoundingClientRect();
 
     if (!rect || !draft || rect.width === 0 || rect.height === 0) {
@@ -768,90 +938,100 @@ export function TableSetupEditor({
     }
 
     return {
-      x: ((event.clientX - rect.left) / rect.width) * draft.width,
-      y: ((event.clientY - rect.top) / rect.height) * draft.height
+      x: ((clientX - rect.left) / rect.width) * draft.width,
+      y: ((clientY - rect.top) / rect.height) * draft.height
     };
   }
 
-  function startPlacementDrag(event: ReactPointerEvent<HTMLElement>, placement: TablePlacement) {
-    if (!draft) {
-      return;
+  function getTablePoint(event: Pick<PointerEvent | ReactPointerEvent, "clientX" | "clientY">) {
+    return getTablePointFromClient(event.clientX, event.clientY);
+  }
+
+  function getTablePointFromTrackedPointer() {
+    const point = lastPointerClientPointRef.current;
+
+    return point ? getTablePointFromClient(point.clientX, point.clientY) : null;
+  }
+
+  function getTablePointFromDragEvent(event: DragMoveEvent | DragEndEvent) {
+    const trackedPoint = getTablePointFromTrackedPointer();
+
+    if (trackedPoint) {
+      return trackedPoint;
     }
 
-    const startPoint = getTablePoint(event);
+    const initialPoint = getClientPoint(event.activatorEvent);
 
-    if (!startPoint) {
-      return;
-    }
-
-    const pointerId = event.pointerId;
-    const target = event.currentTarget;
-    const startPosition = { x: placement.x, y: placement.y };
-    const pointerStartX = startPoint.x;
-    const pointerStartY = startPoint.y;
-    const dragHistoryKey = createClientId("placement-drag");
-    let didDrag = false;
-    let currentDropZone: RenderedZone | undefined;
-
-    event.preventDefault();
-    event.stopPropagation();
-    target.setPointerCapture(pointerId);
-    setSelection({ id: placement.id, type: "placement" });
-
-    function handlePointerMove(pointerEvent: PointerEvent) {
-      const point = getTablePoint(pointerEvent);
-
-      if (!point || !draft) {
-        return;
-      }
-
-      const deltaX = point.x - pointerStartX;
-      const deltaY = point.y - pointerStartY;
-
-      if (!didDrag && Math.hypot(deltaX, deltaY) > 4) {
-        didDrag = true;
-        setActivePlacementDrag({ source: placement.source });
-      }
-
-      updatePlacement(
-        placement.id,
-        {
-          x: Math.round(clamp(startPosition.x + deltaX, 0, draft.width)),
-          y: Math.round(clamp(startPosition.y + deltaY, 0, draft.height))
-        },
-        {
-          label: "Move placement",
-          mergeKey: dragHistoryKey
-        }
+    if (initialPoint) {
+      return getTablePointFromClient(
+        initialPoint.clientX + event.delta.x,
+        initialPoint.clientY + event.delta.y
       );
-      currentDropZone = didDrag ? getDropZoneAtPoint(point, placement.source) : undefined;
-      setDragHoverZoneId(currentDropZone?.zone.id ?? null);
     }
 
-    function handlePointerEnd(pointerEvent: PointerEvent) {
-      const point = getTablePoint(pointerEvent);
-      const dropZone =
-        didDrag && pointerEvent.type === "pointerup" && point
-          ? getDropZoneAtPoint(point, placement.source)
-          : currentDropZone;
+    const initialRect = event.active.rect.current.initial;
 
-      if (target.hasPointerCapture(pointerEvent.pointerId)) {
-        target.releasePointerCapture(pointerEvent.pointerId);
-      }
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerEnd);
-      window.removeEventListener("pointercancel", handlePointerEnd);
-      setActivePlacementDrag(null);
-      setDragHoverZoneId(null);
-
-      if (didDrag && pointerEvent.type === "pointerup" && dropZone) {
-        movePlacementIntoZone(placement, dropZone, { mergeKey: dragHistoryKey });
-      }
+    if (!initialRect) {
+      return null;
     }
 
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerEnd);
-    window.addEventListener("pointercancel", handlePointerEnd);
+    return getTablePointFromClient(
+      initialRect.left + initialRect.width / 2 + event.delta.x,
+      initialRect.top + initialRect.height / 2 + event.delta.y
+    );
+  }
+
+  function getTablePointFromDragRect(event: DragMoveEvent | DragEndEvent) {
+    const translatedRect = event.active.rect.current.translated;
+    const initialRect = event.active.rect.current.initial;
+    const rect = translatedRect
+      ? translatedRect
+      : initialRect
+        ? {
+            ...initialRect,
+            left: initialRect.left + event.delta.x,
+            top: initialRect.top + event.delta.y
+          }
+        : null;
+
+    if (!rect) {
+      return null;
+    }
+
+    return getTablePointFromClient(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+
+  function getTableDeltaFromDragEvent(event: DragEndEvent) {
+    const rect = surfaceRef.current?.getBoundingClientRect();
+
+    if (!rect || !draft || rect.width === 0 || rect.height === 0) {
+      return null;
+    }
+
+    return {
+      x: (event.delta.x / rect.width) * draft.width,
+      y: (event.delta.y / rect.height) * draft.height
+    };
+  }
+
+  function tablePointIsInsideSurface(point: TablePoint) {
+    return (
+      draft !== null &&
+      point.x >= 0 &&
+      point.x <= draft.width &&
+      point.y >= 0 &&
+      point.y <= draft.height
+    );
+  }
+
+  function getLibraryDropPoint(event: DragMoveEvent | DragEndEvent) {
+    const pointerPoint = getTablePointFromDragEvent(event);
+
+    if (pointerPoint && tablePointIsInsideSurface(pointerPoint)) {
+      return pointerPoint;
+    }
+
+    return getTablePointFromDragRect(event);
   }
 
   function startZoneDrag(
@@ -953,75 +1133,106 @@ export function TableSetupEditor({
     window.addEventListener("pointercancel", handlePointerEnd);
   }
 
-  function handleSurfaceDrop(event: DragEvent<HTMLElement>) {
-    if (!draft) {
-      return;
-    }
+  function handleTableDragStart(event: DragStartEvent) {
+    const data = readTableDragData(event.active.data.current);
 
-    const source = readDragSource(event) ?? activeDragSource;
-    const point = getTablePoint(event);
-
-    if (!source || !point) {
-      return;
-    }
-
-    event.preventDefault();
-    setActiveDragSource(null);
     setDragHoverZoneId(null);
-    addPlacementFromSource(source, {
-      x: Math.round(clamp(point.x, 0, draft.width)),
-      y: Math.round(clamp(point.y, 0, draft.height))
-    });
+
+    if (!data) {
+      return;
+    }
+
+    if (data.kind === "library-source") {
+      setActiveDragSource(data.source);
+      return;
+    }
+
+    setSelection({ id: data.placementId, type: "placement" });
+    setActivePlacementDrag({ source: data.source });
   }
 
-  function handleZoneDrop(event: DragEvent<HTMLElement>, zone: TableZone) {
-    const source = readDragSource(event) ?? activeDragSource;
+  function handleTableDragMove(event: DragMoveEvent) {
+    const data = readTableDragData(event.active.data.current);
+    const point = data
+      ? data.kind === "library-source"
+        ? getLibraryDropPoint(event)
+        : getTablePointFromDragEvent(event)
+      : null;
+    const dropZone = data && point ? getDropZoneAtPoint(point, data.source) : undefined;
+    const overZoneId = getTableZoneIdFromDropId(event.over?.id);
 
-    if (zone.childrenType === "zone" || (!source && !hasDragSource(event))) {
-      return;
-    }
+    setDragHoverZoneId(dropZone?.zone.id ?? overZoneId);
+  }
 
-    event.preventDefault();
-    event.stopPropagation();
+  function handleTableDragEnd(event: DragEndEvent) {
+    const data = readTableDragData(event.active.data.current);
+    const point = data
+      ? data.kind === "library-source"
+        ? getLibraryDropPoint(event)
+        : getTablePointFromDragEvent(event)
+      : null;
+
+    markTableDragClickSuppressionWindow();
     setActiveDragSource(null);
+    setActivePlacementDrag(null);
     setDragHoverZoneId(null);
 
-    if (
-      !source ||
-      !tableSourceMatchesZoneChildType(source, zone.childrenType, componentsById, collectionsById)
-    ) {
+    if (!data || !draft) {
       return;
     }
 
-    if (zone.source && !sourcesAreEqual(zone.source, source)) {
-      const replace = window.confirm(`Replace source for "${zone.name}"?`);
-
-      if (!replace) {
+    if (data.kind === "library-source") {
+      if (!point || !tablePointIsInsideSurface(point)) {
         return;
       }
+
+      const renderedZone = getRenderedZoneAtPoint(point);
+
+      if (renderedZone && renderedZone.zone.childrenType !== "zone") {
+        dropSourceIntoZone(renderedZone.zone, data.source);
+        return;
+      }
+
+      addPlacementFromSource(data.source, {
+        x: Math.round(clamp(point.x, 0, draft.width)),
+        y: Math.round(clamp(point.y, 0, draft.height))
+      });
+      return;
     }
 
-    updateZoneSource(zone, source);
+    const placement = draft.placements.find((item) => item.id === data.placementId);
+
+    if (!placement) {
+      return;
+    }
+
+    const dropZone = point ? getDropZoneAtPoint(point, data.source) : undefined;
+
+    if (dropZone) {
+      movePlacementIntoZone(placement, dropZone);
+      return;
+    }
+
+    const delta = getTableDeltaFromDragEvent(event);
+
+    if (!delta) {
+      return;
+    }
+
+    updatePlacement(
+      placement.id,
+      {
+        x: Math.round(clamp(placement.x + delta.x, 0, draft.width)),
+        y: Math.round(clamp(placement.y + delta.y, 0, draft.height))
+      },
+      { label: "Move placement" }
+    );
   }
 
-  function handleZoneDragOver(event: DragEvent<HTMLElement>, zone: TableZone) {
-    const source = activeDragSource ?? readDragSource(event);
-
-    if (zone.childrenType === "zone" || (!source && !hasDragSource(event))) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (
-      !source ||
-      tableSourceMatchesZoneChildType(source, zone.childrenType, componentsById, collectionsById)
-    ) {
-      setDragHoverZoneId(zone.id);
-      return;
-    }
-
+  function handleTableDragCancel() {
+    markTableDragClickSuppressionWindow();
+    setActiveDragSource(null);
+    setActivePlacementDrag(null);
     setDragHoverZoneId(null);
   }
 
@@ -1066,279 +1277,293 @@ export function TableSetupEditor({
         </Alert>
       ) : null}
 
-      <Box className="table-setup-workspace">
-        <Box className="table-setup-column-header table-setup-summary-header">
-          <Group gap="sm" wrap="nowrap">
-            <ThemeIcon color="teal" radius={8} variant="light">
-              <BoxSelect size={18} />
-            </ThemeIcon>
-            <Box>
-              <Title order={2} size="h3">
-                Table layout
-              </Title>
-              <Text c="dimmed" size="sm">
-                {draft.placements.length} placements, {countZones(draft.zones)} zones
-              </Text>
-            </Box>
-            {hasChanges ? (
-              <Badge color="yellow" radius={8} variant="light">
-                Unsaved
-              </Badge>
-            ) : null}
-          </Group>
-        </Box>
-
-        <Box className="table-setup-column-header table-setup-controls-header">
-          <Group className="table-setup-size-controls" gap="sm">
-            <Group className="table-setup-zoom-controls" gap={4}>
-              <Tooltip label="Zoom out" withArrow>
-                <ActionIcon
-                  aria-label="Zoom out table"
-                  disabled={tableZoom <= minTableZoom}
-                  radius={8}
-                  size="lg"
-                  variant="light"
-                  onClick={() => updateTableZoom(-tableZoomStep)}
-                >
-                  <ZoomOut size={18} />
-                </ActionIcon>
-              </Tooltip>
-              <Text aria-label="Table zoom" className="table-setup-zoom-value" fw={700} size="sm">
-                {formatZoom(tableZoom)}
-              </Text>
-              <Tooltip label="Zoom in" withArrow>
-                <ActionIcon
-                  aria-label="Zoom in table"
-                  disabled={tableZoom >= maxTableZoom}
-                  radius={8}
-                  size="lg"
-                  variant="light"
-                  onClick={() => updateTableZoom(tableZoomStep)}
-                >
-                  <ZoomIn size={18} />
-                </ActionIcon>
-              </Tooltip>
-              <Tooltip label="Fit to view" withArrow>
-                <ActionIcon
-                  aria-label="Fit table to view"
-                  radius={8}
-                  size="lg"
-                  variant="light"
-                  onClick={fitTableToViewport}
-                >
-                  <Maximize2 size={18} />
-                </ActionIcon>
-              </Tooltip>
-              <Tooltip label="Reset zoom" withArrow>
-                <ActionIcon
-                  aria-label="Reset table zoom"
-                  disabled={tableZoom === 1}
-                  radius={8}
-                  size="lg"
-                  variant="light"
-                  onClick={resetTableZoom}
-                >
-                  <RotateCcw size={18} />
-                </ActionIcon>
-              </Tooltip>
+      <DndContext
+        collisionDetection={pointerWithin}
+        sensors={sensors}
+        onDragCancel={handleTableDragCancel}
+        onDragEnd={handleTableDragEnd}
+        onDragMove={handleTableDragMove}
+        onDragStart={handleTableDragStart}
+      >
+        <Box className="table-setup-workspace">
+          <Box className="table-setup-column-header table-setup-summary-header">
+            <Group gap="sm" wrap="nowrap">
+              <ThemeIcon color="teal" radius={8} variant="light">
+                <BoxSelect size={18} />
+              </ThemeIcon>
+              <Box>
+                <Title order={2} size="h3">
+                  Table layout
+                </Title>
+                <Text c="dimmed" size="sm">
+                  {draft.placements.length} placements, {countZones(draft.zones)} zones
+                </Text>
+              </Box>
+              {hasChanges ? (
+                <Badge color="yellow" radius={8} variant="light">
+                  Unsaved
+                </Badge>
+              ) : null}
             </Group>
-            <Group className="table-setup-history-controls" gap={4} wrap="nowrap">
-              <Tooltip
-                label={undoLabel ? `Undo ${undoLabel.toLocaleLowerCase()}` : "Undo"}
-                withArrow
-              >
-                <ActionIcon
-                  aria-label="Undo table layout change"
-                  disabled={!canUndo}
-                  radius={8}
-                  size="lg"
-                  variant="light"
-                  onClick={undo}
-                >
-                  <Undo2 size={18} />
-                </ActionIcon>
-              </Tooltip>
-              <Tooltip
-                label={redoLabel ? `Redo ${redoLabel.toLocaleLowerCase()}` : "Redo"}
-                withArrow
-              >
-                <ActionIcon
-                  aria-label="Redo table layout change"
-                  disabled={!canRedo}
-                  radius={8}
-                  size="lg"
-                  variant="light"
-                  onClick={redo}
-                >
-                  <Redo2 size={18} />
-                </ActionIcon>
-              </Tooltip>
-            </Group>
-            <NumberInput
-              allowDecimal={false}
-              aria-label="Table width"
-              label="Width (mm)"
-              max={6000}
-              min={300}
-              size="xs"
-              value={draft.width}
-              w={120}
-              onChange={(value) =>
-                updateTableSize({ width: toNumberInputValue(value, draft.width) })
-              }
-            />
-            <NumberInput
-              allowDecimal={false}
-              aria-label="Table height"
-              label="Height (mm)"
-              max={6000}
-              min={300}
-              size="xs"
-              value={draft.height}
-              w={120}
-              onChange={(value) =>
-                updateTableSize({ height: toNumberInputValue(value, draft.height) })
-              }
-            />
-          </Group>
-        </Box>
+          </Box>
 
-        <Box className="table-setup-column-header table-setup-actions-header">
-          <Group align="flex-end" gap="sm" justify="flex-end" wrap="nowrap">
-            <Menu position="bottom-end" shadow="md" width={190}>
-              <Menu.Target>
-                <Button
-                  leftSection={<Plus size={16} />}
-                  rightSection={<ChevronDown size={14} />}
-                  radius={8}
-                  variant="light"
+          <Box className="table-setup-column-header table-setup-controls-header">
+            <Group className="table-setup-size-controls" gap="sm">
+              <Group className="table-setup-zoom-controls" gap={4}>
+                <Tooltip label="Zoom out" withArrow>
+                  <ActionIcon
+                    aria-label="Zoom out table"
+                    disabled={tableZoom <= minTableZoom}
+                    radius={8}
+                    size="lg"
+                    variant="light"
+                    onClick={() => updateTableZoom(-tableZoomStep)}
+                  >
+                    <ZoomOut size={18} />
+                  </ActionIcon>
+                </Tooltip>
+                <Text aria-label="Table zoom" className="table-setup-zoom-value" fw={700} size="sm">
+                  {formatZoom(tableZoom)}
+                </Text>
+                <Tooltip label="Zoom in" withArrow>
+                  <ActionIcon
+                    aria-label="Zoom in table"
+                    disabled={tableZoom >= maxTableZoom}
+                    radius={8}
+                    size="lg"
+                    variant="light"
+                    onClick={() => updateTableZoom(tableZoomStep)}
+                  >
+                    <ZoomIn size={18} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label="Fit to view" withArrow>
+                  <ActionIcon
+                    aria-label="Fit table to view"
+                    radius={8}
+                    size="lg"
+                    variant="light"
+                    onClick={fitTableToViewport}
+                  >
+                    <Maximize2 size={18} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label="Reset zoom" withArrow>
+                  <ActionIcon
+                    aria-label="Reset table zoom"
+                    disabled={tableZoom === 1}
+                    radius={8}
+                    size="lg"
+                    variant="light"
+                    onClick={resetTableZoom}
+                  >
+                    <RotateCcw size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+              <Group className="table-setup-history-controls" gap={4} wrap="nowrap">
+                <Tooltip
+                  label={undoLabel ? `Undo ${undoLabel.toLocaleLowerCase()}` : "Undo"}
+                  withArrow
                 >
-                  Add zone
-                </Button>
-              </Menu.Target>
-              <Menu.Dropdown>
-                {zoneTypeOptions.map((option) => (
-                  <Menu.Item key={option.value} onClick={() => addRootZone(option.value)}>
-                    {option.label}
-                  </Menu.Item>
-                ))}
-              </Menu.Dropdown>
-            </Menu>
-            <Button
-              disabled={!hasChanges}
-              leftSection={<Save size={16} />}
-              loading={saveMutation.isPending}
-              radius={8}
-              onClick={saveLayout}
-            >
-              Save layout
-            </Button>
-          </Group>
-        </Box>
-
-        <Box className="table-setup-library">
-          <TableSetupLibrary
-            collections={collections}
-            components={components}
-            componentsById={componentsById}
-            onAddSource={addPlacementFromSource}
-            onSourceDragEnd={() => {
-              setActiveDragSource(null);
-              setDragHoverZoneId(null);
-            }}
-            onSourceDragStart={setActiveDragSource}
-          />
-        </Box>
-
-        <Box className="table-setup-stage">
-          <Box
-            ref={viewportRef}
-            aria-label="Table setup viewport"
-            className="table-setup-surface-shell"
-          >
-            <Box
-              ref={surfaceRef}
-              aria-label="Table setup surface"
-              className="table-setup-surface"
-              style={{
-                aspectRatio: `${draft.width} / ${draft.height}`,
-                minWidth: `${Math.round(minSurfaceWidthPx * tableZoom)}px`,
-                width: `${tableZoom * 100}%`
-              }}
-              onDragOver={(event) => {
-                if (activeDragSource || hasDragSource(event)) {
-                  event.preventDefault();
+                  <ActionIcon
+                    aria-label="Undo table layout change"
+                    disabled={!canUndo}
+                    radius={8}
+                    size="lg"
+                    variant="light"
+                    onClick={undo}
+                  >
+                    <Undo2 size={18} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip
+                  label={redoLabel ? `Redo ${redoLabel.toLocaleLowerCase()}` : "Redo"}
+                  withArrow
+                >
+                  <ActionIcon
+                    aria-label="Redo table layout change"
+                    disabled={!canRedo}
+                    radius={8}
+                    size="lg"
+                    variant="light"
+                    onClick={redo}
+                  >
+                    <Redo2 size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+              <NumberInput
+                allowDecimal={false}
+                aria-label="Table width"
+                label="Width (mm)"
+                max={6000}
+                min={300}
+                size="xs"
+                value={draft.width}
+                w={120}
+                onChange={(value) =>
+                  updateTableSize({ width: toNumberInputValue(value, draft.width) })
                 }
-              }}
-              onDrop={handleSurfaceDrop}
-            >
-              {renderedZones.map((renderedZone) => (
-                <TableZoneView
-                  key={renderedZone.zone.id}
-                  collectionsById={collectionsById}
-                  componentsById={componentsById}
-                  dropEligible={
-                    activeDropSource
-                      ? canDropSourceOnZone(activeDropSource, renderedZone.zone)
-                      : false
-                  }
-                  dropTarget={dragHoverZoneId === renderedZone.zone.id}
-                  projectParameters={projectParameters}
-                  renderedZone={renderedZone}
-                  selected={selection?.type === "zone" && selection.id === renderedZone.zone.id}
-                  setup={draft}
-                  onDragLeave={() => setDragHoverZoneId(null)}
-                  onDragOver={(event) => handleZoneDragOver(event, renderedZone.zone)}
-                  onDrop={(event) => handleZoneDrop(event, renderedZone.zone)}
-                  onPointerDown={(event, mode) => startZoneDrag(event, renderedZone, mode)}
-                  onRemove={() => removeZone(renderedZone.zone.id)}
-                  onSelect={() => setSelection({ id: renderedZone.zone.id, type: "zone" })}
-                />
-              ))}
+              />
+              <NumberInput
+                allowDecimal={false}
+                aria-label="Table height"
+                label="Height (mm)"
+                max={6000}
+                min={300}
+                size="xs"
+                value={draft.height}
+                w={120}
+                onChange={(value) =>
+                  updateTableSize({ height: toNumberInputValue(value, draft.height) })
+                }
+              />
+            </Group>
+          </Box>
 
-              {draft.placements.map((placement) => (
-                <TablePlacementView
-                  key={placement.id}
-                  collectionsById={collectionsById}
-                  componentsById={componentsById}
-                  placement={placement}
-                  projectParameters={projectParameters}
-                  selected={selection?.type === "placement" && selection.id === placement.id}
-                  setup={draft}
-                  onPointerDown={(event) => startPlacementDrag(event, placement)}
-                  onRemove={() => removePlacement(placement.id)}
-                  onRotate={(delta) =>
-                    updatePlacement(placement.id, {
-                      rotationDeg: normalizeDegrees(placement.rotationDeg + delta)
-                    })
-                  }
-                  onSelect={() => setSelection({ id: placement.id, type: "placement" })}
-                />
-              ))}
+          <Box className="table-setup-column-header table-setup-actions-header">
+            <Group align="flex-end" gap="sm" justify="flex-end" wrap="nowrap">
+              <Menu
+                opened={zoneMenuOpened}
+                position="bottom-end"
+                shadow="md"
+                width={190}
+                onChange={setZoneMenuOpened}
+              >
+                <Menu.Target>
+                  <Button
+                    leftSection={<Plus size={16} />}
+                    rightSection={<ChevronDown size={14} />}
+                    radius={8}
+                    variant="light"
+                    onClickCapture={openZoneMenuDuringSuppressedClick}
+                    onPointerUpCapture={openZoneMenuDuringSuppressedClick}
+                  >
+                    Add zone
+                  </Button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  {zoneTypeOptions.map((option) => (
+                    <Menu.Item key={option.value} onClick={() => addRootZone(option.value)}>
+                      {option.label}
+                    </Menu.Item>
+                  ))}
+                </Menu.Dropdown>
+              </Menu>
+              <Button
+                disabled={!hasChanges}
+                leftSection={<Save size={16} />}
+                loading={saveMutation.isPending}
+                radius={8}
+                onClick={saveLayout}
+              >
+                Save layout
+              </Button>
+            </Group>
+          </Box>
+
+          <Box className="table-setup-library">
+            <TableSetupLibrary
+              collections={collections}
+              components={components}
+              componentsById={componentsById}
+              onAddSource={addPlacementFromSource}
+            />
+          </Box>
+
+          <Box className="table-setup-stage">
+            <Box
+              ref={viewportRef}
+              aria-label="Table setup viewport"
+              className="table-setup-surface-shell"
+            >
+              <Box
+                ref={surfaceRef}
+                aria-label="Table setup surface"
+                className="table-setup-surface"
+                style={{
+                  aspectRatio: `${draft.width} / ${draft.height}`,
+                  minWidth: `${Math.round(minSurfaceWidthPx * tableZoom)}px`,
+                  width: `${tableZoom * 100}%`
+                }}
+              >
+                {renderedZones.map((renderedZone) => (
+                  <TableZoneView
+                    key={renderedZone.zone.id}
+                    collectionsById={collectionsById}
+                    componentsById={componentsById}
+                    dropEligible={
+                      activeDropSource
+                        ? canDropSourceOnZone(activeDropSource, renderedZone.zone)
+                        : false
+                    }
+                    dropTarget={dragHoverZoneId === renderedZone.zone.id}
+                    projectParameters={projectParameters}
+                    renderedZone={renderedZone}
+                    selected={selection?.type === "zone" && selection.id === renderedZone.zone.id}
+                    setup={draft}
+                    onPointerDown={(event, mode) => startZoneDrag(event, renderedZone, mode)}
+                    onRemove={() => removeZone(renderedZone.zone.id)}
+                    onSelect={() => setSelection({ id: renderedZone.zone.id, type: "zone" })}
+                  />
+                ))}
+
+                {draft.placements.map((placement) => (
+                  <TablePlacementView
+                    key={placement.id}
+                    collectionsById={collectionsById}
+                    componentsById={componentsById}
+                    placement={placement}
+                    projectParameters={projectParameters}
+                    selected={selection?.type === "placement" && selection.id === placement.id}
+                    setup={draft}
+                    onRemove={() => removePlacement(placement.id)}
+                    onRotate={(delta) =>
+                      updatePlacement(placement.id, {
+                        rotationDeg: normalizeDegrees(placement.rotationDeg + delta)
+                      })
+                    }
+                    onSelect={() => setSelection({ id: placement.id, type: "placement" })}
+                  />
+                ))}
+              </Box>
             </Box>
           </Box>
-        </Box>
 
-        <Box className="table-setup-inspector">
-          <TableSetupInspector
-            collections={collections}
-            collectionsById={collectionsById}
-            components={components}
-            componentsById={componentsById}
-            placement={selectedPlacement}
-            setup={draft}
-            zone={selectedRenderedZone}
-            onAddChildZone={addChildZone}
-            onChangeZoneType={changeZoneType}
-            onRemovePlacement={removePlacement}
-            onRemoveZone={removeZone}
-            onUpdatePlacement={updatePlacement}
-            onUpdateZone={updateZone}
-            onUpdateZoneBackgroundImage={updateZoneBackgroundImage}
-            onUpdateZoneSource={updateZoneSource}
-          />
+          <Box className="table-setup-inspector">
+            <TableSetupInspector
+              collections={collections}
+              collectionsById={collectionsById}
+              components={components}
+              componentsById={componentsById}
+              placement={selectedPlacement}
+              setup={draft}
+              zone={selectedRenderedZone}
+              onAddChildZone={addChildZone}
+              onChangeZoneType={changeZoneType}
+              onRemovePlacement={removePlacement}
+              onRemoveZone={removeZone}
+              onUpdatePlacement={updatePlacement}
+              onUpdateZone={updateZone}
+              onUpdateZoneBackgroundImage={updateZoneBackgroundImage}
+              onUpdateZoneSource={updateZoneSource}
+            />
+          </Box>
         </Box>
-      </Box>
+        <DragOverlay dropAnimation={null}>
+          {activeDragSource ? (
+            <Box className="table-setup-drag-overlay">
+              <SourceVisual
+                collectionsById={collectionsById}
+                componentsById={componentsById}
+                projectParameters={projectParameters}
+                source={activeDragSource}
+              />
+            </Box>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
     </Stack>
   );
 }
@@ -1347,16 +1572,12 @@ function TableSetupLibrary({
   collections,
   components,
   componentsById,
-  onAddSource,
-  onSourceDragEnd,
-  onSourceDragStart
+  onAddSource
 }: {
   collections: ComponentCollection[];
   components: GameComponent[];
   componentsById: Map<string, GameComponent>;
   onAddSource: (source: TableSource) => void;
-  onSourceDragEnd: () => void;
-  onSourceDragStart: (source: TableSource) => void;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<LibraryFilter>("all");
@@ -1422,8 +1643,6 @@ function TableSetupLibrary({
                 source={{ kind: "component", componentId: component.id }}
                 title={component.name}
                 onAdd={() => onAddSource({ kind: "component", componentId: component.id })}
-                onDragEnd={onSourceDragEnd}
-                onDragStart={onSourceDragStart}
               />
             ))}
             {filteredComponents.length === 0 ? (
@@ -1454,8 +1673,6 @@ function TableSetupLibrary({
                 source={{ kind: "collection", collectionId: collection.id }}
                 title={collection.name}
                 onAdd={() => onAddSource({ kind: "collection", collectionId: collection.id })}
-                onDragEnd={onSourceDragEnd}
-                onDragStart={onSourceDragStart}
               />
             ))}
             {filteredCollections.length === 0 ? (
@@ -1473,34 +1690,31 @@ function TableSetupLibrary({
 function LibraryItemButton({
   detail,
   onAdd,
-  onDragEnd,
-  onDragStart,
   preview,
   source,
   title
 }: {
   detail: string;
   onAdd: () => void;
-  onDragEnd: () => void;
-  onDragStart: (source: TableSource) => void;
   preview: ReactNode;
   source: TableSource;
   title: string;
 }) {
+  const { attributes, isDragging, listeners, setNodeRef } = useDraggable({
+    id: getTableLibraryDragId(source),
+    data: { kind: "library-source", source } satisfies TableDragData
+  });
+
   return (
     <UnstyledButton
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
       aria-label={`Library item ${title}`}
       className="table-setup-library-item"
-      draggable
+      data-dragging={isDragging ? "true" : undefined}
       type="button"
       onClick={onAdd}
-      onDragStart={(event) => {
-        onDragStart(source);
-        event.dataTransfer.effectAllowed = "copy";
-        event.dataTransfer.setData(libraryDragType, JSON.stringify(source));
-        event.dataTransfer.setData("text/plain", JSON.stringify(source));
-      }}
-      onDragEnd={onDragEnd}
     >
       <Box className="table-setup-library-preview">{preview}</Box>
       <Box className="table-setup-library-item-text">
@@ -1521,9 +1735,6 @@ function TableZoneView({
   componentsById,
   dropEligible,
   dropTarget,
-  onDragLeave,
-  onDragOver,
-  onDrop,
   onPointerDown,
   onRemove,
   onSelect,
@@ -1536,9 +1747,6 @@ function TableZoneView({
   componentsById: Map<string, GameComponent>;
   dropEligible: boolean;
   dropTarget: boolean;
-  onDragLeave: () => void;
-  onDragOver: (event: DragEvent<HTMLElement>) => void;
-  onDrop: (event: DragEvent<HTMLElement>) => void;
   onPointerDown: (event: ReactPointerEvent<HTMLElement>, mode: DragMode) => void;
   onRemove: () => void;
   onSelect: () => void;
@@ -1548,6 +1756,11 @@ function TableZoneView({
   setup: TableSetup;
 }) {
   const zone = renderedZone.zone;
+  const { isOver, setNodeRef } = useDroppable({
+    id: getTableZoneDropId(zone.id),
+    data: { kind: "zone", zoneId: zone.id },
+    disabled: !dropEligible
+  });
   const zoneItems =
     zone.childrenType === "zone"
       ? []
@@ -1558,11 +1771,12 @@ function TableZoneView({
 
   return (
     <Box
+      ref={setNodeRef}
       aria-label={`Table zone ${zone.name}`}
       className="table-setup-zone"
       data-depth={renderedZone.depth}
       data-drop-eligible={dropEligible ? "true" : undefined}
-      data-drop-target={dropTarget ? "true" : undefined}
+      data-drop-target={dropTarget || isOver ? "true" : undefined}
       data-position-managed={renderedZone.parentLayout !== "free" ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
       data-zone-type={zone.childrenType}
@@ -1582,9 +1796,6 @@ function TableZoneView({
         event.stopPropagation();
         onSelect();
       }}
-      onDragLeave={onDragLeave}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
       onPointerDown={(event) => onPointerDown(event, "move")}
     >
       <Group className="table-setup-zone-label" gap={6}>
@@ -1663,7 +1874,6 @@ function TableZoneView({
 function TablePlacementView({
   collectionsById,
   componentsById,
-  onPointerDown,
   onRemove,
   onRotate,
   onSelect,
@@ -1674,7 +1884,6 @@ function TablePlacementView({
 }: {
   collectionsById: Map<string, ComponentCollection>;
   componentsById: Map<string, GameComponent>;
-  onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onRemove: () => void;
   onRotate: (delta: number) => void;
   onSelect: () => void;
@@ -1684,15 +1893,32 @@ function TablePlacementView({
   setup: TableSetup;
 }) {
   const label = getSourceName(placement.source, componentsById, collectionsById);
+  const { attributes, isDragging, listeners, setNodeRef, transform } = useDraggable({
+    id: getTablePlacementDragId(placement.id),
+    data: {
+      kind: "placement",
+      placementId: placement.id,
+      source: placement.source
+    } satisfies TableDragData
+  });
+  const dragTransform = transform
+    ? `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0)`
+    : undefined;
 
   return (
     <Box
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
       aria-label={`Placement ${label}`}
       className="table-setup-placement"
+      data-dragging={isDragging ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
       style={{
         left: `${(placement.x / setup.width) * 100}%`,
-        top: `${(placement.y / setup.height) * 100}%`
+        top: `${(placement.y / setup.height) * 100}%`,
+        transform: dragTransform,
+        zIndex: isDragging ? 5 : undefined
       }}
       onClick={(event) => {
         event.stopPropagation();
@@ -1702,7 +1928,6 @@ function TablePlacementView({
         event.stopPropagation();
         onSelect();
       }}
-      onPointerDown={onPointerDown}
     >
       <Box className="table-setup-placement-content">
         <Box

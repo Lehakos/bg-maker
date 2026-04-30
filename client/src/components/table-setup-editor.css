@@ -109,10 +109,16 @@
   border: 1px solid #d1d5db;
   border-radius: 8px;
   background: #ffffff;
+  cursor: grab;
+  touch-action: none;
   transition:
     border-color 120ms ease,
     box-shadow 120ms ease,
     transform 120ms ease;
+}
+
+.table-setup-library-item[data-dragging="true"] {
+  opacity: 0.46;
 }
 
 .table-setup-library-preview {
@@ -360,9 +366,51 @@
   cursor: grabbing;
 }
 
+.table-setup-placement[data-dragging="true"] {
+  cursor: grabbing;
+}
+
 .table-setup-placement[data-selected="true"] {
   outline: 2px solid rgba(15, 118, 110, 0.82);
   outline-offset: 4px;
+}
+
+.table-setup-drag-overlay {
+  display: grid;
+  width: 96px;
+  min-height: 96px;
+  place-items: center;
+  padding: 8px;
+  border: 1px solid rgba(15, 118, 110, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.2);
+  pointer-events: none;
+}
+
+.table-setup-drag-overlay .card-preview-shell,
+.table-setup-drag-overlay .tile-preview-shell,
+.table-setup-drag-overlay .piece-preview-shell {
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+.table-setup-drag-overlay .card-preview,
+.table-setup-drag-overlay .tile-preview,
+.table-setup-drag-overlay .piece-preview {
+  width: 72px;
+  min-width: 0;
+  max-width: 72px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+}
+
+.table-setup-drag-overlay .tile-preview,
+.table-setup-drag-overlay .piece-preview {
+  width: 68px;
+  max-width: 68px;
 }
 
 .table-setup-placement-content {
