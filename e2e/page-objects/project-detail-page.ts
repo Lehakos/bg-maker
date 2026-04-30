@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page, type Route } from "@playwright/test";
 import { dragLocator, dragLocatorTo } from "../support/ui-helpers";
 
 export class ProjectDetailPage {
@@ -241,6 +241,10 @@ class RuntimeSessionsObject {
     return this.page.getByLabel(`Runtime zone ${name}`, { exact: true });
   }
 
+  runtimeItem(name: string) {
+    return this.tableSurface.getByLabel(`Runtime item ${name}`, { exact: true }).first();
+  }
+
   async createSession() {
     await this.page.getByRole("button", { name: "New session" }).first().click();
     await expect(this.tableSurface).toBeVisible();
@@ -260,10 +264,199 @@ class RuntimeSessionsObject {
     await expect(this.action(message)).toHaveCount(0);
   }
 
+  async expectZoneItemCount(
+    name: string,
+    count: number,
+    options: {
+      timeout?: number;
+    } = {}
+  ) {
+    await expect(this.zone(name).getByLabel(/Runtime item/)).toHaveCount(count, options);
+  }
+
+  async expectZoneCollectionCount(name: string, count: number) {
+    const countBadge = this.zone(name).locator(".runtime-zone-label .runtime-collection-count");
+
+    await expect(countBadge).toHaveText(String(count));
+    await expect(countBadge.locator("span")).toBeVisible();
+  }
+
+  async expectZoneLabelOutsideFrame(name: string) {
+    await expect
+      .poll(async () => {
+        const zoneBox = await this.zone(name).boundingBox();
+        const labelBox = await this.zone(name).locator(".runtime-zone-label").boundingBox();
+
+        if (!zoneBox || !labelBox) {
+          return Number.POSITIVE_INFINITY;
+        }
+
+        return labelBox.y + labelBox.height - zoneBox.y;
+      })
+      .toBeLessThan(1.5);
+  }
+
+  async expectZoneTypeBadge(name: string, typeLabel: string) {
+    await expect(this.zone(name).locator(".runtime-zone-label")).toContainText(typeLabel);
+  }
+
+  async expectContainerZoneRenderedWithoutChrome(name: string) {
+    await expect(this.zone(name)).toBeAttached();
+    await expect(this.zone(name)).toHaveAttribute("data-visual-hidden", "true");
+    await expect(this.zone(name).locator(".runtime-zone-label")).toHaveCount(0);
+  }
+
+  async expectRuntimeItemSize(
+    name: string,
+    size: { heightMm: number; widthMm: number },
+    table: { heightMm: number; widthMm: number },
+    options: { tolerancePx?: number } = {}
+  ) {
+    const tolerancePx = options.tolerancePx ?? 1.5;
+
+    await expect
+      .poll(async () => {
+        const surfaceBox = await this.tableSurface.boundingBox();
+        const itemBox = await this.runtimeItem(name).boundingBox();
+
+        if (!surfaceBox || !itemBox) {
+          return Number.POSITIVE_INFINITY;
+        }
+
+        const expectedWidth = (size.widthMm / table.widthMm) * surfaceBox.width;
+        const expectedHeight = (size.heightMm / table.heightMm) * surfaceBox.height;
+
+        return Math.max(
+          Math.abs(itemBox.width - expectedWidth),
+          Math.abs(itemBox.height - expectedHeight)
+        );
+      })
+      .toBeLessThan(tolerancePx);
+  }
+
+  async expectRuntimeVisualFillsItem(
+    name: string,
+    visualSelector: string,
+    options: { tolerancePx?: number } = {}
+  ) {
+    const tolerancePx = options.tolerancePx ?? 1.5;
+
+    await expect
+      .poll(async () => {
+        const item = this.runtimeItem(name);
+        const itemBox = await item.boundingBox();
+        const visualBox = await item.locator(visualSelector).first().boundingBox();
+
+        if (!itemBox || !visualBox) {
+          return Number.POSITIVE_INFINITY;
+        }
+
+        return Math.max(
+          Math.abs(itemBox.width - visualBox.width),
+          Math.abs(itemBox.height - visualBox.height)
+        );
+      })
+      .toBeLessThan(tolerancePx);
+  }
+
+  async expectRuntimeElementInsideItem(
+    name: string,
+    elementSelector: string,
+    options: { tolerancePx?: number } = {}
+  ) {
+    const tolerancePx = options.tolerancePx ?? 1.5;
+
+    await expect
+      .poll(async () => {
+        const item = this.runtimeItem(name);
+        const itemBox = await item.boundingBox();
+        const elementBox = await item.locator(elementSelector).first().boundingBox();
+
+        if (!itemBox || !elementBox) {
+          return Number.POSITIVE_INFINITY;
+        }
+
+        return Math.max(
+          itemBox.x - elementBox.x,
+          itemBox.y - elementBox.y,
+          elementBox.x + elementBox.width - (itemBox.x + itemBox.width),
+          elementBox.y + elementBox.height - (itemBox.y + itemBox.height)
+        );
+      })
+      .toBeLessThan(tolerancePx);
+  }
+
+  async expectRuntimeElementBelowItem(
+    name: string,
+    elementSelector: string,
+    options: { tolerancePx?: number } = {}
+  ) {
+    const tolerancePx = options.tolerancePx ?? 1.5;
+
+    await expect
+      .poll(async () => {
+        const item = this.runtimeItem(name);
+        const itemBox = await item.boundingBox();
+        const elementBox = await item.locator(elementSelector).first().boundingBox();
+
+        if (!itemBox || !elementBox) {
+          return Number.NEGATIVE_INFINITY;
+        }
+
+        return elementBox.y - (itemBox.y + itemBox.height);
+      })
+      .toBeGreaterThanOrEqual(-tolerancePx);
+  }
+
+  async expectRuntimeElementAbsent(name: string, elementSelector: string) {
+    await expect(this.runtimeItem(name).locator(elementSelector)).toHaveCount(0);
+  }
+
+  async expectRuntimeTextFontSizeLessThan(name: string, maxSizePx: number) {
+    await expect
+      .poll(async () => {
+        const text = this.runtimeItem(name).locator(".card-preview-text").first();
+
+        return text.evaluate((element) =>
+          Number.parseFloat(window.getComputedStyle(element).fontSize)
+        );
+      })
+      .toBeLessThan(maxSizePx);
+  }
+
+  async holdNextMoveAction() {
+    let release: () => void = () => undefined;
+    let moveActionHeld = false;
+    const releasePromise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const url = "**/api/projects/*/sessions/*/actions";
+    const handler = async (route: Route) => {
+      const action = route.request().postDataJSON() as { type?: string };
+
+      if (action.type !== "MOVE_INSTANCE" || moveActionHeld) {
+        await route.continue();
+        return;
+      }
+
+      moveActionHeld = true;
+      await releasePromise;
+      await route.continue();
+    };
+
+    await this.page.route(url, handler);
+
+    return async () => {
+      release();
+    };
+  }
+
   async moveTopZoneItem(sourceZone: string, targetZone: string) {
     await dragLocatorTo(
       this.page,
-      this.zone(sourceZone).getByLabel(/Runtime item/).first(),
+      this.zone(sourceZone)
+        .getByLabel(/Runtime item/)
+        .first(),
       this.zone(targetZone),
       {
         targetPosition: { x: 48, y: 56 }
@@ -299,11 +492,7 @@ class ComponentFormObject {
     await this.page.getByRole("option", { name: type }).click();
   }
 
-  async fillCommon(values: {
-    description?: string;
-    name?: string;
-    tags?: string;
-  }) {
+  async fillCommon(values: { description?: string; name?: string; tags?: string }) {
     if (values.name !== undefined) {
       await this.dialog
         .getByRole("textbox", { name: /^(Name|Template name|Collection name)$/ })
@@ -332,12 +521,7 @@ class ComponentFormObject {
     }
   }
 
-  async fillCard(values: {
-    backText?: string;
-    frontText?: string;
-    name?: string;
-    tags?: string;
-  }) {
+  async fillCard(values: { backText?: string; frontText?: string; name?: string; tags?: string }) {
     await this.fillCommon(values);
 
     if (values.frontText !== undefined) {

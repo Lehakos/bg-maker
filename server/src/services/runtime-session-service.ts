@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import {
+  clampRuntimeFreeZonePoint,
   normalizeDegrees,
+  snapRuntimeFreeZonePoint,
   type ComponentCollection,
   type CreateRuntimeSessionInput,
   type GameComponent,
+  type RuntimeFreeZoneSnapRect,
   type RuntimeActionInput,
   type RuntimeActionLogEntry,
   type RuntimeInstance,
@@ -140,7 +143,11 @@ export function applyRuntimeAction(
     return fail(400, applied.error);
   }
 
-  const updatedSession = appendActionLog(applied.value.session, action.value, applied.value.message);
+  const updatedSession = appendActionLog(
+    applied.value.session,
+    action.value,
+    applied.value.message
+  );
 
   setProjectRuntimeSessions(
     projectId,
@@ -354,17 +361,33 @@ function applyAction(
     case "ROLL_DIE":
       return rollRuntimeDie(projectId, session, action.instanceId);
     case "RESET_SESSION":
-      return {
-        ok: true,
-        value: {
-          session: {
-            ...session,
-            instances: materializeRuntimeInstances(projectId, session.setupSnapshot)
-          },
-          message: "Reset session"
-        }
-      };
+      return resetRuntimeSession(projectId, session);
   }
+}
+
+function resetRuntimeSession(
+  projectId: string,
+  session: RuntimeSession
+): ParseResult<{ message: string; session: RuntimeSession }> {
+  const setupResult = getTableSetup(projectId);
+
+  if (!setupResult.ok) {
+    return { ok: false, error: setupResult.error };
+  }
+
+  const setupSnapshot = cloneTableSetup(setupResult.value);
+
+  return {
+    ok: true,
+    value: {
+      session: {
+        ...session,
+        setupSnapshot,
+        instances: materializeRuntimeInstances(projectId, setupSnapshot)
+      },
+      message: "Reset session"
+    }
+  };
 }
 
 function moveRuntimeInstance(
@@ -399,7 +422,11 @@ function moveRuntimeInstance(
     return compatibility;
   }
 
-  const instances = moveInstanceToLocation(session.instances, instance, target);
+  const instances = moveInstanceToLocation(
+    session.instances,
+    instance,
+    resolveRuntimeMoveTarget(projectId, session, zone, instance, target)
+  );
 
   return {
     ok: true,
@@ -410,6 +437,42 @@ function moveRuntimeInstance(
       },
       message: `Moved ${getComponentName(projectId, instance.componentId)} to ${zone.name}`
     }
+  };
+}
+
+function resolveRuntimeMoveTarget(
+  projectId: string,
+  session: RuntimeSession,
+  zone: ZoneSource,
+  instance: RuntimeInstance,
+  target: RuntimeLocation
+): RuntimeLocation {
+  if (zone.layout !== "free" || target.kind !== "zone") {
+    return { kind: "zone", zoneId: zone.id, index: target.index };
+  }
+
+  if (typeof target.x !== "number" || typeof target.y !== "number") {
+    return { kind: "zone", zoneId: zone.id, index: target.index };
+  }
+
+  const component = getProjectComponents(projectId).find(
+    (item) => item.id === instance.componentId
+  );
+  const itemSize = component ? getRuntimeComponentTableSize(component) : { height: 0, width: 0 };
+
+  return {
+    kind: "zone",
+    zoneId: zone.id,
+    index: target.index,
+    ...snapRuntimeFreeZonePoint({
+      itemHeight: itemSize.height,
+      itemWidth: itemSize.width,
+      snapRects: getRuntimeFreeZoneSnapRects(projectId, session, zone, instance.id),
+      x: target.x,
+      y: target.y,
+      zoneHeight: zone.height,
+      zoneWidth: zone.width
+    })
   };
 }
 
@@ -425,9 +488,7 @@ function validateZoneAcceptsInstance(
 
   const existingTargetCount = session.instances.filter(
     (item) =>
-      item.id !== instance.id &&
-      item.location.kind === "zone" &&
-      item.location.zoneId === zone.id
+      item.id !== instance.id && item.location.kind === "zone" && item.location.zoneId === zone.id
   ).length;
 
   if (zone.capacity !== null && existingTargetCount >= zone.capacity) {
@@ -513,7 +574,9 @@ function rollRuntimeDie(
     return { ok: false, error: "Runtime instance not found" };
   }
 
-  const component = getProjectComponents(projectId).find((item) => item.id === instance.componentId);
+  const component = getProjectComponents(projectId).find(
+    (item) => item.id === instance.componentId
+  );
 
   if (!component || component.type !== "die") {
     return { ok: false, error: "Runtime instance is not a die" };
@@ -672,10 +735,31 @@ function readRuntimeLocation(value: unknown): ParseResult<RuntimeLocation> {
 
   if (value.kind === "zone") {
     const zoneId = readRequiredString(value.zoneId, "Runtime location zone id");
+    const x = readOptionalNumber(value.x, "Runtime location x");
+    const y = readOptionalNumber(value.y, "Runtime location y");
 
-    return zoneId.ok
-      ? { ok: true, value: { kind: "zone", zoneId: zoneId.value, index: index.value } }
-      : zoneId;
+    if (!x.ok) {
+      return x;
+    }
+
+    if (!y.ok) {
+      return y;
+    }
+
+    if (!zoneId.ok) {
+      return zoneId;
+    }
+
+    return {
+      ok: true,
+      value: {
+        kind: "zone",
+        zoneId: zoneId.value,
+        index: index.value,
+        ...(x.value !== undefined ? { x: x.value } : {}),
+        ...(y.value !== undefined ? { y: y.value } : {})
+      }
+    };
   }
 
   if (value.kind === "placement") {
@@ -703,10 +787,7 @@ function moveInstanceToLocation(
   const clampedIndex = Math.min(Math.max(0, target.index), targetStack.length);
   const movedInstance = {
     ...instance,
-    location:
-      target.kind === "zone"
-        ? { kind: "zone" as const, zoneId: target.zoneId, index: clampedIndex }
-        : { kind: "placement" as const, placementId: target.placementId, index: clampedIndex }
+    location: withRuntimeLocationIndex(target, clampedIndex)
   };
   const nextTargetStack = [...targetStack];
   nextTargetStack.splice(clampedIndex, 0, movedInstance);
@@ -715,6 +796,20 @@ function moveInstanceToLocation(
     ...withoutInstance.filter((item) => !targetStackIds.has(item.id)),
     ...nextTargetStack
   ]);
+}
+
+function withRuntimeLocationIndex(location: RuntimeLocation, index: number): RuntimeLocation {
+  if (location.kind === "placement") {
+    return { kind: "placement", placementId: location.placementId, index };
+  }
+
+  return {
+    kind: "zone",
+    zoneId: location.zoneId,
+    index,
+    ...(typeof location.x === "number" ? { x: location.x } : {}),
+    ...(typeof location.y === "number" ? { y: location.y } : {})
+  };
 }
 
 function normalizeLocationIndexes(instances: RuntimeInstance[]) {
@@ -757,6 +852,97 @@ function shuffleInstances(instances: RuntimeInstance[]) {
   }
 
   return shuffled;
+}
+
+function getRuntimeComponentTableSize(component: GameComponent) {
+  if (component.type === "card") {
+    return {
+      height: component.layout.size.heightMm,
+      width: component.layout.size.widthMm
+    };
+  }
+
+  if (component.type === "tile") {
+    return {
+      height: component.layout.sizeMm.heightMm,
+      width: component.layout.sizeMm.widthMm
+    };
+  }
+
+  if (component.type === "piece") {
+    return {
+      height: component.layout.sizeMm.heightMm,
+      width: component.layout.sizeMm.widthMm
+    };
+  }
+
+  return {
+    height: 20,
+    width: 20
+  };
+}
+
+function getRuntimeFreeZoneSnapRects(
+  projectId: string,
+  session: RuntimeSession,
+  zone: ZoneSource,
+  activeInstanceId: string
+): RuntimeFreeZoneSnapRect[] {
+  const componentsById = new Map(
+    getProjectComponents(projectId).map((component) => [component.id, component])
+  );
+
+  return getStackInstances(session.instances, { kind: "zone", zoneId: zone.id, index: 0 })
+    .filter((instance) => instance.id !== activeInstanceId)
+    .map((instance) => {
+      const component = componentsById.get(instance.componentId);
+
+      if (!component) {
+        return null;
+      }
+
+      const size = getRuntimeComponentTableSize(component);
+      const point = getRuntimeFreeZoneInstancePoint(zone, instance, size);
+
+      return {
+        height: size.height,
+        width: size.width,
+        x: point.x,
+        y: point.y
+      };
+    })
+    .filter((rect): rect is RuntimeFreeZoneSnapRect => rect !== null);
+}
+
+function getRuntimeFreeZoneInstancePoint(
+  zone: ZoneSource,
+  instance: RuntimeInstance,
+  itemSize: { height: number; width: number }
+) {
+  if (
+    instance.location.kind === "zone" &&
+    instance.location.zoneId === zone.id &&
+    typeof instance.location.x === "number" &&
+    typeof instance.location.y === "number"
+  ) {
+    return clampRuntimeFreeZonePoint({
+      itemHeight: itemSize.height,
+      itemWidth: itemSize.width,
+      x: instance.location.x,
+      y: instance.location.y,
+      zoneHeight: zone.height,
+      zoneWidth: zone.width
+    });
+  }
+
+  return clampRuntimeFreeZonePoint({
+    itemHeight: itemSize.height,
+    itemWidth: itemSize.width,
+    x: zone.padding + instance.location.index * 2,
+    y: zone.padding + instance.location.index * 2,
+    zoneHeight: zone.height,
+    zoneWidth: zone.width
+  });
 }
 
 function appendActionLog(

@@ -815,7 +815,7 @@ function findInvalidBackgroundImageZone(zones: TableZone[]): TableZone | null {
   return null;
 }
 
-function getComponentTableSize(component: GameComponent): TableSize {
+export function getComponentTableSize(component: GameComponent): TableSize {
   if (component.type === "card") {
     return {
       height: component.layout.size.heightMm,

@@ -1485,7 +1485,7 @@ export function LayoutZoneContentPreview({ content }: { content: LayoutZoneConte
         className="card-preview-text"
         style={{
           color,
-          fontSize: content.fontSize,
+          fontSize: `calc(${content.fontSize}px * var(--runtime-component-text-scale, 1))`,
           fontWeight: content.bold ? 700 : 400,
           textAlign: content.align
         }}

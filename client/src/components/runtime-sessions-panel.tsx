@@ -7,7 +7,9 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type ClientRect,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
   type UniqueIdentifier
@@ -43,11 +45,16 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
+  clampRuntimeFreeZonePoint,
+  runtimeFreeZoneSnap,
+  snapRuntimeFreeZonePoint,
   type ComponentCollection,
   type GameComponent,
   type ProjectParameter,
+  type RuntimeFreeZoneSnapRect,
   type RuntimeActionInput,
   type RuntimeInstance,
+  type RuntimeLocation,
   type RuntimeSession,
   type RuntimeSessionSummary,
   type TablePlacement,
@@ -66,6 +73,7 @@ import { componentTypeLabels } from "./component-labels";
 import { ComponentVisual } from "./table-setup-editor";
 import {
   flattenRenderedZones,
+  getComponentTableSize,
   getSourceName,
   getZoneBackgroundStyle,
   getZoneItemPoint,
@@ -78,6 +86,20 @@ type RuntimeSessionsPanelProps = {
   components: GameComponent[];
   projectId: string;
   projectParameters: ProjectParameter[];
+};
+
+type RuntimeFreeDropPreview = {
+  instanceId: string;
+  point: {
+    x: number;
+    y: number;
+  };
+  zoneId: string;
+};
+
+type RuntimeSurfaceSize = {
+  height: number;
+  width: number;
 };
 
 const runtimeZoneDropPrefix = "runtime-zone:";
@@ -127,12 +149,32 @@ export function RuntimeSessionsPanel({
   const actionMutation = useMutation({
     mutationFn: ({ action, sessionId }: { action: RuntimeActionInput; sessionId: string }) =>
       applyRuntimeAction(projectId, sessionId, action),
+    onMutate: ({ action, sessionId }) => {
+      const queryKey = ["runtime-session", projectId, sessionId] as const;
+      void queryClient.cancelQueries({ queryKey });
+      const previousSession = queryClient.getQueryData<RuntimeSession>(queryKey);
+      const optimisticSession = previousSession
+        ? optimisticallyApplyRuntimeAction(previousSession, action)
+        : null;
+
+      if (optimisticSession) {
+        queryClient.setQueryData(queryKey, optimisticSession);
+      }
+
+      return { previousSession, queryKey };
+    },
     onSuccess: async (session) => {
       setRuntimeError(null);
       queryClient.setQueryData(["runtime-session", projectId, session.id], session);
       await queryClient.invalidateQueries({ queryKey: ["runtime-sessions", projectId] });
     },
-    onError: (error) => setRuntimeError(getApiErrorMessage(error))
+    onError: (error, _variables, context) => {
+      if (context?.previousSession) {
+        queryClient.setQueryData(context.queryKey, context.previousSession);
+      }
+
+      setRuntimeError(getApiErrorMessage(error));
+    }
   });
 
   const deleteMutation = useMutation({
@@ -462,45 +504,115 @@ function RuntimeTable({
   const activeDragComponent = activeDragInstance
     ? componentsById.get(activeDragInstance.componentId)
     : undefined;
+  const [freeDropPreview, setFreeDropPreview] = useState<RuntimeFreeDropPreview | null>(null);
+  const [surfaceSize, setSurfaceSize] = useState<RuntimeSurfaceSize>({ height: 0, width: 0 });
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+
+    if (!surface) {
+      return;
+    }
+
+    const updateSurfaceSize = () => {
+      const rect = surface.getBoundingClientRect();
+
+      setSurfaceSize((current) => {
+        if (current.width === rect.width && current.height === rect.height) {
+          return current;
+        }
+
+        return { height: rect.height, width: rect.width };
+      });
+    };
+
+    updateSurfaceSize();
+
+    const observer = new ResizeObserver(updateSurfaceSize);
+    observer.observe(surface);
+
+    return () => observer.disconnect();
+  }, []);
 
   function handleDragStart(event: DragStartEvent) {
+    setFreeDropPreview(null);
     onHoverZone(null);
     onDragStart(String(event.active.id));
   }
 
+  function handleDragMove(event: DragMoveEvent) {
+    updateFreeDropPreview(event);
+  }
+
   function handleDragOver(event: DragOverEvent) {
     onHoverZone(getRuntimeZoneIdFromDropId(event.over?.id));
+    updateFreeDropPreview(event);
+  }
+
+  function updateFreeDropPreview(event: DragMoveEvent | DragOverEvent) {
+    const instance = session.instances.find((item) => item.id === String(event.active.id));
+    const zoneId = getRuntimeZoneIdFromDropId(event.over?.id);
+    const zone = zoneId ? zonesById.get(zoneId) : undefined;
+    const component = instance ? componentsById.get(instance.componentId) : undefined;
+
+    if (
+      !instance ||
+      !component ||
+      !zone ||
+      zone.childrenType === "zone" ||
+      zone.layout !== "free" ||
+      !zoneAcceptsInstance(session, zone, instance, collectionsById)
+    ) {
+      setFreeDropPreview(null);
+      return;
+    }
+
+    const point = getRuntimeFreeZoneDropPoint(
+      event,
+      session,
+      zone,
+      instance,
+      component,
+      componentsById
+    );
+
+    setFreeDropPreview(point ? { instanceId: instance.id, point, zoneId: zone.id } : null);
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const instance = session.instances.find((item) => item.id === String(event.active.id));
     const zoneId = getRuntimeZoneIdFromDropId(event.over?.id);
     const zone = zoneId ? zonesById.get(zoneId) : undefined;
+    const component = instance ? componentsById.get(instance.componentId) : undefined;
 
-    onHoverZone(null);
-    onDragEnd();
-
-    if (!instance || !zone || zone.childrenType === "zone") {
+    if (!instance || !component || !zone || zone.childrenType === "zone") {
+      onHoverZone(null);
+      onDragEnd();
       return;
     }
 
     if (!zoneAcceptsInstance(session, zone, instance, collectionsById)) {
+      onHoverZone(null);
+      onDragEnd();
       return;
     }
 
-    onAction({
+    const action: RuntimeActionInput = {
       type: "MOVE_INSTANCE",
       instanceId: instance.id,
-      target: {
-        kind: "zone",
-        zoneId: zone.id,
-        index: getZoneInstances(session, zone.id).filter((item) => item.id !== instance.id).length
-      }
-    });
+      target: getRuntimeMoveTarget(event, session, zone, instance, component, componentsById)
+    };
+
+    onHoverZone(null);
+    setFreeDropPreview(null);
+    onDragEnd();
+    onAction(action);
   }
 
   function handleDragCancel() {
     onHoverZone(null);
+    setFreeDropPreview(null);
     onDragEnd();
   }
 
@@ -510,6 +622,7 @@ function RuntimeTable({
       sensors={sensors}
       onDragCancel={handleDragCancel}
       onDragEnd={handleDragEnd}
+      onDragMove={handleDragMove}
       onDragOver={handleDragOver}
       onDragStart={handleDragStart}
     >
@@ -534,6 +647,7 @@ function RuntimeTable({
           </ActionIcon>
         </Tooltip>
         <Box
+          ref={surfaceRef}
           aria-label="Runtime table surface"
           className="runtime-table-surface"
           style={{
@@ -547,10 +661,12 @@ function RuntimeTable({
               collectionsById={collectionsById}
               componentsById={componentsById}
               dropTarget={hoverZoneId === renderedZone.zone.id}
+              freeDropPreview={freeDropPreview}
               projectParameters={projectParameters}
               renderedZone={renderedZone}
               selectedInstanceId={selectedInstanceId}
               session={session}
+              surfaceSize={surfaceSize}
               onAction={onAction}
               onSelectInstance={onSelectInstance}
             />
@@ -567,6 +683,7 @@ function RuntimeTable({
               projectParameters={projectParameters}
               selectedInstanceId={selectedInstanceId}
               session={session}
+              surfaceSize={surfaceSize}
               onAction={onAction}
               onSelectInstance={onSelectInstance}
             />
@@ -580,6 +697,8 @@ function RuntimeTable({
               component={activeDragComponent}
               instance={activeDragInstance}
               projectParameters={projectParameters}
+              style={getRuntimeTableInstanceSizeStyle(session, surfaceSize, activeDragComponent)}
+              tableSized
             />
           </Box>
         ) : null}
@@ -593,31 +712,55 @@ function RuntimeZoneView({
   collectionsById,
   componentsById,
   dropTarget,
+  freeDropPreview,
   onAction,
   onSelectInstance,
   projectParameters,
   renderedZone,
   selectedInstanceId,
-  session
+  session,
+  surfaceSize
 }: {
   activeDragInstance: RuntimeInstance | null;
   collectionsById: Map<string, ComponentCollection>;
   componentsById: Map<string, GameComponent>;
   dropTarget: boolean;
+  freeDropPreview: RuntimeFreeDropPreview | null;
   onAction: (action: RuntimeActionInput) => void;
   onSelectInstance: (instanceId: string) => void;
   projectParameters: ProjectParameter[];
   renderedZone: RenderedZone;
   selectedInstanceId: string | null;
   session: RuntimeSession;
+  surfaceSize: RuntimeSurfaceSize;
 }) {
   const zone = renderedZone.zone;
-  const instances = zone.childrenType === "zone" ? [] : getZoneInstances(session, zone.id);
+  const isContainerZone = zone.childrenType === "zone";
+  const instances = isContainerZone ? [] : getZoneInstances(session, zone.id);
+  const freePreviewInstance =
+    freeDropPreview?.zoneId === zone.id &&
+    activeDragInstance?.id === freeDropPreview.instanceId &&
+    !isContainerZone
+      ? activeDragInstance
+      : null;
+  const freePreviewComponent = freePreviewInstance
+    ? componentsById.get(freePreviewInstance.componentId)
+    : undefined;
   const dropEligible =
-    activeDragInstance && zone.childrenType !== "zone"
+    activeDragInstance && !isContainerZone
       ? zoneAcceptsInstance(session, zone, activeDragInstance, collectionsById)
       : false;
-  const isDeck = zone.childrenType !== "zone" && sourceIsDeck(zone.source, collectionsById);
+  const isDeck = !isContainerZone && sourceIsDeck(zone.source, collectionsById);
+  const collectionCount = !isContainerZone
+    ? getRuntimeCollectionCount(zone.source, instances, collectionsById)
+    : null;
+  const usesFreeSnap = !isContainerZone && zone.layout === "free";
+  const freeGridStyle = usesFreeSnap
+    ? {
+        "--runtime-free-grid-x": `${(runtimeFreeZoneSnap / zone.width) * 100}%`,
+        "--runtime-free-grid-y": `${(runtimeFreeZoneSnap / zone.height) * 100}%`
+      }
+    : {};
   const { isOver, setNodeRef } = useDroppable({
     id: getRuntimeZoneDropId(zone.id),
     data: { zoneId: zone.id },
@@ -631,51 +774,61 @@ function RuntimeZoneView({
       className="runtime-zone"
       data-drop-eligible={dropEligible ? "true" : undefined}
       data-drop-target={dropTarget || isOver ? "true" : undefined}
+      data-free-snap={usesFreeSnap ? "true" : undefined}
+      data-layout={zone.layout}
+      data-visual-hidden={isContainerZone ? "true" : undefined}
       data-zone-type={zone.childrenType}
-      style={{
-        ...getZoneBackgroundStyle(zone.background),
-        borderColor: zone.border.color,
-        borderStyle:
-          zone.border.width === 0 ? "none" : zone.childrenType === "zone" ? "dashed" : "solid",
-        borderWidth: zone.border.width,
-        height: `${(zone.height / session.setupSnapshot.height) * 100}%`,
-        left: `${(renderedZone.absoluteX / session.setupSnapshot.width) * 100}%`,
-        overflow: zone.overflow,
-        top: `${(renderedZone.absoluteY / session.setupSnapshot.height) * 100}%`,
-        width: `${(zone.width / session.setupSnapshot.width) * 100}%`
-      }}
+      style={
+        {
+          ...(isContainerZone ? {} : getZoneBackgroundStyle(zone.background)),
+          ...freeGridStyle,
+          borderColor: zone.border.color,
+          borderStyle: isContainerZone || zone.border.width === 0 ? "none" : "solid",
+          borderWidth: isContainerZone ? 0 : zone.border.width,
+          height: `${(zone.height / session.setupSnapshot.height) * 100}%`,
+          left: `${(renderedZone.absoluteX / session.setupSnapshot.width) * 100}%`,
+          overflow: "visible",
+          top: `${(renderedZone.absoluteY / session.setupSnapshot.height) * 100}%`,
+          width: `${(zone.width / session.setupSnapshot.width) * 100}%`
+        } as CSSProperties
+      }
       onClick={(event) => event.stopPropagation()}
     >
-      <Group className="runtime-zone-label" gap={6}>
-        <Text fw={700} size="xs">
-          {zone.name}
-        </Text>
-        <Badge color={zone.childrenType === "zone" ? "gray" : "teal"} radius={6} size="xs">
-          {zone.childrenType === "zone" ? zone.layout : componentTypeLabels[zone.childrenType]}
-        </Badge>
-        {isDeck && instances.length > 1 ? (
-          <Tooltip label="Shuffle" withArrow>
-            <ActionIcon
-              aria-label={`Shuffle ${zone.name}`}
-              radius={8}
-              size="sm"
-              variant="filled"
-              onClick={(event) => {
-                event.stopPropagation();
-                onAction({
-                  type: "SHUFFLE_STACK",
-                  location: { kind: "zone", zoneId: zone.id, index: 0 }
-                });
-              }}
-            >
-              <Shuffle size={14} />
-            </ActionIcon>
-          </Tooltip>
-        ) : null}
-      </Group>
+      {!isContainerZone ? (
+        <Group className="runtime-zone-label" gap={6}>
+          <Text fw={700} size="xs">
+            {zone.name}
+          </Text>
+          <Badge color="teal" radius={6} size="xs">
+            {componentTypeLabels[zone.childrenType]}
+          </Badge>
+          {collectionCount !== null ? (
+            <RuntimeCollectionCountBadge count={collectionCount} />
+          ) : null}
+          {isDeck && instances.length > 1 ? (
+            <Tooltip label="Shuffle" withArrow>
+              <ActionIcon
+                aria-label={`Shuffle ${zone.name}`}
+                radius={8}
+                size="sm"
+                variant="filled"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAction({
+                    type: "SHUFFLE_STACK",
+                    location: { kind: "zone", zoneId: zone.id, index: 0 }
+                  });
+                }}
+              >
+                <Shuffle size={14} />
+              </ActionIcon>
+            </Tooltip>
+          ) : null}
+        </Group>
+      ) : null}
 
-      {zone.childrenType !== "zone" ? (
-        <Box className="runtime-zone-content">
+      {!isContainerZone ? (
+        <Box className="runtime-zone-content" style={{ overflow: zone.overflow }}>
           {instances.map((instance, index) => {
             const component = componentsById.get(instance.componentId);
 
@@ -683,7 +836,7 @@ function RuntimeZoneView({
               return null;
             }
 
-            const point = getZoneItemPoint(zone, component, index);
+            const point = getRuntimeZoneItemPoint(zone, component, instance, index);
             const draggable = !isDeck || instance.location.index === 0;
 
             return (
@@ -695,14 +848,34 @@ function RuntimeZoneView({
                 projectParameters={projectParameters}
                 selected={selectedInstanceId === instance.id}
                 style={{
+                  ...getRuntimeTableInstanceSizeStyle(session, surfaceSize, component),
                   left: `${(point.x / zone.width) * 100}%`,
                   top: `${(point.y / zone.height) * 100}%`,
                   zIndex: isDeck ? instances.length - index : index + 1
                 }}
+                tableSized
                 onSelect={onSelectInstance}
               />
             );
           })}
+          {freePreviewInstance && freePreviewComponent && freeDropPreview ? (
+            <Box
+              className="runtime-free-snap-preview"
+              style={{
+                ...getRuntimeTableInstanceSizeStyle(session, surfaceSize, freePreviewComponent),
+                left: `${(freeDropPreview.point.x / zone.width) * 100}%`,
+                top: `${(freeDropPreview.point.y / zone.height) * 100}%`
+              }}
+            >
+              <RuntimeInstanceOverlay
+                component={freePreviewComponent}
+                instance={freePreviewInstance}
+                projectParameters={projectParameters}
+                style={{ height: "100%", width: "100%" }}
+                tableSized
+              />
+            </Box>
+          ) : null}
           {instances.length === 0 ? (
             <Text className="runtime-zone-empty" c="dimmed" size="xs">
               Empty
@@ -710,6 +883,15 @@ function RuntimeZoneView({
           ) : null}
         </Box>
       ) : null}
+    </Box>
+  );
+}
+
+function RuntimeCollectionCountBadge({ count }: { count: number }) {
+  return (
+    <Box className="runtime-collection-count" component="span" aria-label={`${count} items`}>
+      <SquareStack aria-hidden="true" size={11} />
+      <span>{count}</span>
     </Box>
   );
 }
@@ -724,7 +906,8 @@ function RuntimePlacementStack({
   placement,
   projectParameters,
   selectedInstanceId,
-  session
+  session,
+  surfaceSize
 }: {
   activeDragInstanceId: string | null;
   collectionsById: Map<string, ComponentCollection>;
@@ -736,6 +919,7 @@ function RuntimePlacementStack({
   projectParameters: ProjectParameter[];
   selectedInstanceId: string | null;
   session: RuntimeSession;
+  surfaceSize: RuntimeSurfaceSize;
 }) {
   const sourceInstance = instances[0];
   const sourceComponent = sourceInstance
@@ -758,6 +942,12 @@ function RuntimePlacementStack({
     ? componentsById.get(visibleTopInstance.componentId)
     : undefined;
   const selectedVisibleInstance = visibleTopInstance ?? sourceInstance;
+  const collectionCount = getRuntimeCollectionCount(
+    placement.source,
+    visibleInstances,
+    collectionsById
+  );
+  const stackCount = collectionCount ?? (visibleStackCount > 1 ? visibleStackCount : null);
 
   return (
     <Box
@@ -765,6 +955,7 @@ function RuntimePlacementStack({
       className="runtime-placement-stack"
       data-drag-source={activeDragFromStack ? "true" : undefined}
       style={{
+        ...getRuntimeTableInstanceSizeStyle(session, surfaceSize, sourceComponent),
         left: `${(placement.x / session.setupSnapshot.width) * 100}%`,
         top: `${(placement.y / session.setupSnapshot.height) * 100}%`
       }}
@@ -780,6 +971,8 @@ function RuntimePlacementStack({
           instance={sourceInstance}
           projectParameters={projectParameters}
           selected={!activeDragFromStack && selectedInstanceId === sourceInstance.id}
+          style={getRuntimeTableInstanceSizeStyle(session, surfaceSize, sourceComponent)}
+          tableSized
           onSelect={onSelectInstance}
         />
       </Box>
@@ -791,16 +984,14 @@ function RuntimePlacementStack({
             instance={visibleTopInstance}
             projectParameters={projectParameters}
             selected={selectedInstanceId === visibleTopInstance.id}
+            style={getRuntimeTableInstanceSizeStyle(session, surfaceSize, visibleTopComponent)}
+            tableSized
             onSelect={onSelectInstance}
           />
         </Box>
       ) : null}
       <Group className="runtime-placement-badges" gap={4}>
-        {visibleStackCount > 1 ? (
-          <Badge leftSection={<SquareStack size={11} />} radius={6} size="xs" variant="filled">
-            {visibleStackCount}
-          </Badge>
-        ) : null}
+        {stackCount !== null ? <RuntimeCollectionCountBadge count={stackCount} /> : null}
         {!activeDragFromStack && isDeck && visibleStackCount > 1 ? (
           <Tooltip label="Shuffle" withArrow>
             <ActionIcon
@@ -848,7 +1039,8 @@ function RuntimeInstanceView({
   onSelect,
   projectParameters,
   selected,
-  style
+  style,
+  tableSized = false
 }: {
   component: GameComponent;
   draggable: boolean;
@@ -857,6 +1049,7 @@ function RuntimeInstanceView({
   projectParameters: ProjectParameter[];
   selected: boolean;
   style?: CSSProperties;
+  tableSized?: boolean;
 }) {
   const { attributes, isDragging, listeners, setNodeRef } = useDraggable({
     id: instance.id,
@@ -874,6 +1067,7 @@ function RuntimeInstanceView({
       data-draggable={draggable ? "true" : undefined}
       data-dragging={isDragging ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
+      data-table-sized={tableSized ? "true" : undefined}
       data-tapped={instance.tapped ? "true" : undefined}
       style={style}
       onClick={(event) => {
@@ -893,17 +1087,23 @@ function RuntimeInstanceView({
 function RuntimeInstanceOverlay({
   component,
   instance,
-  projectParameters
+  projectParameters,
+  style,
+  tableSized = false
 }: {
   component: GameComponent;
   instance: RuntimeInstance;
   projectParameters: ProjectParameter[];
+  style?: CSSProperties;
+  tableSized?: boolean;
 }) {
   return (
     <Box
       aria-label={`Dragging ${component.name}`}
       className="runtime-instance"
+      data-table-sized={tableSized ? "true" : undefined}
       data-tapped={instance.tapped ? "true" : undefined}
+      style={style}
     >
       <RuntimeInstanceVisual
         component={component}
@@ -931,39 +1131,13 @@ function RuntimeInstanceVisual({
           transform: `rotate(${instance.rotationDeg}deg)`
         }}
       >
-        {component.type === "die" && instance.lastRoll ? (
-          <RuntimeDieRollVisual component={component} roll={instance.lastRoll} />
-        ) : (
-          <ComponentVisual
-            component={component}
-            face={instance.faceUp ? "front" : "back"}
-            projectParameters={projectParameters}
-          />
-        )}
+        <ComponentVisual
+          component={component}
+          face={instance.faceUp ? "front" : "back"}
+          projectParameters={projectParameters}
+        />
       </Box>
     </>
-  );
-}
-
-function RuntimeDieRollVisual({
-  component,
-  roll
-}: {
-  component: Extract<GameComponent, { type: "die" }>;
-  roll: NonNullable<RuntimeInstance["lastRoll"]>;
-}) {
-  const display = getRuntimeRollDisplay(roll, component);
-
-  return (
-    <Tooltip label={display.detailText} withArrow>
-      <Box aria-label={display.detailText} className="runtime-die-roll-visual">
-        <Text className="runtime-die-roll-kicker">Result</Text>
-        <Text className="runtime-die-roll-result" title={display.resultText}>
-          {display.resultText}
-        </Text>
-        <Text className="runtime-die-roll-face">{display.compactFaceText}</Text>
-      </Box>
-    </Tooltip>
   );
 }
 
@@ -1206,6 +1380,251 @@ function getZoneInstances(session: RuntimeSession, zoneId: string) {
     .sort((left, right) => left.location.index - right.location.index);
 }
 
+function optimisticallyApplyRuntimeAction(session: RuntimeSession, action: RuntimeActionInput) {
+  if (action.type !== "MOVE_INSTANCE" || action.target.kind !== "zone") {
+    return null;
+  }
+
+  const instance = session.instances.find((item) => item.id === action.instanceId);
+
+  if (!instance) {
+    return null;
+  }
+
+  return {
+    ...session,
+    instances: optimisticallyMoveInstance(session.instances, instance, action.target)
+  };
+}
+
+function optimisticallyMoveInstance(
+  instances: RuntimeInstance[],
+  instance: RuntimeInstance,
+  target: RuntimeLocation
+) {
+  const withoutInstance = instances.filter((item) => item.id !== instance.id);
+  const targetStack = withoutInstance
+    .filter((item) => runtimeLocationsMatch(item.location, target))
+    .sort((left, right) => left.location.index - right.location.index);
+  const targetStackIds = new Set(targetStack.map((item) => item.id));
+  const clampedIndex = Math.min(Math.max(0, target.index), targetStack.length);
+  const nextTargetStack = [...targetStack];
+
+  nextTargetStack.splice(clampedIndex, 0, {
+    ...instance,
+    location: withRuntimeLocationIndex(target, clampedIndex)
+  });
+
+  return normalizeRuntimeLocationIndexes([
+    ...withoutInstance.filter((item) => !targetStackIds.has(item.id)),
+    ...nextTargetStack
+  ]);
+}
+
+function normalizeRuntimeLocationIndexes(instances: RuntimeInstance[]) {
+  const grouped = new Map<string, { instance: RuntimeInstance; order: number }[]>();
+
+  instances.forEach((instance, order) => {
+    const key = getRuntimeLocationKey(instance.location);
+    grouped.set(key, [...(grouped.get(key) ?? []), { instance, order }]);
+  });
+
+  return Array.from(grouped.values()).flatMap((entries) =>
+    entries
+      .sort(
+        (left, right) =>
+          left.instance.location.index - right.instance.location.index || left.order - right.order
+      )
+      .map(({ instance }, index) => ({
+        ...instance,
+        location: { ...instance.location, index }
+      }))
+  );
+}
+
+function withRuntimeLocationIndex(location: RuntimeLocation, index: number): RuntimeLocation {
+  if (location.kind === "placement") {
+    return { kind: "placement", placementId: location.placementId, index };
+  }
+
+  return {
+    kind: "zone",
+    zoneId: location.zoneId,
+    index,
+    ...(typeof location.x === "number" ? { x: location.x } : {}),
+    ...(typeof location.y === "number" ? { y: location.y } : {})
+  };
+}
+
+function runtimeLocationsMatch(left: RuntimeLocation, right: RuntimeLocation) {
+  return getRuntimeLocationKey(left) === getRuntimeLocationKey(right);
+}
+
+function getRuntimeLocationKey(location: RuntimeLocation) {
+  return location.kind === "zone" ? `zone:${location.zoneId}` : `placement:${location.placementId}`;
+}
+
+function getRuntimeMoveTarget(
+  event: DragEndEvent,
+  session: RuntimeSession,
+  zone: ZoneSource,
+  instance: RuntimeInstance,
+  component: GameComponent,
+  componentsById: Map<string, GameComponent>
+): RuntimeLocation {
+  const target: RuntimeLocation = {
+    kind: "zone",
+    zoneId: zone.id,
+    index: getZoneInstances(session, zone.id).filter((item) => item.id !== instance.id).length
+  };
+
+  if (zone.layout !== "free") {
+    return target;
+  }
+
+  const point = getRuntimeFreeZoneDropPoint(
+    event,
+    session,
+    zone,
+    instance,
+    component,
+    componentsById
+  );
+
+  return point ? { ...target, ...point } : target;
+}
+
+function getRuntimeFreeZoneDropPoint(
+  event: DragEndEvent | DragMoveEvent | DragOverEvent,
+  session: RuntimeSession,
+  zone: ZoneSource,
+  instance: RuntimeInstance,
+  component: GameComponent,
+  componentsById: Map<string, GameComponent>
+) {
+  const activeRect = getActiveDropRect(event);
+  const overRect = event.over?.rect;
+
+  if (!activeRect || !overRect || overRect.width <= 0 || overRect.height <= 0) {
+    return null;
+  }
+
+  const itemSize = getComponentTableSize(component);
+
+  return snapRuntimeFreeZonePoint({
+    itemHeight: itemSize.height,
+    itemWidth: itemSize.width,
+    snapRects: getRuntimeFreeZoneSnapRects(session, zone, instance.id, componentsById),
+    x: ((activeRect.left - overRect.left) / overRect.width) * zone.width,
+    y: ((activeRect.top - overRect.top) / overRect.height) * zone.height,
+    zoneHeight: zone.height,
+    zoneWidth: zone.width
+  });
+}
+
+function getActiveDropRect(event: DragEndEvent | DragMoveEvent | DragOverEvent): ClientRect | null {
+  const translated = event.active.rect.current.translated;
+
+  if (translated) {
+    return translated;
+  }
+
+  const initial = event.active.rect.current.initial;
+
+  return initial ? translateClientRect(initial, event.delta.x, event.delta.y) : null;
+}
+
+function translateClientRect(rect: ClientRect, deltaX: number, deltaY: number): ClientRect {
+  return {
+    bottom: rect.bottom + deltaY,
+    height: rect.height,
+    left: rect.left + deltaX,
+    right: rect.right + deltaX,
+    top: rect.top + deltaY,
+    width: rect.width
+  };
+}
+
+function getRuntimeZoneItemPoint(
+  zone: ZoneSource,
+  component: GameComponent,
+  instance: RuntimeInstance,
+  index: number
+) {
+  if (
+    zone.layout === "free" &&
+    instance.location.kind === "zone" &&
+    instance.location.zoneId === zone.id &&
+    typeof instance.location.x === "number" &&
+    typeof instance.location.y === "number"
+  ) {
+    const itemSize = getComponentTableSize(component);
+
+    return clampRuntimeFreeZonePoint({
+      itemHeight: itemSize.height,
+      itemWidth: itemSize.width,
+      x: instance.location.x,
+      y: instance.location.y,
+      zoneHeight: zone.height,
+      zoneWidth: zone.width
+    });
+  }
+
+  return getZoneItemPoint(zone, component, index);
+}
+
+function getRuntimeTableInstanceSizeStyle(
+  session: RuntimeSession,
+  surfaceSize: RuntimeSurfaceSize,
+  component: GameComponent
+): CSSProperties {
+  const size = getComponentTableSize(component);
+  const tableWidth = Math.max(1, session.setupSnapshot.width);
+  const tableHeight = Math.max(1, session.setupSnapshot.height);
+
+  if (surfaceSize.width <= 0 || surfaceSize.height <= 0) {
+    return {};
+  }
+
+  const heightPx = Math.max(1, (size.height / tableHeight) * surfaceSize.height);
+  const widthPx = Math.max(1, (size.width / tableWidth) * surfaceSize.width);
+  const textScale = Math.min(1, Math.max(0.45, widthPx / 58));
+
+  return {
+    "--runtime-component-text-scale": textScale,
+    height: `${heightPx}px`,
+    width: `${widthPx}px`
+  } as CSSProperties;
+}
+
+function getRuntimeFreeZoneSnapRects(
+  session: RuntimeSession,
+  zone: ZoneSource,
+  activeInstanceId: string,
+  componentsById: Map<string, GameComponent>
+): RuntimeFreeZoneSnapRect[] {
+  return getZoneInstances(session, zone.id)
+    .filter((instance) => instance.id !== activeInstanceId)
+    .map((instance, index) => {
+      const component = componentsById.get(instance.componentId);
+
+      if (!component) {
+        return null;
+      }
+
+      const size = getComponentTableSize(component);
+      const point = getRuntimeZoneItemPoint(zone, component, instance, index);
+
+      return {
+        height: size.height,
+        width: size.width,
+        x: point.x,
+        y: point.y
+      };
+    })
+    .filter((rect): rect is RuntimeFreeZoneSnapRect => rect !== null);
+}
+
 function getRuntimeZoneDropId(zoneId: string) {
   return `${runtimeZoneDropPrefix}${zoneId}`;
 }
@@ -1223,8 +1642,7 @@ function getPlacementStacks(session: RuntimeSession) {
       instances: session.instances
         .filter(
           (instance) =>
-            instance.location.kind === "placement" &&
-            instance.location.placementId === placement.id
+            instance.location.kind === "placement" && instance.location.placementId === placement.id
         )
         .sort((left, right) => left.location.index - right.location.index)
     }))
@@ -1241,7 +1659,9 @@ function zoneAcceptsInstance(
     return false;
   }
 
-  const zoneInstances = getZoneInstances(session, zone.id).filter((item) => item.id !== instance.id);
+  const zoneInstances = getZoneInstances(session, zone.id).filter(
+    (item) => item.id !== instance.id
+  );
 
   if (zone.capacity !== null && zoneInstances.length >= zone.capacity) {
     return false;
@@ -1265,6 +1685,18 @@ function sourceIncludesComponent(
 
   const collection = collectionsById.get(source.collectionId);
   return collection?.items.some((item) => item.componentId === componentId) ?? false;
+}
+
+function getRuntimeCollectionCount(
+  source: TableSource | undefined,
+  instances: RuntimeInstance[],
+  collectionsById: Map<string, ComponentCollection>
+) {
+  if (source?.kind !== "collection" || !collectionsById.has(source.collectionId)) {
+    return null;
+  }
+
+  return instances.length;
 }
 
 function sourceIsDeck(

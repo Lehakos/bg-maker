@@ -12,19 +12,25 @@ test.describe("runtime sessions", () => {
       players: "2",
       status: "testing"
     });
-    const { deck, die, guard, scout, visitor } = await createRuntimeFixture(request, project.id);
+    const { deck, die, guard, scout, visitor, wanderer } = await createRuntimeFixture(
+      request,
+      project.id
+    );
 
     const sessionResponse = await request.post(`/api/projects/${project.id}/sessions`, {
       data: { name: "API playtest" }
     });
     expect(sessionResponse.status()).toBe(201);
     const session = (await sessionResponse.json()) as RuntimeSessionResponse;
-    expect(session.instances).toHaveLength(4);
+    expect(session.instances).toHaveLength(5);
     expect(stackComponentIds(session, { kind: "zone", zoneId: "deck-zone" })).toEqual([
       scout.id,
       guard.id
     ]);
     expect(stackComponentIds(session, { kind: "zone", zoneId: "play-zone" })).toEqual([]);
+    expect(stackComponentIds(session, { kind: "zone", zoneId: "source-locked-zone" })).toEqual([]);
+    expect(stackComponentIds(session, { kind: "zone", zoneId: "piece-zone" })).toEqual([]);
+    expect(stackComponentIds(session, { kind: "zone", zoneId: "free-zone" })).toEqual([]);
 
     const shuffleResponse = await request.post(
       `/api/projects/${project.id}/sessions/${session.id}/actions`,
@@ -39,7 +45,9 @@ test.describe("runtime sessions", () => {
     );
     expect(shuffled.actionLog.at(-1)?.message).toBe("Shuffled Deck");
 
-    const visitorInstance = shuffled.instances.find((instance) => instance.componentId === visitor.id);
+    const visitorInstance = shuffled.instances.find(
+      (instance) => instance.componentId === visitor.id
+    );
     expect(visitorInstance).toBeTruthy();
     const wrongSourceResponse = await request.post(
       `/api/projects/${project.id}/sessions/${session.id}/actions`,
@@ -69,6 +77,54 @@ test.describe("runtime sessions", () => {
     expect(wrongTypeResponse.status()).toBe(400);
     await expect(wrongTypeResponse.json()).resolves.toEqual({
       error: "Runtime target zone type does not match instance type"
+    });
+
+    const freeZoneResponse = await request.post(
+      `/api/projects/${project.id}/sessions/${session.id}/actions`,
+      {
+        data: {
+          type: "MOVE_INSTANCE",
+          instanceId: visitorInstance?.id,
+          target: { kind: "zone", zoneId: "free-zone", index: 0, x: 37, y: 49 }
+        }
+      }
+    );
+    expect(freeZoneResponse.status()).toBe(200);
+    const freeMoved = (await freeZoneResponse.json()) as RuntimeSessionResponse;
+    const freeMovedVisitor = freeMoved.instances.find(
+      (instance) => instance.id === visitorInstance?.id
+    );
+    expect(freeMovedVisitor?.location).toMatchObject({
+      kind: "zone",
+      zoneId: "free-zone",
+      x: 40,
+      y: 40
+    });
+
+    const wandererInstance = freeMoved.instances.find(
+      (instance) => instance.componentId === wanderer.id
+    );
+    expect(wandererInstance).toBeTruthy();
+    const magnetResponse = await request.post(
+      `/api/projects/${project.id}/sessions/${session.id}/actions`,
+      {
+        data: {
+          type: "MOVE_INSTANCE",
+          instanceId: wandererInstance?.id,
+          target: { kind: "zone", zoneId: "free-zone", index: 1, x: 108, y: 44 }
+        }
+      }
+    );
+    expect(magnetResponse.status()).toBe(200);
+    const magnetMoved = (await magnetResponse.json()) as RuntimeSessionResponse;
+    const magnetMovedWanderer = magnetMoved.instances.find(
+      (instance) => instance.id === wandererInstance?.id
+    );
+    expect(magnetMovedWanderer?.location).toMatchObject({
+      kind: "zone",
+      zoneId: "free-zone",
+      x: 103,
+      y: 40
     });
 
     const freeTableResponse = await request.post(
@@ -139,10 +195,37 @@ test.describe("runtime sessions", () => {
     expect(rolledDie?.lastRoll?.value).toBeLessThanOrEqual(6);
     expect(rolled.actionLog.at(-1)?.message).toContain("Rolled Fate die");
 
+    const setupResponse = await request.get(`/api/projects/${project.id}/table-setup`);
+    expect(setupResponse.status()).toBe(200);
+    const setup = (await setupResponse.json()) as TableSetupResponse;
+    const resetSetupResponse = await request.put(`/api/projects/${project.id}/table-setup`, {
+      data: {
+        height: setup.height,
+        placements: setup.placements,
+        width: setup.width,
+        zones: setup.zones.map((zone) =>
+          zone.id === "deck-zone" ? { ...zone, autofill: false } : zone
+        )
+      }
+    });
+    expect(resetSetupResponse.status()).toBe(200);
+
+    const resetResponse = await request.post(
+      `/api/projects/${project.id}/sessions/${session.id}/actions`,
+      {
+        data: { type: "RESET_SESSION" }
+      }
+    );
+    expect(resetResponse.status()).toBe(200);
+    const reset = (await resetResponse.json()) as RuntimeSessionResponse;
+    expect(stackComponentIds(reset, { kind: "zone", zoneId: "deck-zone" })).toEqual([]);
+    expect(reset.instances).toHaveLength(3);
+    expect(reset.setupSnapshot.zones.find((zone) => zone.id === "deck-zone")?.autofill).toBe(false);
+
     const sessionsResponse = await request.get(`/api/projects/${project.id}/sessions`);
     expect(sessionsResponse.status()).toBe(200);
     await expect(sessionsResponse.json()).resolves.toMatchObject([
-      { id: session.id, actionCount: 4, instanceCount: 4, name: "API playtest" }
+      { id: session.id, actionCount: 7, instanceCount: 3, name: "API playtest" }
     ]);
 
     const emptySetupResponse = await request.put(`/api/projects/${project.id}/table-setup`, {
@@ -183,7 +266,34 @@ test.describe("runtime sessions", () => {
     const sessions = await detailPage.openSessions();
 
     await sessions.createSession();
-    await sessions.expectZonesVisible(["Deck", "Play area", "Piece lane"]);
+    await sessions.expectZonesVisible(["Deck", "Play area", "Piece lane", "Free map"]);
+    await sessions.expectContainerZoneRenderedWithoutChrome("Container shelf");
+    await sessions.expectZoneLabelOutsideFrame("Deck");
+    await sessions.expectZoneCollectionCount("Deck", 2);
+    await sessions.expectRuntimeItemSize(
+      "Scout",
+      { heightMm: 88, widthMm: 63 },
+      { heightMm: 800, widthMm: 1200 }
+    );
+    await sessions.expectRuntimeVisualFillsItem("Scout", ".card-preview");
+    await sessions.expectRuntimeTextFontSizeLessThan("Scout", 10.5);
+    await sessions.expectRuntimeItemSize(
+      "Visitor",
+      { heightMm: 88, widthMm: 63 },
+      { heightMm: 800, widthMm: 1200 }
+    );
+    await sessions.expectRuntimeVisualFillsItem("Visitor", ".card-preview");
+    await sessions.expectRuntimeItemSize(
+      "Fate die",
+      { heightMm: 20, widthMm: 20 },
+      { heightMm: 800, widthMm: 1200 }
+    );
+    await sessions.expectRuntimeVisualFillsItem("Fate die", ".table-setup-die-visual");
+    await sessions.expectRuntimeElementInsideItem("Fate die", ".table-setup-die-visual svg");
+    await sessions.expectRuntimeElementBelowItem("Fate die", ".table-setup-die-visual p");
+    await sessions.expectZoneItemCount("Play area", 0);
+    await sessions.expectZoneItemCount("Piece lane", 0);
+    await sessions.expectZoneItemCount("Free map", 0);
 
     await sessions.shuffleStack("Deck");
     await sessions.expectActionVisible("Shuffled Deck");
@@ -191,10 +301,19 @@ test.describe("runtime sessions", () => {
     await sessions.moveTopZoneItem("Deck", "Piece lane");
     await sessions.expectNoAction(/Moved .* to Piece lane/);
 
-    await sessions.moveTopZoneItem("Deck", "Play area");
+    const releaseMoveAction = await sessions.holdNextMoveAction();
+    try {
+      await sessions.moveTopZoneItem("Deck", "Play area");
+      await sessions.expectZoneItemCount("Play area", 1, { timeout: 500 });
+    } finally {
+      await releaseMoveAction();
+    }
     await sessions.expectActionVisible(/Moved .* to Play area/);
 
     await sessions.rollDie("Fate die");
+    await sessions.expectRuntimeVisualFillsItem("Fate die", ".table-setup-die-visual");
+    await sessions.expectRuntimeElementInsideItem("Fate die", ".table-setup-die-visual svg");
+    await sessions.expectRuntimeElementAbsent("Fate die", ".runtime-die-roll-visual");
     await sessions.expectActionVisible(/Rolled Fate die/);
 
     await sessions.reloadOpenSession();
@@ -208,6 +327,7 @@ type RuntimeSessionResponse = {
   id: string;
   actionLog: { message: string }[];
   instances: RuntimeInstanceResponse[];
+  setupSnapshot: TableSetupResponse;
 };
 
 type RuntimeInstanceResponse = {
@@ -215,13 +335,20 @@ type RuntimeInstanceResponse = {
   componentId: string;
   lastRoll?: { value: number };
   location:
-    | { index: number; kind: "zone"; zoneId: string }
+    | { index: number; kind: "zone"; x?: number; y?: number; zoneId: string }
     | { index: number; kind: "placement"; placementId: string };
 };
 
 type RuntimeStackLocation =
   | { kind: "zone"; zoneId: string }
   | { kind: "placement"; placementId: string };
+
+type TableSetupResponse = {
+  height: number;
+  placements: unknown[];
+  width: number;
+  zones: Array<Record<string, unknown> & { autofill?: boolean; id: string }>;
+};
 
 async function createRuntimeFixture(request: APIRequestContext, projectId: string) {
   const scout = await createComponent(request, projectId, {
@@ -238,6 +365,11 @@ async function createRuntimeFixture(request: APIRequestContext, projectId: strin
     type: "card",
     name: "Visitor",
     frontText: "Not in deck"
+  });
+  const wanderer = await createComponent(request, projectId, {
+    type: "card",
+    name: "Wanderer",
+    frontText: "Loose card"
   });
   const die = await createComponent(request, projectId, {
     type: "die",
@@ -276,6 +408,14 @@ async function createRuntimeFixture(request: APIRequestContext, projectId: strin
           id: "loose-card",
           source: { kind: "component", componentId: visitor.id },
           x: 980,
+          y: 320,
+          rotationDeg: 0,
+          face: "front"
+        },
+        {
+          id: "loose-wanderer",
+          source: { kind: "component", componentId: wanderer.id },
+          x: 1060,
           y: 320,
           rotationDeg: 0,
           face: "front"
@@ -322,13 +462,31 @@ async function createRuntimeFixture(request: APIRequestContext, projectId: strin
           width: 240,
           height: 180,
           source: { kind: "component", componentId: pawn.id }
+        }),
+        validRuntimeZone({
+          autofill: false,
+          id: "free-zone",
+          layout: "free",
+          name: "Free map",
+          x: 660,
+          y: 80,
+          width: 280,
+          height: 240
+        }),
+        validRuntimeContainerZone({
+          id: "container-zone",
+          name: "Container shelf",
+          x: 80,
+          y: 600,
+          width: 240,
+          height: 120
         })
       ]
     }
   });
   expect(setupResponse.status()).toBe(200);
 
-  return { deck, die, guard, pawn, scout, visitor };
+  return { deck, die, guard, pawn, scout, visitor, wanderer };
 }
 
 async function createComponent(
@@ -371,6 +529,29 @@ function validRuntimeZone(overrides: Record<string, unknown> = {}) {
     autofill: true,
     childrenType: "card",
     face: "up",
+    ...overrides
+  };
+}
+
+function validRuntimeContainerZone(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "runtime-container-zone",
+    name: "Runtime container",
+    description: "",
+    x: 80,
+    y: 80,
+    width: 220,
+    height: 180,
+    padding: 8,
+    size: "fixed",
+    overflow: "hidden",
+    capacity: null,
+    layout: "free",
+    visibility: "all",
+    background: { type: "none" },
+    border: { width: 1, color: "#0e7490" },
+    childrenType: "zone",
+    children: [],
     ...overrides
   };
 }
