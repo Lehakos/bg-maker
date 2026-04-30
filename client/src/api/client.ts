@@ -14,6 +14,9 @@ import {
   type GameProjectSummary,
   type HealthResponse,
   type PieceTemplate,
+  type RuntimeActionInput,
+  type RuntimeSession,
+  type RuntimeSessionSummary,
   type TableSetup,
   type TileTemplate,
   type UpdateCardTemplateInput,
@@ -91,6 +94,37 @@ export async function getTableSetup(projectId: string) {
 export async function updateTableSetup(projectId: string, input: UpdateTableSetupInput) {
   const response = await http.put<TableSetup>(apiPaths.tableSetup(projectId), input);
   return response.data;
+}
+
+export async function getRuntimeSessions(projectId: string) {
+  const response = await http.get<RuntimeSessionSummary[]>(apiPaths.runtimeSessions(projectId));
+  return response.data;
+}
+
+export async function createRuntimeSession(projectId: string, input: { name?: string } = {}) {
+  const response = await http.post<RuntimeSession>(apiPaths.runtimeSessions(projectId), input);
+  return response.data;
+}
+
+export async function getRuntimeSession(projectId: string, sessionId: string) {
+  const response = await http.get<RuntimeSession>(apiPaths.runtimeSession(projectId, sessionId));
+  return response.data;
+}
+
+export async function applyRuntimeAction(
+  projectId: string,
+  sessionId: string,
+  input: RuntimeActionInput
+) {
+  const response = await http.post<RuntimeSession>(
+    apiPaths.runtimeSessionActions(projectId, sessionId),
+    input
+  );
+  return response.data;
+}
+
+export async function deleteRuntimeSession(projectId: string, sessionId: string) {
+  await http.delete(apiPaths.runtimeSession(projectId, sessionId));
 }
 
 export async function createCardTemplate(projectId: string, input: CreateCardTemplateInput) {

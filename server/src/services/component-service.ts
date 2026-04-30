@@ -84,6 +84,7 @@ import {
   setProjectTileTemplates
 } from "./in-memory-store.js";
 import { touchProject } from "./project-service.js";
+import { runtimeSessionsUseComponent } from "./runtime-session-service.js";
 import { fail, ok, type ServiceResult } from "./service-result.js";
 import { tableSetupUsesComponent } from "./table-setup-service.js";
 
@@ -274,6 +275,10 @@ export function deleteComponent(projectId: string, componentId: string): Service
 
   if (tableSetupUsesComponent(projectId, component.id)) {
     return fail(400, "Component is used by table setup");
+  }
+
+  if (runtimeSessionsUseComponent(projectId, component.id)) {
+    return fail(400, "Component is used by a runtime session");
   }
 
   setProjectComponents(

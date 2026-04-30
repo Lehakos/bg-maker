@@ -2367,7 +2367,7 @@ function SourceVisual({
   return <CollectionMarker collection={collection} />;
 }
 
-function ComponentVisual({
+export function ComponentVisual({
   compact = true,
   component,
   face,

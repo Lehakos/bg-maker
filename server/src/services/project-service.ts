@@ -15,6 +15,7 @@ import {
   projectCollections,
   projectComponents,
   projectPieceTemplates,
+  projectRuntimeSessions,
   projectTableSetups,
   projectTileTemplates,
   projects
@@ -119,6 +120,7 @@ export function deleteProject(projectId: string): ServiceResult<undefined> {
   projectTileTemplates.delete(projectId);
   projectCollections.delete(projectId);
   projectTableSetups.delete(projectId);
+  projectRuntimeSessions.delete(projectId);
 
   return ok(undefined);
 }

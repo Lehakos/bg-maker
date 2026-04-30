@@ -1,16 +1,18 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import { dragLocator } from "../support/ui-helpers";
+import { dragLocator, dragLocatorTo } from "../support/ui-helpers";
 
 export class ProjectDetailPage {
   readonly collectionsHeading: Locator;
   readonly componentsHeading: Locator;
   readonly componentForm: ComponentFormObject;
+  readonly runtimeSessions: RuntimeSessionsObject;
   readonly templatesHeading: Locator;
 
   constructor(private readonly page: Page) {
     this.collectionsHeading = page.getByRole("heading", { name: "Collections" });
     this.componentsHeading = page.getByRole("heading", { name: "Component catalog" });
     this.componentForm = new ComponentFormObject(page);
+    this.runtimeSessions = new RuntimeSessionsObject(page);
     this.templatesHeading = page.getByRole("heading", { name: "Templates" });
   }
 
@@ -27,6 +29,12 @@ export class ProjectDetailPage {
     await expect(
       this.page.getByRole("heading", { exact: true, name: "Table layout" })
     ).toBeVisible();
+  }
+
+  async openSessions() {
+    await this.page.getByRole("tab", { name: "Sessions" }).click();
+    await expect(this.page.getByRole("heading", { exact: true, name: "Sessions" })).toBeVisible();
+    return this.runtimeSessions;
   }
 
   async openNewComponent(type = "Card") {
@@ -215,6 +223,65 @@ export class ProjectDetailPage {
       case "Component catalog":
         return this.componentsHeading;
     }
+  }
+}
+
+class RuntimeSessionsObject {
+  constructor(private readonly page: Page) {}
+
+  get tableSurface() {
+    return this.page.getByLabel("Runtime table surface");
+  }
+
+  action(message: RegExp | string) {
+    return this.page.getByText(message);
+  }
+
+  zone(name: string) {
+    return this.page.getByLabel(`Runtime zone ${name}`, { exact: true });
+  }
+
+  async createSession() {
+    await this.page.getByRole("button", { name: "New session" }).first().click();
+    await expect(this.tableSurface).toBeVisible();
+  }
+
+  async expectZonesVisible(names: string[]) {
+    for (const name of names) {
+      await expect(this.zone(name)).toBeVisible();
+    }
+  }
+
+  async expectActionVisible(message: RegExp | string) {
+    await expect(this.action(message)).toBeVisible();
+  }
+
+  async expectNoAction(message: RegExp | string) {
+    await expect(this.action(message)).toHaveCount(0);
+  }
+
+  async moveTopZoneItem(sourceZone: string, targetZone: string) {
+    await dragLocatorTo(
+      this.page,
+      this.zone(sourceZone).getByLabel(/Runtime item/).first(),
+      this.zone(targetZone),
+      {
+        targetPosition: { x: 48, y: 56 }
+      }
+    );
+  }
+
+  async reloadOpenSession() {
+    await this.page.reload();
+    await expect(this.page.getByRole("heading", { exact: true, name: "Sessions" })).toBeVisible();
+  }
+
+  async rollDie(name: string) {
+    await this.page.getByRole("button", { name: `Roll ${name}` }).click();
+  }
+
+  async shuffleStack(name: string) {
+    await this.page.getByRole("button", { name: `Shuffle ${name}` }).click();
   }
 }
 

@@ -6,6 +6,7 @@ import { registerComponentsController } from "./controllers/components-controlle
 import { registerHealthController } from "./controllers/health-controller.js";
 import { registerPieceTemplatesController } from "./controllers/piece-templates-controller.js";
 import { registerProjectsController } from "./controllers/projects-controller.js";
+import { registerRuntimeSessionsController } from "./controllers/runtime-sessions-controller.js";
 import { registerTableSetupController } from "./controllers/table-setup-controller.js";
 import { registerTileTemplatesController } from "./controllers/tile-templates-controller.js";
 
@@ -27,6 +28,7 @@ export async function buildApp() {
   registerComponentsController(app);
   registerCollectionsController(app);
   registerTableSetupController(app);
+  registerRuntimeSessionsController(app);
 
   return app;
 }

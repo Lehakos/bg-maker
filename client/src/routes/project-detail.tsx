@@ -60,6 +60,7 @@ import { ComponentFormModal } from "../components/component-form-modal";
 import { collectionTypeLabels, componentTypeLabels } from "../components/component-labels";
 import { ProjectFormModal, type ProjectFormValues } from "../components/project-form-modal";
 import { getProjectFormValues } from "../components/project-form-values";
+import { RuntimeSessionsPanel } from "../components/runtime-sessions-panel";
 import { TableSetupEditor } from "../components/table-setup-editor";
 import { useProjectComponents, type ComponentModalState } from "../hooks/use-project-components";
 import {
@@ -262,7 +263,9 @@ export function ProjectDetailRoute() {
 
   return (
     <Box
-      className={`project-detail-page${activeTab === "layout" ? " project-detail-page--layout" : ""}`}
+      className={`project-detail-page${
+        activeTab === "layout" || activeTab === "sessions" ? " project-detail-page--layout" : ""
+      }`}
     >
       <Container className="project-detail-hero" size="lg" w="100%">
         <Stack gap="xl">
@@ -384,14 +387,15 @@ export function ProjectDetailRoute() {
             />
           </Box>
         </Tabs.Panel>
-        <Tabs.Panel value="sessions" pt="md">
-          <Container size="lg" w="100%">
-            <EmptyProjectSection
-              icon={<Users size={20} />}
-              title="Sessions"
-              description="Playable sessions are outside phase one."
+        <Tabs.Panel className="project-detail-layout-tab-panel" value="sessions" pt="md">
+          <Box className="project-detail-layout-panel">
+            <RuntimeSessionsPanel
+              collections={componentCatalog.collections}
+              components={componentCatalog.components}
+              projectId={projectId}
+              projectParameters={project.parameters}
             />
-          </Container>
+          </Box>
         </Tabs.Panel>
         <Tabs.Panel value="notes" pt="md">
           <Container size="lg" w="100%">

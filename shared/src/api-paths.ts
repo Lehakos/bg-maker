@@ -17,5 +17,10 @@ export const apiPaths = {
   collections: (projectId: string) => `/api/projects/${projectId}/collections`,
   collection: (projectId: string, collectionId: string) =>
     `/api/projects/${projectId}/collections/${collectionId}`,
+  runtimeSessions: (projectId: string) => `/api/projects/${projectId}/sessions`,
+  runtimeSession: (projectId: string, sessionId: string) =>
+    `/api/projects/${projectId}/sessions/${sessionId}`,
+  runtimeSessionActions: (projectId: string, sessionId: string) =>
+    `/api/projects/${projectId}/sessions/${sessionId}/actions`,
   tableSetup: (projectId: string) => `/api/projects/${projectId}/table-setup`
 } as const;

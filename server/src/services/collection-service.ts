@@ -16,6 +16,7 @@ import {
   setProjectCollections
 } from "./in-memory-store.js";
 import { touchProject } from "./project-service.js";
+import { runtimeSessionsUseCollection } from "./runtime-session-service.js";
 import { fail, ok, type ServiceResult } from "./service-result.js";
 import { tableSetupUsesCollection } from "./table-setup-service.js";
 
@@ -120,6 +121,10 @@ export function deleteCollection(projectId: string, collectionId: string): Servi
 
   if (tableSetupUsesCollection(projectId, collection.id)) {
     return fail(400, "Collection is used by table setup");
+  }
+
+  if (runtimeSessionsUseCollection(projectId, collection.id)) {
+    return fail(400, "Collection is used by a runtime session");
   }
 
   setProjectCollections(

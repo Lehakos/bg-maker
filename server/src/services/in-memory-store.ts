@@ -4,6 +4,7 @@ import type {
   GameComponent,
   GameProject,
   PieceTemplate,
+  RuntimeSession,
   TableSetup,
   TileTemplate
 } from "@bg-maker/shared";
@@ -40,6 +41,8 @@ export const projectTableSetups = new Map<string, TableSetup>(
     dataset.tableSetup ? [[dataset.project.id, dataset.tableSetup]] : []
   )
 );
+
+export const projectRuntimeSessions = new Map<string, RuntimeSession[]>();
 
 export function getProjectComponents(projectId: string) {
   return projectComponents.get(projectId) ?? [];
@@ -87,4 +90,12 @@ export function getProjectTableSetup(projectId: string) {
 
 export function setProjectTableSetup(projectId: string, setup: TableSetup) {
   projectTableSetups.set(projectId, setup);
+}
+
+export function getProjectRuntimeSessions(projectId: string) {
+  return projectRuntimeSessions.get(projectId) ?? [];
+}
+
+export function setProjectRuntimeSessions(projectId: string, sessions: RuntimeSession[]) {
+  projectRuntimeSessions.set(projectId, sessions);
 }
