@@ -283,6 +283,14 @@ test.describe("table layout", () => {
     await expect(zone).not.toHaveAttribute("data-drop-target", "true");
     await expect(page.getByRole("combobox", { name: "Source" })).toHaveValue(/Scout/);
 
+    await page.getByRole("button", { name: "Undo table layout change" }).click();
+    await expect(placement).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Source" })).toHaveValue("No source");
+
+    await page.getByRole("button", { name: "Redo table layout change" }).click();
+    await expect(placement).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Source" })).toHaveValue(/Scout/);
+
     await page.getByRole("button", { name: "Save layout" }).click();
     await expect(page.getByRole("button", { name: "Save layout" })).toBeDisabled();
 

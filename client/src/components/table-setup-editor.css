@@ -203,6 +203,11 @@
   min-height: 50px;
 }
 
+.table-setup-history-controls {
+  align-items: flex-end;
+  min-height: 50px;
+}
+
 .table-setup-zoom-value {
   display: grid;
   min-width: 58px;

@@ -35,12 +35,14 @@ import {
   Maximize2,
   Package,
   Plus,
+  Redo2,
   RotateCcw,
   RotateCw,
   Save,
   Search,
   Square,
   Trash2,
+  Undo2,
   ZoomIn,
   ZoomOut
 } from "lucide-react";
@@ -95,7 +97,6 @@ import {
   clamp,
   clampZoom,
   clampZonesToBounds,
-  cloneSetup,
   countZones,
   createBackgroundForType,
   createClientId,
@@ -132,6 +133,7 @@ import {
   type RenderedZone,
   type TablePoint
 } from "./table-setup-utils";
+import { useTableSetupHistory, type TableSetupCommand } from "./use-table-setup-history";
 import "./table-setup-editor.css";
 
 type TableSetupEditorProps = {
@@ -155,6 +157,11 @@ type Selection =
 type DragMode = "move" | "resize";
 
 type ZoneDrafts = Record<string, Partial<Record<ZoneChildType, TableZone>>>;
+
+type DraftCommandOptions = {
+  label?: string;
+  mergeKey?: string;
+};
 
 const allLibraryFilters = ["all", ...componentTypes, "deck", "bag", "custom"] as const;
 
@@ -220,6 +227,19 @@ const libraryFilterOptions = allLibraryFilters.map((filter) => ({
   value: filter
 }));
 
+function isEditableKeyboardTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLSelectElement ||
+    target instanceof HTMLTextAreaElement
+  );
+}
+
 export function TableSetupEditor({
   collections,
   components,
@@ -229,7 +249,18 @@ export function TableSetupEditor({
   const queryClient = useQueryClient();
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const [draft, setDraft] = useState<TableSetup | null>(null);
+  const {
+    canRedo,
+    canUndo,
+    commitSetup,
+    draft,
+    executeCommand,
+    loadSetup,
+    redo,
+    redoLabel,
+    undo,
+    undoLabel
+  } = useTableSetupHistory();
   const [selection, setSelection] = useState<Selection>(null);
   const [tableZoom, setTableZoom] = useState(1);
   const [activeDragSource, setActiveDragSource] = useState<TableSource | null>(null);
@@ -256,7 +287,7 @@ export function TableSetupEditor({
         zones: setup.zones
       }),
     onSuccess: async (setup) => {
-      setDraft(cloneSetup(setup));
+      commitSetup(setup);
       await queryClient.invalidateQueries({ queryKey: ["table-setup", projectId] });
       await queryClient.invalidateQueries({ queryKey: ["project", projectId] });
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -265,23 +296,9 @@ export function TableSetupEditor({
 
   useEffect(() => {
     if (setupQuery.data) {
-      const setup = setupQuery.data;
-
-      queueMicrotask(() => {
-        setDraft((current) => {
-          if (
-            current &&
-            current.projectId === setup.projectId &&
-            getSetupSignature(current) !== getSetupSignature(setup)
-          ) {
-            return current;
-          }
-
-          return cloneSetup(setup);
-        });
-      });
+      loadSetup(setupQuery.data);
     }
-  }, [setupQuery.data]);
+  }, [loadSetup, setupQuery.data]);
 
   const componentsById = useMemo(
     () => new Map(components.map((component) => [component.id, component])),
@@ -295,8 +312,11 @@ export function TableSetupEditor({
     () => (draft ? flattenRenderedZones(draft.zones, 0, 0, draft.width, draft.height, 0) : []),
     [draft]
   );
-  const savedSignature = setupQuery.data ? getSetupSignature(setupQuery.data) : "";
-  const draftSignature = draft ? getSetupSignature(draft) : "";
+  const savedSignature = useMemo(
+    () => (setupQuery.data ? getSetupSignature(setupQuery.data) : ""),
+    [setupQuery.data]
+  );
+  const draftSignature = useMemo(() => (draft ? getSetupSignature(draft) : ""), [draft]);
   const hasChanges = draft !== null && draftSignature !== savedSignature;
   const selectedPlacement =
     selection?.type === "placement"
@@ -308,9 +328,50 @@ export function TableSetupEditor({
       : undefined;
   const activeDropSource = activeDragSource ?? activePlacementDrag?.source ?? null;
 
-  function updateDraft(updater: (setup: TableSetup) => TableSetup) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!draft || !surfaceRef.current || surfaceRef.current.offsetParent === null) {
+        return;
+      }
+
+      if (isEditableKeyboardTarget(event.target) || event.altKey) {
+        return;
+      }
+
+      const usesHistoryModifier = event.metaKey || event.ctrlKey;
+
+      if (!usesHistoryModifier) {
+        return;
+      }
+
+      const key = event.key.toLocaleLowerCase();
+
+      if (key === "z") {
+        event.preventDefault();
+
+        if (event.shiftKey) {
+          redo();
+          return;
+        }
+
+        undo();
+        return;
+      }
+
+      if (key === "y" && !event.shiftKey) {
+        event.preventDefault();
+        redo();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [draft, redo, undo]);
+
+  function updateDraft(command: TableSetupCommand) {
     setEditorError(null);
-    setDraft((current) => (current ? updater(current) : current));
+    executeCommand(command);
   }
 
   function updateTableZoom(delta: number) {
@@ -349,47 +410,59 @@ export function TableSetupEditor({
   function addPlacementFromSource(source: TableSource, point?: TablePoint) {
     const placementId = createClientId("placement");
 
-    updateDraft((setup) => ({
-      ...setup,
-      placements: [
-        ...setup.placements,
-        {
-          id: placementId,
-          source,
-          x: Math.round(point?.x ?? clamp(80 + setup.placements.length * 28, 0, setup.width)),
-          y: Math.round(point?.y ?? clamp(80 + setup.placements.length * 28, 0, setup.height)),
-          rotationDeg: 0,
-          face: "front"
-        }
-      ]
-    }));
+    updateDraft({
+      execute: (setup) => ({
+        ...setup,
+        placements: [
+          ...setup.placements,
+          {
+            id: placementId,
+            source,
+            x: Math.round(point?.x ?? clamp(80 + setup.placements.length * 28, 0, setup.width)),
+            y: Math.round(point?.y ?? clamp(80 + setup.placements.length * 28, 0, setup.height)),
+            rotationDeg: 0,
+            face: "front"
+          }
+        ]
+      }),
+      label: "Add placement"
+    });
     setSelection({ id: placementId, type: "placement" });
   }
 
   function addRootZone(childrenType: ZoneChildType) {
     const zoneId = createClientId("zone");
 
-    updateDraft((setup) => {
-      const zone = createDefaultTableZone({
-        childrenType,
-        existingZones: setup.zones,
-        height: Math.min(220, setup.height - 120),
-        id: zoneId,
-        name:
-          childrenType === "zone"
-            ? `Zone ${countZones(setup.zones) + 1}`
-            : `${titleCase(childrenType)} zone`,
-        width: Math.min(360, setup.width - 120),
-        x: 80,
-        y: 80
-      });
+    updateDraft({
+      execute: (setup) => {
+        const zone = createDefaultTableZone({
+          childrenType,
+          existingZones: setup.zones,
+          height: Math.min(220, setup.height - 120),
+          id: zoneId,
+          name:
+            childrenType === "zone"
+              ? `Zone ${countZones(setup.zones) + 1}`
+              : `${titleCase(childrenType)} zone`,
+          width: Math.min(360, setup.width - 120),
+          x: 80,
+          y: 80
+        });
 
-      const zones = [...setup.zones, zone];
+        const zones = [...setup.zones, zone];
 
-      return {
-        ...setup,
-        zones: clampZonesToBounds(zones, setup.width, setup.height, componentsById, collectionsById)
-      };
+        return {
+          ...setup,
+          zones: clampZonesToBounds(
+            zones,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: "Add zone"
     });
     setSelection({ id: zoneId, type: "zone" });
   }
@@ -397,58 +470,85 @@ export function TableSetupEditor({
   function addChildZone(parentId: string, childrenType: ZoneChildType) {
     const zoneId = createClientId("zone");
 
-    updateDraft((setup) => {
-      const zones = updateZoneInTree(setup.zones, parentId, (zone) => {
-        if (zone.childrenType !== "zone") {
-          return zone;
-        }
+    updateDraft({
+      execute: (setup) => {
+        const zones = updateZoneInTree(setup.zones, parentId, (zone) => {
+          if (zone.childrenType !== "zone") {
+            return zone;
+          }
 
-        const child = createDefaultTableZone({
-          childrenType,
-          existingZones: setup.zones,
-          height: Math.max(minZoneSizeMm, Math.min(140, zone.height - 24)),
-          id: zoneId,
-          name:
-            childrenType === "zone"
-              ? `Zone ${countZones(setup.zones) + 1}`
-              : `${titleCase(childrenType)} zone ${countZones(setup.zones) + 1}`,
-          width: Math.max(minZoneSizeMm, Math.min(220, zone.width - 24)),
-          x: 12,
-          y: 12
+          const child = createDefaultTableZone({
+            childrenType,
+            existingZones: setup.zones,
+            height: Math.max(minZoneSizeMm, Math.min(140, zone.height - 24)),
+            id: zoneId,
+            name:
+              childrenType === "zone"
+                ? `Zone ${countZones(setup.zones) + 1}`
+                : `${titleCase(childrenType)} zone ${countZones(setup.zones) + 1}`,
+            width: Math.max(minZoneSizeMm, Math.min(220, zone.width - 24)),
+            x: 12,
+            y: 12
+          });
+
+          return { ...zone, children: [...zone.children, child] };
         });
 
-        return { ...zone, children: [...zone.children, child] };
-      });
-
-      return {
-        ...setup,
-        zones: clampZonesToBounds(zones, setup.width, setup.height, componentsById, collectionsById)
-      };
+        return {
+          ...setup,
+          zones: clampZonesToBounds(
+            zones,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: "Add child zone"
     });
     setSelection({ id: zoneId, type: "zone" });
   }
 
-  function updatePlacement(id: string, patch: Partial<TablePlacement>) {
-    updateDraft((setup) => ({
-      ...setup,
-      placements: setup.placements.map((placement) =>
-        placement.id === id ? { ...placement, ...patch } : placement
-      )
-    }));
+  function updatePlacement(
+    id: string,
+    patch: Partial<TablePlacement>,
+    options: DraftCommandOptions = {}
+  ) {
+    updateDraft({
+      execute: (setup) => ({
+        ...setup,
+        placements: setup.placements.map((placement) =>
+          placement.id === id ? { ...placement, ...patch } : placement
+        )
+      }),
+      label: options.label ?? "Update placement",
+      mergeKey: options.mergeKey
+    });
   }
 
-  function updateZone(id: string, patch: Partial<TableZone>) {
-    updateDraft((setup) => {
-      const zones = updateZoneInTree(
-        setup.zones,
-        id,
-        (zone) => ({ ...zone, ...patch }) as TableZone
-      );
+  function updateZone(id: string, patch: Partial<TableZone>, options: DraftCommandOptions = {}) {
+    updateDraft({
+      execute: (setup) => {
+        const zones = updateZoneInTree(
+          setup.zones,
+          id,
+          (zone) => ({ ...zone, ...patch }) as TableZone
+        );
 
-      return {
-        ...setup,
-        zones: clampZonesToBounds(zones, setup.width, setup.height, componentsById, collectionsById)
-      };
+        return {
+          ...setup,
+          zones: clampZonesToBounds(
+            zones,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: options.label ?? "Update zone",
+      mergeKey: options.mergeKey
     });
   }
 
@@ -464,20 +564,34 @@ export function TableSetupEditor({
       }
     }));
 
-    updateDraft((setup) => {
-      const zones = updateZoneInTree(setup.zones, zone.id, () => nextZone);
+    updateDraft({
+      execute: (setup) => {
+        const zones = updateZoneInTree(setup.zones, zone.id, () => nextZone);
 
-      return {
-        ...setup,
-        zones: clampZonesToBounds(zones, setup.width, setup.height, componentsById, collectionsById)
-      };
+        return {
+          ...setup,
+          zones: clampZonesToBounds(
+            zones,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: "Change zone type"
     });
   }
 
-  function updateZoneSource(zone: ZoneSource, source: TableSource | undefined) {
+  function updateZoneSource(
+    zone: ZoneSource,
+    source: TableSource | undefined,
+    options: DraftCommandOptions = {}
+  ) {
     updateZone(
       zone.id,
-      source ? ({ source } as Partial<TableZone>) : ({ source: undefined } as Partial<TableZone>)
+      source ? ({ source } as Partial<TableZone>) : ({ source: undefined } as Partial<TableZone>),
+      { label: options.label ?? "Update zone source", mergeKey: options.mergeKey }
     );
   }
 
@@ -502,7 +616,11 @@ export function TableSetupEditor({
     });
   }
 
-  function movePlacementIntoZone(placement: TablePlacement, renderedZone: RenderedZone) {
+  function movePlacementIntoZone(
+    placement: TablePlacement,
+    renderedZone: RenderedZone,
+    options: DraftCommandOptions = {}
+  ) {
     const zone = renderedZone.zone;
 
     if (zone.childrenType === "zone") {
@@ -517,20 +635,30 @@ export function TableSetupEditor({
       }
     }
 
-    updateDraft((setup) => {
-      const zones = updateZoneInTree(setup.zones, zone.id, (currentZone) => {
-        if (currentZone.childrenType === "zone") {
-          return currentZone;
-        }
+    updateDraft({
+      execute: (setup) => {
+        const zones = updateZoneInTree(setup.zones, zone.id, (currentZone) => {
+          if (currentZone.childrenType === "zone") {
+            return currentZone;
+          }
 
-        return { ...currentZone, source: { ...placement.source } } as TableZone;
-      });
+          return { ...currentZone, source: { ...placement.source } } as TableZone;
+        });
 
-      return {
-        ...setup,
-        placements: setup.placements.filter((item) => item.id !== placement.id),
-        zones: clampZonesToBounds(zones, setup.width, setup.height, componentsById, collectionsById)
-      };
+        return {
+          ...setup,
+          placements: setup.placements.filter((item) => item.id !== placement.id),
+          zones: clampZonesToBounds(
+            zones,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: options.label ?? "Move placement into zone",
+      mergeKey: options.mergeKey
     });
     setSelection({ id: zone.id, type: "zone" });
   }
@@ -568,44 +696,65 @@ export function TableSetupEditor({
   }
 
   function removePlacement(id: string) {
-    updateDraft((setup) => ({
-      ...setup,
-      placements: setup.placements.filter((placement) => placement.id !== id)
-    }));
+    updateDraft({
+      execute: (setup) => ({
+        ...setup,
+        placements: setup.placements.filter((placement) => placement.id !== id)
+      }),
+      label: "Delete placement"
+    });
     setSelection((current) =>
       current?.type === "placement" && current.id === id ? null : current
     );
   }
 
   function removeZone(id: string) {
-    updateDraft((setup) => {
-      const zones = removeZoneFromTree(setup.zones, id);
+    updateDraft({
+      execute: (setup) => {
+        const zones = removeZoneFromTree(setup.zones, id);
 
-      return {
-        ...setup,
-        zones: clampZonesToBounds(zones, setup.width, setup.height, componentsById, collectionsById)
-      };
+        return {
+          ...setup,
+          zones: clampZonesToBounds(
+            zones,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: "Delete zone"
     });
     setSelection((current) => (current?.type === "zone" && current.id === id ? null : current));
   }
 
   function updateTableSize(patch: Partial<Pick<TableSetup, "height" | "width">>) {
-    updateDraft((setup) => {
-      const width = patch.width ?? setup.width;
-      const height = patch.height ?? setup.height;
-      const zones = clampZonesToBounds(setup.zones, width, height, componentsById, collectionsById);
-      const placements = setup.placements.map((placement) => ({
-        ...placement,
-        x: clamp(placement.x, 0, width),
-        y: clamp(placement.y, 0, height)
-      }));
+    updateDraft({
+      execute: (setup) => {
+        const width = patch.width ?? setup.width;
+        const height = patch.height ?? setup.height;
+        const zones = clampZonesToBounds(
+          setup.zones,
+          width,
+          height,
+          componentsById,
+          collectionsById
+        );
+        const placements = setup.placements.map((placement) => ({
+          ...placement,
+          x: clamp(placement.x, 0, width),
+          y: clamp(placement.y, 0, height)
+        }));
 
-      return {
-        ...setup,
-        ...patch,
-        placements,
-        zones
-      };
+        return {
+          ...setup,
+          ...patch,
+          placements,
+          zones
+        };
+      },
+      label: "Resize table"
     });
   }
 
@@ -640,6 +789,7 @@ export function TableSetupEditor({
     const startPosition = { x: placement.x, y: placement.y };
     const pointerStartX = startPoint.x;
     const pointerStartY = startPoint.y;
+    const dragHistoryKey = createClientId("placement-drag");
     let didDrag = false;
     let currentDropZone: RenderedZone | undefined;
 
@@ -663,10 +813,17 @@ export function TableSetupEditor({
         setActivePlacementDrag({ source: placement.source });
       }
 
-      updatePlacement(placement.id, {
-        x: Math.round(clamp(startPosition.x + deltaX, 0, draft.width)),
-        y: Math.round(clamp(startPosition.y + deltaY, 0, draft.height))
-      });
+      updatePlacement(
+        placement.id,
+        {
+          x: Math.round(clamp(startPosition.x + deltaX, 0, draft.width)),
+          y: Math.round(clamp(startPosition.y + deltaY, 0, draft.height))
+        },
+        {
+          label: "Move placement",
+          mergeKey: dragHistoryKey
+        }
+      );
       currentDropZone = didDrag ? getDropZoneAtPoint(point, placement.source) : undefined;
       setDragHoverZoneId(currentDropZone?.zone.id ?? null);
     }
@@ -688,7 +845,7 @@ export function TableSetupEditor({
       setDragHoverZoneId(null);
 
       if (didDrag && pointerEvent.type === "pointerup" && dropZone) {
-        movePlacementIntoZone(placement, dropZone);
+        movePlacementIntoZone(placement, dropZone, { mergeKey: dragHistoryKey });
       }
     }
 
@@ -718,6 +875,7 @@ export function TableSetupEditor({
     const startZone = { ...zone };
     const pointerStartX = startPoint.x;
     const pointerStartY = startPoint.y;
+    const dragHistoryKey = createClientId(mode === "resize" ? "zone-resize" : "zone-move");
 
     event.preventDefault();
     event.stopPropagation();
@@ -740,29 +898,45 @@ export function TableSetupEditor({
       const deltaY = point.y - pointerStartY;
 
       if (mode === "resize") {
-        updateZone(zone.id, {
-          width: Math.round(
-            clamp(
-              startZone.width + deltaX,
-              minZoneSizeMm,
-              renderedZone.parentWidth - renderedZone.localX
+        updateZone(
+          zone.id,
+          {
+            width: Math.round(
+              clamp(
+                startZone.width + deltaX,
+                minZoneSizeMm,
+                renderedZone.parentWidth - renderedZone.localX
+              )
+            ),
+            height: Math.round(
+              clamp(
+                startZone.height + deltaY,
+                minZoneSizeMm,
+                renderedZone.parentHeight - renderedZone.localY
+              )
             )
-          ),
-          height: Math.round(
-            clamp(
-              startZone.height + deltaY,
-              minZoneSizeMm,
-              renderedZone.parentHeight - renderedZone.localY
-            )
-          )
-        } as Partial<TableZone>);
+          } as Partial<TableZone>,
+          {
+            label: "Resize zone",
+            mergeKey: dragHistoryKey
+          }
+        );
         return;
       }
 
-      updateZone(zone.id, {
-        x: Math.round(clamp(startZone.x + deltaX, 0, renderedZone.parentWidth - startZone.width)),
-        y: Math.round(clamp(startZone.y + deltaY, 0, renderedZone.parentHeight - startZone.height))
-      } as Partial<TableZone>);
+      updateZone(
+        zone.id,
+        {
+          x: Math.round(clamp(startZone.x + deltaX, 0, renderedZone.parentWidth - startZone.width)),
+          y: Math.round(
+            clamp(startZone.y + deltaY, 0, renderedZone.parentHeight - startZone.height)
+          )
+        } as Partial<TableZone>,
+        {
+          label: "Move zone",
+          mergeKey: dragHistoryKey
+        }
+      );
     }
 
     function handlePointerEnd(pointerEvent: PointerEvent) {
@@ -965,6 +1139,38 @@ export function TableSetupEditor({
                   onClick={resetTableZoom}
                 >
                   <RotateCcw size={18} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+            <Group className="table-setup-history-controls" gap={4} wrap="nowrap">
+              <Tooltip
+                label={undoLabel ? `Undo ${undoLabel.toLocaleLowerCase()}` : "Undo"}
+                withArrow
+              >
+                <ActionIcon
+                  aria-label="Undo table layout change"
+                  disabled={!canUndo}
+                  radius={8}
+                  size="lg"
+                  variant="light"
+                  onClick={undo}
+                >
+                  <Undo2 size={18} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip
+                label={redoLabel ? `Redo ${redoLabel.toLocaleLowerCase()}` : "Redo"}
+                withArrow
+              >
+                <ActionIcon
+                  aria-label="Redo table layout change"
+                  disabled={!canRedo}
+                  radius={8}
+                  size="lg"
+                  variant="light"
+                  onClick={redo}
+                >
+                  <Redo2 size={18} />
                 </ActionIcon>
               </Tooltip>
             </Group>
