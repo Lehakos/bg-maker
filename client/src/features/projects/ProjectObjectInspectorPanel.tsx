@@ -702,22 +702,18 @@ export function ProjectObjectInspectorPanel({
               onKeyDown={handleNameKeyDown}
             />
 
-            <label className="flex h-9 items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-2 text-sm text-slate-700">
-              <span className="flex min-w-0 items-center gap-2">
-                {selectedObject.visible ? (
-                  <Eye className="shrink-0 text-emerald-700" size={15} />
+            <InspectorSwitchField
+              checked={selectedObject.visible}
+              icon={
+                selectedObject.visible ? (
+                  <Eye className="shrink-0" size={15} />
                 ) : (
-                  <EyeOff className="shrink-0 text-slate-500" size={15} />
-                )}
-                <span className="truncate">Visible</span>
-              </span>
-              <input
-                checked={selectedObject.visible}
-                className="h-4 w-4 accent-teal-700"
-                type="checkbox"
-                onChange={handleVisibilityChange}
-              />
-            </label>
+                  <EyeOff className="shrink-0" size={15} />
+                )
+              }
+              label="Visible"
+              onChange={handleVisibilityChange}
+            />
           </section>
 
           {appearance ? (
@@ -956,6 +952,43 @@ function InspectorTextField({
         onChange={(event) => onChange(event.currentTarget.value)}
         onKeyDown={onKeyDown}
       />
+    </label>
+  );
+}
+
+type InspectorSwitchFieldProps = {
+  checked: boolean;
+  icon: ReactNode;
+  label: string;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+};
+
+function InspectorSwitchField({ checked, icon, label, onChange }: InspectorSwitchFieldProps) {
+  return (
+    <label className="flex min-h-8 cursor-pointer items-center justify-between gap-3 py-1 text-sm font-medium text-slate-700">
+      <span className="flex min-w-0 items-center gap-2">
+        <span
+          className={
+            checked
+              ? "flex h-6 w-6 shrink-0 items-center justify-center rounded text-sky-700"
+              : "flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400"
+          }
+        >
+          {icon}
+        </span>
+        <span className="truncate">{label}</span>
+      </span>
+      <span className="relative inline-flex h-5 w-9 shrink-0 items-center">
+        <input
+          checked={checked}
+          className="peer sr-only"
+          role="switch"
+          type="checkbox"
+          onChange={onChange}
+        />
+        <span className="absolute inset-0 rounded-full border border-slate-300 bg-slate-200 transition-colors peer-checked:border-sky-500 peer-checked:bg-sky-500 peer-focus-visible:ring-2 peer-focus-visible:ring-sky-100" />
+        <span className="absolute left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
+      </span>
     </label>
   );
 }
