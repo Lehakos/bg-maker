@@ -55,6 +55,7 @@ import { ProjectFileCreateModal, type ProjectFileCreateType } from "./ProjectFil
 import { ProjectFileNodeIcon } from "./project-file-tree-ui";
 
 const indentationWidth = 18;
+const nodeDropActivationPadding = 8;
 const folderAutoExpandDelayMs = 650;
 const rootDropTargetId = "project-file-tree:root";
 const folderDropTargetPrefix = "project-file-tree:folder:";
@@ -77,6 +78,10 @@ type FileTreeContextMenuState = {
 type FileTreeCreateRequest = {
   type: ProjectFileCreateType;
   parentId: ProjectFileTreeParentId;
+};
+
+type NodeDropTargetData = {
+  depth: number;
 };
 
 type ProjectFileTreePanelProps = {
@@ -331,7 +336,7 @@ export function ProjectFileTreePanel({
     >
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-slate-200 bg-slate-50 px-2">
         <button
-          aria-label="К проектам"
+          aria-label="Back to projects"
           className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-900"
           type="button"
           onClick={onBack}
@@ -340,7 +345,7 @@ export function ProjectFileTreePanel({
         </button>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Файловая структура
+            File tree
           </h2>
           <p className="truncate text-[11px] leading-none text-slate-500">{projectName}</p>
         </div>
@@ -527,7 +532,10 @@ function ProjectFileTreeNode({
   });
   const { isOver, setNodeRef: setDroppableNodeRef } = useDroppable({
     id: getNodeDropTargetId(item),
-    disabled: activeNodeId === item.id
+    disabled: activeNodeId === item.id,
+    data: {
+      depth: item.depth
+    } satisfies NodeDropTargetData
   });
   const setNodeRef = useCallback(
     (element: HTMLDivElement | null) => {
@@ -609,7 +617,7 @@ function ProjectFileTreeNode({
       >
         {hasChildren ? (
           <button
-            aria-label={expanded ? `Свернуть ${node.name}` : `Развернуть ${node.name}`}
+            aria-label={expanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-900"
             type="button"
             onClick={handleToggle}
@@ -681,7 +689,7 @@ function createContextMenuActions({
         },
         {
           id: "create-table-setup",
-          label: "TableSetup",
+          label: "Table setup",
           icon: <Rows3 size={14} />,
           disabled,
           onSelect: () => onCreate("tableSetup")
@@ -764,19 +772,69 @@ function flattenProjectFileTree(
 const fileTreeCollisionDetection: CollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(args);
   const nodeCollisions = pointerCollisions.filter(
-    ({ id }) => isNodeDropTargetId(id) && getDropTargetNodeId(id) !== String(args.active.id)
+    ({ id }) =>
+      isNodeDropTargetId(id) &&
+      getDropTargetNodeId(id) !== String(args.active.id) &&
+      pointerIsInsideNodeDropZone(args, id)
   );
 
   if (nodeCollisions.length > 0) {
     return nodeCollisions;
   }
 
-  if (pointerCollisions.length > 0) {
-    return pointerCollisions;
+  const rootCollision = pointerCollisions.find(({ id }) => id === rootDropTargetId);
+
+  if (rootCollision) {
+    return [rootCollision];
+  }
+
+  const rootDropTargetRect = args.droppableRects.get(rootDropTargetId);
+
+  if (
+    args.pointerCoordinates &&
+    rootDropTargetRect &&
+    args.pointerCoordinates.x < rootDropTargetRect.left
+  ) {
+    return [{ id: rootDropTargetId }];
   }
 
   return closestCenter(args);
 };
+
+function pointerIsInsideNodeDropZone(
+  args: Parameters<CollisionDetection>[0],
+  dropTargetId: UniqueIdentifier
+) {
+  if (!args.pointerCoordinates) {
+    return true;
+  }
+
+  const dropTargetData = args.droppableContainers.find(({ id }) => id === dropTargetId)?.data
+    .current;
+
+  if (!isNodeDropTargetData(dropTargetData)) {
+    return true;
+  }
+
+  const dropTargetRect = args.droppableRects.get(dropTargetId);
+
+  if (!dropTargetRect) {
+    return true;
+  }
+
+  const activationLeft =
+    dropTargetRect.left + nodeDropActivationPadding + dropTargetData.depth * indentationWidth;
+
+  return args.pointerCoordinates.x >= activationLeft;
+}
+
+function isNodeDropTargetData(value: unknown): value is NodeDropTargetData {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    typeof (value as Partial<NodeDropTargetData>).depth === "number"
+  );
+}
 
 function nodeCanHighlightDrop({
   activeNodeId,

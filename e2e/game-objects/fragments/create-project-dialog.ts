@@ -8,16 +8,16 @@ type CreateProjectPayload = {
 
 export class CreateProjectDialog extends GameObject {
   constructor(page: Page) {
-    super(page, page.getByRole("dialog", { name: "Новый проект" }));
+    super(page, page.getByRole("dialog", { name: "New project" }));
   }
 
   async createProject(payload: CreateProjectPayload) {
-    await this.getByLabel("Название").fill(payload.name);
+    await this.getByLabel("Name").fill(payload.name);
 
     if (payload.description !== undefined) {
-      await this.getByLabel("Описание").fill(payload.description);
+      await this.getByLabel("Description").fill(payload.description);
     }
 
-    await this.getByRole("button", { name: "Создать", exact: true }).click();
+    await this.getByRole("button", { name: "Create", exact: true }).click();
   }
 }

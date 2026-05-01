@@ -38,7 +38,7 @@ export function ProjectPreviewArea({ fileTree, project, selectedNodeId }: Projec
             {project.name}
           </h1>
           <p className="truncate text-sm text-slate-500">
-            Обновлен {formatProjectDate(project.updatedAt)}
+            Updated {formatProjectDate(project.updatedAt)}
           </p>
         </div>
         <div className="hidden shrink-0 items-center gap-2 text-sm text-slate-500 sm:flex">
@@ -81,11 +81,9 @@ function SelectedNodePreview({ node, parentFolderName }: SelectedNodePreviewProp
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <PreviewStat label="Тип" value={getProjectFileNodeTypeLabel(node)} />
-        {node.type === "folder" ? (
-          <PreviewStat label="Элементы" value={String(childCount)} />
-        ) : null}
-        {parentFolderName ? <PreviewStat label="Папка" value={parentFolderName} /> : null}
+        <PreviewStat label="Type" value={getProjectFileNodeTypeLabel(node)} />
+        {node.type === "folder" ? <PreviewStat label="Items" value={String(childCount)} /> : null}
+        {parentFolderName ? <PreviewStat label="Folder" value={parentFolderName} /> : null}
       </div>
     </div>
   );
@@ -109,7 +107,7 @@ function ProjectRootPreview({ project, totalNodes }: ProjectRootPreviewProps) {
         ) : null}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <PreviewStat label="Элементы" value={String(totalNodes)} />
+        <PreviewStat label="Items" value={String(totalNodes)} />
         <PreviewStat label="Table setups" value={String(project.tableSetupsCount)} />
         <PreviewStat label="Objects" value={String(project.objectsCount)} />
       </div>

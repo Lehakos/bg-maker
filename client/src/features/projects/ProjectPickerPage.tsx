@@ -21,19 +21,26 @@ export function ProjectPickerPage() {
   const [createOpened, { open: openCreate, close: closeCreate }] = useDisclosure(false);
 
   return (
-    <Stack className="project-picker" gap="xl">
-      <Group className="project-page-heading" justify="space-between" align="flex-end" gap="lg">
+    <Stack className="mx-auto w-full max-w-[1180px] px-3.5 py-5 md:p-7" gap="xl">
+      <Group
+        className="border-b border-[#d9e1dc] pb-[22px] max-[720px]:items-start"
+        justify="space-between"
+        align="flex-end"
+        gap="lg"
+      >
         <Box>
-          <Title order={2}>Проекты</Title>
-          <Text c="dimmed">Выберите проект или создайте новую настольную игру.</Text>
+          <Title order={2} className="text-2xl leading-[1.15] tracking-normal md:text-[28px]">
+            Projects
+          </Title>
+          <Text c="dimmed">Choose a project or create a new board game.</Text>
         </Box>
         <Button leftSection={<Plus size={16} />} onClick={openCreate}>
-          Создать проект
+          Create project
         </Button>
       </Group>
 
       {projects.isLoading ? (
-        <Center className="project-loading" aria-label="Загрузка проектов">
+        <Center className="min-h-[420px]" aria-label="Loading projects">
           <Loader color="teal" />
         </Center>
       ) : null}
@@ -53,19 +60,24 @@ export function ProjectPickerPage() {
       ) : null}
 
       {projects.data?.length === 0 ? (
-        <Center className="empty-projects">
+        <Center className="min-h-[360px] rounded-lg border border-dashed border-[#b9c8c0] bg-white p-8">
           <Stack align="center" gap="md">
-            <Box className="empty-projects-icon" aria-hidden>
+            <Box
+              className="flex h-16 w-16 items-center justify-center rounded-lg bg-[#eaf1ed] text-[#24443f]"
+              aria-hidden
+            >
               <FolderOpen size={34} />
             </Box>
             <Stack align="center" gap={4}>
-              <Title order={3}>Проектов пока нет</Title>
+              <Title order={3} className="text-lg leading-[1.2] tracking-normal">
+                No projects yet
+              </Title>
               <Text c="dimmed" ta="center">
-                Создайте первый проект, чтобы открыть рабочую среду BG Maker.
+                Create your first project to open the BG Maker workspace.
               </Text>
             </Stack>
             <Button leftSection={<Plus size={16} />} onClick={openCreate}>
-              Создать проект
+              Create project
             </Button>
           </Stack>
         </Center>

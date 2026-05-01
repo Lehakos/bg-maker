@@ -19,14 +19,16 @@ export function ProjectCard({ project }: ProjectCardProps) {
   }
 
   return (
-    <Card className="project-card" padding="lg" radius="sm" withBorder>
-      <Stack gap="md" className="project-card-content">
+    <Card className="min-h-[250px] border-[#d9e1dc] bg-white" padding="lg" radius="sm" withBorder>
+      <Stack gap="md" className="min-h-full">
         <Group justify="space-between" align="flex-start" gap="md" wrap="nowrap">
-          <Stack gap={4} className="project-card-title">
-            <Title order={3}>{project.name}</Title>
+          <Stack gap={4} className="min-w-0">
+            <Title order={3} className="text-lg leading-[1.2] tracking-normal">
+              {project.name}
+            </Title>
             <Group gap={6} c="dimmed">
               <Clock3 size={14} />
-              <Text size="sm">Обновлен {formatProjectDate(project.updatedAt)}</Text>
+              <Text size="sm">Updated {formatProjectDate(project.updatedAt)}</Text>
             </Group>
           </Stack>
           <Badge color="teal" variant="light" radius="sm">
@@ -34,11 +36,11 @@ export function ProjectCard({ project }: ProjectCardProps) {
           </Badge>
         </Group>
 
-        <Text className="project-card-description" c="dimmed" size="sm">
-          {project.description || "Описание пока не добавлено"}
+        <Text className="min-h-11" c="dimmed" size="sm">
+          {project.description || "No description yet"}
         </Text>
 
-        <Group gap="xs" className="project-card-stats">
+        <Group gap="xs" className="min-h-7">
           <Badge leftSection={<Rows3 size={12} />} color="gray" variant="outline" radius="sm">
             {project.tableSetupsCount} setups
           </Badge>
@@ -51,12 +53,12 @@ export function ProjectCard({ project }: ProjectCardProps) {
         </Group>
 
         <Button
-          className="project-card-action"
+          className="mt-auto"
           variant="light"
           rightSection={<ArrowRight size={16} />}
           onClick={openProject}
         >
-          Открыть
+          Open
         </Button>
       </Stack>
     </Card>

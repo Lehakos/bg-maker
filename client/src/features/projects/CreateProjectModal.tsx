@@ -44,7 +44,7 @@ export function CreateProjectModal({ opened, onClose }: CreateProjectModalProps)
   }
 
   return (
-    <Modal opened={opened} onClose={closeModal} title="Новый проект" centered radius="sm">
+    <Modal opened={opened} onClose={closeModal} title="New project" centered radius="sm">
       <form onSubmit={(event) => void handleSubmit(event)}>
         <Stack gap="md">
           {createProject.isError ? (
@@ -55,15 +55,15 @@ export function CreateProjectModal({ opened, onClose }: CreateProjectModalProps)
 
           <TextInput
             autoFocus
-            label="Название"
-            placeholder="Например, Cosmic Orchard"
+            label="Name"
+            placeholder="For example, Cosmic Orchard"
             value={name}
-            error={submitted && nameIsEmpty ? "Введите название проекта" : undefined}
+            error={submitted && nameIsEmpty ? "Enter a project name" : undefined}
             onChange={(event) => setName(event.currentTarget.value)}
           />
           <Textarea
-            label="Описание"
-            placeholder="Короткая заметка о прототипе"
+            label="Description"
+            placeholder="Short note about the prototype"
             minRows={3}
             value={description}
             onChange={(event) => setDescription(event.currentTarget.value)}
@@ -71,14 +71,14 @@ export function CreateProjectModal({ opened, onClose }: CreateProjectModalProps)
 
           <Group justify="flex-end" gap="sm">
             <Button variant="subtle" color="gray" onClick={closeModal}>
-              Отмена
+              Cancel
             </Button>
             <Button
               type="submit"
               leftSection={<Plus size={16} />}
               loading={createProject.isPending}
             >
-              Создать
+              Create
             </Button>
           </Group>
         </Stack>

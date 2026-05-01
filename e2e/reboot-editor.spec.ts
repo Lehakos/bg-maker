@@ -10,7 +10,7 @@ test("creates and opens a project", async ({ page }) => {
 
   const workspace = await game.projects.createProject({
     name: projectName,
-    description: "Проверка выбора проекта"
+    description: "Project picker smoke test"
   });
 
   await workspace.expectProjectOpen(projectName);
@@ -26,7 +26,7 @@ test("moves nested file tree nodes to the root without crashing", async ({ page 
 
   const workspace = await game.projects.createProject({
     name: `File Tree Drag ${Date.now()}`,
-    description: "Проверка перемещения файловой структуры"
+    description: "File tree drag smoke test"
   });
 
   await workspace.expectProjectOpen(/File Tree Drag/);

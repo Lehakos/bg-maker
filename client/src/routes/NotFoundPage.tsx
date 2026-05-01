@@ -6,18 +6,18 @@ export function NotFoundPage() {
   const navigate = useNavigate();
 
   return (
-    <Center className="not-found-page">
+    <Center className="min-h-[420px]">
       <Stack align="center" gap="sm">
-        <Title order={2}>Страница не найдена</Title>
+        <Title order={2}>Page not found</Title>
         <Text c="dimmed" ta="center">
-          Такого маршрута в BG Maker нет.
+          BG Maker does not have this route.
         </Text>
         <Button
           variant="light"
           leftSection={<ArrowLeft size={16} />}
           onClick={() => void navigate({ to: "/" })}
         >
-          К проектам
+          Back to projects
         </Button>
       </Stack>
     </Center>

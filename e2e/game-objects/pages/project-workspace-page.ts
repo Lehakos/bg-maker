@@ -9,11 +9,11 @@ export class ProjectWorkspacePage extends GameObject {
   async expectProjectOpen(projectName: RegExp | string) {
     await expect(this.page).toHaveURL(/\/projects\/[^/]+$/);
     await expect(this.getByRole("heading", { name: projectName })).toBeVisible();
-    await expect(this.getByRole("heading", { name: "Файловая структура" })).toBeVisible();
+    await expect(this.getByRole("heading", { name: "File tree", exact: true })).toBeVisible();
     await expect(this.getByRole("button", { name: "Table setups", exact: true })).toBeVisible();
   }
 
   async goToProjects() {
-    await this.getByRole("button", { name: "К проектам" }).click();
+    await this.getByRole("button", { name: "Back to projects" }).click();
   }
 }

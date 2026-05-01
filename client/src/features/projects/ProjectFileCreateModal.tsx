@@ -40,19 +40,19 @@ export function ProjectFileCreateModal({
         <Stack gap="md">
           <TextInput
             autoFocus
-            label="Название"
+            label="Name"
             placeholder={getDefaultCreateName(type)}
             value={name}
-            error={submitted && nameIsEmpty ? "Введите название" : undefined}
+            error={submitted && nameIsEmpty ? "Enter a name" : undefined}
             onChange={(event) => setName(event.currentTarget.value)}
           />
 
           <Group justify="flex-end" gap="sm">
             <Button variant="subtle" color="gray" onClick={onClose}>
-              Отмена
+              Cancel
             </Button>
             <Button type="submit" leftSection={<Plus size={16} />}>
-              Создать
+              Create
             </Button>
           </Group>
         </Stack>
@@ -63,18 +63,18 @@ export function ProjectFileCreateModal({
 
 function getCreateTitle(type: ProjectFileCreateType) {
   if (type === "folder") {
-    return "Новая папка";
+    return "New folder";
   }
 
   if (type === "tableSetup") {
-    return "Новый TableSetup";
+    return "New table setup";
   }
 
   if (type === "object") {
-    return "Новый Object";
+    return "New object";
   }
 
-  return "Новый элемент";
+  return "New item";
 }
 
 function getDefaultCreateName(type: ProjectFileCreateType) {

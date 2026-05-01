@@ -20,7 +20,7 @@ export function ProjectWorkspacePage() {
 
   if (project.isLoading) {
     return (
-      <Center className="min-h-[calc(100vh-72px)]" aria-label="Загрузка проекта">
+      <Center className="min-h-[calc(100vh-72px)]" aria-label="Loading project">
         <Loader color="teal" />
       </Center>
     );
@@ -36,7 +36,7 @@ export function ProjectWorkspacePage() {
           leftSection={<ArrowLeft size={16} />}
           onClick={goToProjects}
         >
-          К проектам
+          Back to projects
         </Button>
         <Alert color="red" icon={<AlertCircle size={16} />} radius="sm">
           {project.error.message}

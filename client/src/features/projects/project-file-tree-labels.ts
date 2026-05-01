@@ -2,7 +2,7 @@ import type { ProjectFileKind, ProjectFileNode } from "@bg-maker/shared";
 
 export function getProjectFileNodeTypeLabel(node: ProjectFileNode) {
   if (node.type === "folder") {
-    return "Папка";
+    return "Folder";
   }
 
   return getProjectFileKindLabel(node.kind);
@@ -21,5 +21,5 @@ function getProjectFileKindLabel(kind: ProjectFileKind | undefined) {
     return "Image";
   }
 
-  return "Файл";
+  return "File";
 }

@@ -20,7 +20,7 @@ export class ProjectPickerPage extends GameObject {
 
   async expectReady() {
     await expect(this.getByRole("heading", { name: "BG Maker" })).toBeVisible();
-    await expect(this.getByRole("heading", { name: "Проекты" })).toBeVisible();
+    await expect(this.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
   }
 
   async createProject(payload: CreateProjectPayload) {
@@ -35,6 +35,6 @@ export class ProjectPickerPage extends GameObject {
   }
 
   private async openCreateProjectDialog() {
-    await this.getByRole("button", { name: "Создать проект" }).first().click();
+    await this.getByRole("button", { name: "Create project" }).first().click();
   }
 }
