@@ -10,6 +10,8 @@
     "dev:server": "pnpm --filter @bg-maker/server dev",
     "build": "pnpm --filter @bg-maker/shared build && pnpm --filter @bg-maker/server build && pnpm --filter @bg-maker/client build",
     "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @bg-maker/client --filter @bg-maker/server test",
+    "test:unit": "pnpm --filter @bg-maker/client --filter @bg-maker/server test",
     "test:e2e": "playwright test",
     "lint": "eslint . --ignore-pattern client && pnpm --filter @bg-maker/client lint",
     "lint:fix": "eslint . --fix --ignore-pattern client && pnpm --filter @bg-maker/client lint:fix",

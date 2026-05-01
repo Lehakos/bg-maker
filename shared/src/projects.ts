@@ -24,12 +24,20 @@ export type ProjectObjectKind =
   | "label"
   | "image";
 
+export type ProjectObjectTransform = {
+  rotation: number;
+  scale: number;
+  x: number;
+  y: number;
+};
+
 export type ProjectObjectNode = {
   id: string;
   name: string;
   kind: ProjectObjectKind;
   visible: boolean;
   children?: ProjectObjectNode[];
+  transform?: ProjectObjectTransform;
 };
 
 export type ProjectFileNode = {

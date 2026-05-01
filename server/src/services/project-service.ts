@@ -8,6 +8,7 @@ import type {
   ProjectFileNode,
   ProjectObjectKind,
   ProjectObjectNode,
+  ProjectObjectTransform,
   ProjectSummary
 } from "@bg-maker/shared";
 
@@ -24,6 +25,10 @@ const maxProjectFileTreeDepth = 12;
 const maxProjectFileTreeNodes = 500;
 const maxProjectObjectTreeDepth = 24;
 const maxProjectObjectTreeNodes = 1000;
+const maxProjectObjectCoordinate = 10000;
+const maxProjectObjectRotation = 3600;
+const maxProjectObjectScale = 8;
+const minProjectObjectScale = 0.1;
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
 const projectObjectKinds = new Set<ProjectObjectKind>([
   "group",
@@ -388,12 +393,48 @@ function normalizeProjectObjectNode(
       ? (record.kind as ProjectObjectKind)
       : "group",
     visible: record.visible !== false,
+    transform: normalizeProjectObjectTransform(record.transform),
     children: Array.isArray(record.children)
       ? record.children.map((child) =>
           normalizeProjectObjectNode(child, depth + 1, nodeIds, nodeCount)
         )
       : []
   };
+}
+
+function normalizeProjectObjectTransform(value: unknown): ProjectObjectTransform {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    rotation: normalizeFiniteNumber(record.rotation, 0, {
+      max: maxProjectObjectRotation,
+      min: -maxProjectObjectRotation
+    }),
+    scale: normalizeFiniteNumber(record.scale, 1, {
+      max: maxProjectObjectScale,
+      min: minProjectObjectScale
+    }),
+    x: normalizeFiniteNumber(record.x, 0, {
+      max: maxProjectObjectCoordinate,
+      min: -maxProjectObjectCoordinate
+    }),
+    y: normalizeFiniteNumber(record.y, 0, {
+      max: maxProjectObjectCoordinate,
+      min: -maxProjectObjectCoordinate
+    })
+  };
+}
+
+function normalizeFiniteNumber(
+  value: unknown,
+  fallback: number,
+  bounds: { max: number; min: number }
+) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(bounds.max, Math.max(bounds.min, value));
 }
 
 function isProjectObjectTreeFileKind(kind: ProjectFileKind) {

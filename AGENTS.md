@@ -20,6 +20,11 @@
 - On the client, put business logic in reusable hooks, stores or nearby hook-level helpers.
 - On the server, put business logic in services and keep controllers thin.
 
+## Unit Tests
+
+- Add focused unit tests for non-trivial pure functions and deterministic helpers, especially tree/state transitions, sorting, filtering, parsing, validation, and edge cases.
+- It is okay to skip tests for functions that are only obvious pass-throughs, simple labels, or one-branch mappings where a test would only restate the implementation.
+
 ## Styling and CSS
 
 - Prefer Tailwind utility classes for UI styling.

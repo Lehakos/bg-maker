@@ -2,7 +2,8 @@ import type {
   ProjectFileKind,
   ProjectFileNode,
   ProjectObjectKind,
-  ProjectObjectNode
+  ProjectObjectNode,
+  ProjectObjectTransform
 } from "@bg-maker/shared";
 
 export type ProjectObjectTreeParentId = string | null;
@@ -15,6 +16,13 @@ export type ProjectObjectTreeLocation = {
 };
 
 const objectTreeFileKinds = new Set<ProjectFileKind>(["tableSetup", "object"]);
+
+export const defaultProjectObjectTransform: ProjectObjectTransform = {
+  rotation: 0,
+  scale: 1,
+  x: 0,
+  y: 0
+};
 
 export function isProjectObjectTreeFileNode(
   node: ProjectFileNode | null | undefined
@@ -35,7 +43,8 @@ export function createProjectObjectNode(
     name: name.trim() || getDefaultProjectObjectNodeName(kind),
     kind,
     visible: true,
-    children: []
+    children: [],
+    transform: defaultProjectObjectTransform
   };
 }
 
@@ -153,6 +162,23 @@ export function setProjectObjectNodeVisibility(
   visible: boolean
 ): ProjectObjectNode[] {
   const result = setProjectObjectNodeVisibilityInChildren(objectTree, nodeId, visible);
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function getProjectObjectNodeTransform(object: ProjectObjectNode): ProjectObjectTransform {
+  return {
+    ...defaultProjectObjectTransform,
+    ...object.transform
+  };
+}
+
+export function setProjectObjectNodeTransform(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  transform: ProjectObjectTransform
+): ProjectObjectNode[] {
+  const result = setProjectObjectNodeTransformInChildren(objectTree, nodeId, transform);
 
   return result.changed ? result.nodes : objectTree;
 }
@@ -419,6 +445,43 @@ function setProjectObjectNodeVisibilityInChildren(
       node.children ?? [],
       nodeId,
       visible
+    );
+
+    if (childResult.changed) {
+      changed = true;
+
+      return {
+        ...node,
+        children: childResult.nodes
+      };
+    }
+
+    return node;
+  });
+
+  return { changed, nodes };
+}
+
+function setProjectObjectNodeTransformInChildren(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  transform: ProjectObjectTransform
+): ProjectObjectTreeUpdateResult {
+  let changed = false;
+  const nodes = objectTree.map((node) => {
+    if (node.id === nodeId) {
+      changed = true;
+
+      return {
+        ...node,
+        transform
+      };
+    }
+
+    const childResult = setProjectObjectNodeTransformInChildren(
+      node.children ?? [],
+      nodeId,
+      transform
     );
 
     if (childResult.changed) {
