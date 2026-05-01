@@ -2,17 +2,18 @@ import type { Project, ProjectFileNode, ProjectObjectNode } from "@bg-maker/shar
 import { Alert, Button, Center, Loader } from "@mantine/core";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ProjectFileTreePanel } from "./ProjectFileTreePanel";
 import { ProjectObjectTreePanel } from "./ProjectObjectTreePanel";
-import { ProjectPreviewArea } from "./ProjectPreviewArea";
+import { ProjectWorkspaceArea } from "./ProjectWorkspaceArea";
+import { useEditorCommandHistory } from "./editor-command-history";
+import {
+  createReplaceProjectFileTreeCommand,
+  createUpdateProjectObjectTreeCommand
+} from "./project-editor-commands";
 import { useProject, useUpdateProjectFileTree } from "./project-hooks";
 import { findProjectFileNode, sortProjectFileTree } from "./project-file-tree";
-import {
-  findProjectObjectNode,
-  isProjectObjectTreeFileNode,
-  updateProjectFileNodeObjectTree
-} from "./project-object-tree";
+import { findProjectObjectNode, isProjectObjectTreeFileNode } from "./project-object-tree";
 
 export function ProjectWorkspacePage() {
   const { projectId } = useParams({ from: "/projects/$projectId" });
@@ -82,7 +83,17 @@ function LoadedProjectWorkspace({
   onSaveFileTree
 }: LoadedProjectWorkspaceProps) {
   const initialFileTree = useMemo(() => sortProjectFileTree(project.fileTree), [project.fileTree]);
-  const [fileTree, setFileTree] = useState<ProjectFileNode[]>(() => initialFileTree);
+  const {
+    canRedo,
+    canUndo,
+    executeCommand: executeEditorCommand,
+    redo,
+    state: fileTree,
+    undo
+  } = useEditorCommandHistory<ProjectFileNode[]>({
+    initialState: initialFileTree,
+    onStateChange: onSaveFileTree
+  });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
     () => initialFileTree[0]?.id ?? null
   );
@@ -90,9 +101,17 @@ function LoadedProjectWorkspace({
     fileNodeId: string;
     objectId: string | null;
   } | null>(null);
+  const effectiveSelectedNodeId = useMemo(() => {
+    if (selectedNodeId && findProjectFileNode(fileTree, selectedNodeId)) {
+      return selectedNodeId;
+    }
+
+    return fileTree[0]?.id ?? null;
+  }, [fileTree, selectedNodeId]);
   const selectedFileNode = useMemo(
-    () => (selectedNodeId ? findProjectFileNode(fileTree, selectedNodeId) : undefined),
-    [fileTree, selectedNodeId]
+    () =>
+      effectiveSelectedNodeId ? findProjectFileNode(fileTree, effectiveSelectedNodeId) : undefined,
+    [effectiveSelectedNodeId, fileTree]
   );
   const selectedContentFileNode = isProjectObjectTreeFileNode(selectedFileNode)
     ? selectedFileNode
@@ -111,17 +130,63 @@ function LoadedProjectWorkspace({
       : null;
   }, [selectedContentFileNode, selectedObject]);
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const key = event.key.toLowerCase();
+      const commandModifierPressed = event.metaKey || event.ctrlKey;
+
+      if (!commandModifierPressed || isEditableKeyboardTarget(event.target)) {
+        return;
+      }
+
+      if (key === "z" && event.shiftKey) {
+        event.preventDefault();
+        redo();
+        return;
+      }
+
+      if (key === "z") {
+        event.preventDefault();
+        undo();
+        return;
+      }
+
+      if (key === "y") {
+        event.preventDefault();
+        redo();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [redo, undo]);
+
   function persistFileTree(nextFileTree: ProjectFileNode[]) {
-    setFileTree(nextFileTree);
-    onSaveFileTree(nextFileTree);
+    executeEditorCommand(
+      createReplaceProjectFileTreeCommand({
+        after: nextFileTree,
+        before: fileTree,
+        label: "Update file tree"
+      })
+    );
   }
 
   function persistObjectTree(fileNodeId: string, objectTree: ProjectObjectNode[]) {
-    const nextFileTree = updateProjectFileNodeObjectTree(fileTree, fileNodeId, objectTree);
+    const fileNode = findProjectFileNode(fileTree, fileNodeId);
 
-    if (nextFileTree !== fileTree) {
-      persistFileTree(nextFileTree);
+    if (!isProjectObjectTreeFileNode(fileNode)) {
+      return;
     }
+
+    executeEditorCommand(
+      createUpdateProjectObjectTreeCommand({
+        after: objectTree,
+        before: fileNode.objectTree ?? [],
+        fileNodeId,
+        label: "Update object tree"
+      })
+    );
   }
 
   function selectObject(objectId: string | null) {
@@ -143,12 +208,24 @@ function LoadedProjectWorkspace({
         projectName={project.name}
         saveError={saveError}
         saving={saving}
-        selectedNodeId={selectedNodeId}
+        selectedNodeId={effectiveSelectedNodeId}
         onBack={onBack}
         onFileTreeChange={persistFileTree}
         onSelectNode={setSelectedNodeId}
       />
-      <ProjectPreviewArea fileTree={fileTree} project={project} selectedNodeId={selectedNodeId} />
+      <ProjectWorkspaceArea
+        contentFileNode={selectedContentFileNode}
+        fileTree={fileTree}
+        project={project}
+        selectedNodeId={effectiveSelectedNodeId}
+        canRedo={canRedo}
+        canUndo={canUndo}
+        onExecuteCommand={executeEditorCommand}
+        onRedo={redo}
+        selectedObjectId={selectedObjectId}
+        onSelectObject={selectObject}
+        onUndo={undo}
+      />
       <ProjectObjectTreePanel
         contentFileNode={selectedContentFileNode}
         saving={saving}
@@ -157,5 +234,18 @@ function LoadedProjectWorkspace({
         onSelectObject={selectObject}
       />
     </section>
+  );
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
   );
 }

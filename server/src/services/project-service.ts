@@ -8,8 +8,12 @@ import type {
   ProjectFileNode,
   ProjectObjectKind,
   ProjectObjectNode,
-  ProjectObjectTransform,
+  ProjectObjectRectTransform,
   ProjectSummary
+} from "@bg-maker/shared";
+import {
+  getDefaultProjectObjectRectTransform,
+  projectObjectKinds as sharedProjectObjectKinds
 } from "@bg-maker/shared";
 
 type ProjectStoreData = {
@@ -26,21 +30,13 @@ const maxProjectFileTreeNodes = 500;
 const maxProjectObjectTreeDepth = 24;
 const maxProjectObjectTreeNodes = 1000;
 const maxProjectObjectCoordinate = 10000;
+const maxProjectObjectDimension = 10000;
 const maxProjectObjectRotation = 3600;
 const maxProjectObjectScale = 8;
+const minProjectObjectDimension = 1;
 const minProjectObjectScale = 0.1;
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
-const projectObjectKinds = new Set<ProjectObjectKind>([
-  "group",
-  "card",
-  "deck",
-  "token",
-  "zone",
-  "counter",
-  "die",
-  "label",
-  "image"
-]);
+const projectObjectKinds = new Set<ProjectObjectKind>(sharedProjectObjectKinds);
 
 export class ProjectValidationError extends Error {
   constructor(message: string) {
@@ -386,14 +382,23 @@ function normalizeProjectObjectNode(
 
   nodeIds.add(id);
 
+  const kind = projectObjectKinds.has(record.kind as ProjectObjectKind)
+    ? (record.kind as ProjectObjectKind)
+    : "group";
+
   return {
     id,
     name,
-    kind: projectObjectKinds.has(record.kind as ProjectObjectKind)
-      ? (record.kind as ProjectObjectKind)
-      : "group",
+    kind,
     visible: record.visible !== false,
-    transform: normalizeProjectObjectTransform(record.transform),
+    components: {
+      rectTransform: normalizeProjectObjectRectTransform(
+        record.components && typeof record.components === "object"
+          ? (record.components as Record<string, unknown>).rectTransform
+          : undefined,
+        kind
+      )
+    },
     children: Array.isArray(record.children)
       ? record.children.map((child) =>
           normalizeProjectObjectNode(child, depth + 1, nodeIds, nodeCount)
@@ -402,23 +407,47 @@ function normalizeProjectObjectNode(
   };
 }
 
-function normalizeProjectObjectTransform(value: unknown): ProjectObjectTransform {
+function normalizeProjectObjectRectTransform(
+  value: unknown,
+  kind: ProjectObjectKind
+): ProjectObjectRectTransform {
+  const defaultRectTransform = getDefaultProjectObjectRectTransform(kind);
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
   return {
-    rotation: normalizeFiniteNumber(record.rotation, 0, {
+    height: normalizeFiniteNumber(record.height, defaultRectTransform.height, {
+      max: maxProjectObjectDimension,
+      min: minProjectObjectDimension
+    }),
+    pivotX: normalizeFiniteNumber(record.pivotX, defaultRectTransform.pivotX, {
+      max: 1,
+      min: 0
+    }),
+    pivotY: normalizeFiniteNumber(record.pivotY, defaultRectTransform.pivotY, {
+      max: 1,
+      min: 0
+    }),
+    rotation: normalizeFiniteNumber(record.rotation, defaultRectTransform.rotation, {
       max: maxProjectObjectRotation,
       min: -maxProjectObjectRotation
     }),
-    scale: normalizeFiniteNumber(record.scale, 1, {
+    scaleX: normalizeFiniteNumber(record.scaleX, defaultRectTransform.scaleX, {
       max: maxProjectObjectScale,
       min: minProjectObjectScale
     }),
-    x: normalizeFiniteNumber(record.x, 0, {
+    scaleY: normalizeFiniteNumber(record.scaleY, defaultRectTransform.scaleY, {
+      max: maxProjectObjectScale,
+      min: minProjectObjectScale
+    }),
+    width: normalizeFiniteNumber(record.width, defaultRectTransform.width, {
+      max: maxProjectObjectDimension,
+      min: minProjectObjectDimension
+    }),
+    x: normalizeFiniteNumber(record.x, defaultRectTransform.x, {
       max: maxProjectObjectCoordinate,
       min: -maxProjectObjectCoordinate
     }),
-    y: normalizeFiniteNumber(record.y, 0, {
+    y: normalizeFiniteNumber(record.y, defaultRectTransform.y, {
       max: maxProjectObjectCoordinate,
       min: -maxProjectObjectCoordinate
     })

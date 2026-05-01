@@ -3,8 +3,9 @@ import type {
   ProjectFileNode,
   ProjectObjectKind,
   ProjectObjectNode,
-  ProjectObjectTransform
+  ProjectObjectRectTransform
 } from "@bg-maker/shared";
+import { projectObjectComponentEngine } from "./project-object-components";
 
 export type ProjectObjectTreeParentId = string | null;
 
@@ -16,13 +17,6 @@ export type ProjectObjectTreeLocation = {
 };
 
 const objectTreeFileKinds = new Set<ProjectFileKind>(["tableSetup", "object"]);
-
-export const defaultProjectObjectTransform: ProjectObjectTransform = {
-  rotation: 0,
-  scale: 1,
-  x: 0,
-  y: 0
-};
 
 export function isProjectObjectTreeFileNode(
   node: ProjectFileNode | null | undefined
@@ -36,16 +30,9 @@ export function isProjectObjectTreeFileNode(
 
 export function createProjectObjectNode(
   kind: ProjectObjectKind = "group",
-  name = getDefaultProjectObjectNodeName(kind)
+  name?: string
 ): ProjectObjectNode {
-  return {
-    id: crypto.randomUUID(),
-    name: name.trim() || getDefaultProjectObjectNodeName(kind),
-    kind,
-    visible: true,
-    children: [],
-    transform: defaultProjectObjectTransform
-  };
+  return projectObjectComponentEngine.createNode(kind, name);
 }
 
 export function appendProjectObjectNode(
@@ -166,19 +153,18 @@ export function setProjectObjectNodeVisibility(
   return result.changed ? result.nodes : objectTree;
 }
 
-export function getProjectObjectNodeTransform(object: ProjectObjectNode): ProjectObjectTransform {
-  return {
-    ...defaultProjectObjectTransform,
-    ...object.transform
-  };
+export function getProjectObjectNodeRectTransform(
+  object: ProjectObjectNode
+): ProjectObjectRectTransform {
+  return projectObjectComponentEngine.getRectTransform(object);
 }
 
-export function setProjectObjectNodeTransform(
+export function setProjectObjectNodeRectTransform(
   objectTree: ProjectObjectNode[],
   nodeId: string,
-  transform: ProjectObjectTransform
+  rectTransform: ProjectObjectRectTransform
 ): ProjectObjectNode[] {
-  const result = setProjectObjectNodeTransformInChildren(objectTree, nodeId, transform);
+  const result = setProjectObjectNodeRectTransformInChildren(objectTree, nodeId, rectTransform);
 
   return result.changed ? result.nodes : objectTree;
 }
@@ -267,42 +253,6 @@ function findProjectObjectNodeLocationInChildren(
   }
 
   return undefined;
-}
-
-function getDefaultProjectObjectNodeName(kind: ProjectObjectKind) {
-  if (kind === "card") {
-    return "New card";
-  }
-
-  if (kind === "deck") {
-    return "New deck";
-  }
-
-  if (kind === "token") {
-    return "New token";
-  }
-
-  if (kind === "zone") {
-    return "New zone";
-  }
-
-  if (kind === "counter") {
-    return "New counter";
-  }
-
-  if (kind === "die") {
-    return "New die";
-  }
-
-  if (kind === "label") {
-    return "New label";
-  }
-
-  if (kind === "image") {
-    return "New image";
-  }
-
-  return "New group";
 }
 
 function insertAt<T>(items: T[], item: T, index: number) {
@@ -462,26 +412,23 @@ function setProjectObjectNodeVisibilityInChildren(
   return { changed, nodes };
 }
 
-function setProjectObjectNodeTransformInChildren(
+function setProjectObjectNodeRectTransformInChildren(
   objectTree: ProjectObjectNode[],
   nodeId: string,
-  transform: ProjectObjectTransform
+  rectTransform: ProjectObjectRectTransform
 ): ProjectObjectTreeUpdateResult {
   let changed = false;
   const nodes = objectTree.map((node) => {
     if (node.id === nodeId) {
       changed = true;
 
-      return {
-        ...node,
-        transform
-      };
+      return projectObjectComponentEngine.withRectTransform(node, rectTransform);
     }
 
-    const childResult = setProjectObjectNodeTransformInChildren(
+    const childResult = setProjectObjectNodeRectTransformInChildren(
       node.children ?? [],
       nodeId,
-      transform
+      rectTransform
     );
 
     if (childResult.changed) {

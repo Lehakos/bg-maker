@@ -123,11 +123,14 @@ describe("ProjectService", () => {
                     id: " card-1 ",
                     kind: "card",
                     name: " Card 1 ",
-                    transform: {
-                      rotation: 5000,
-                      scale: 99,
-                      x: -12000,
-                      y: Number.POSITIVE_INFINITY
+                    components: {
+                      rectTransform: {
+                        rotation: 5000,
+                        scaleX: 99,
+                        scaleY: 99,
+                        x: -12000,
+                        y: Number.POSITIVE_INFINITY
+                      }
                     },
                     visible: false
                   }
@@ -171,11 +174,18 @@ describe("ProjectService", () => {
                       id: "card-1",
                       kind: "card",
                       name: "Card 1",
-                      transform: {
-                        rotation: 3600,
-                        scale: 8,
-                        x: -10000,
-                        y: 0
+                      components: {
+                        rectTransform: {
+                          height: 350,
+                          pivotX: 0.5,
+                          pivotY: 0.5,
+                          rotation: 3600,
+                          scaleX: 8,
+                          scaleY: 8,
+                          width: 250,
+                          x: -10000,
+                          y: 0
+                        }
                       },
                       visible: false
                     }

@@ -13,22 +13,34 @@ export type ProjectFileNodeType = "folder" | "file";
 
 export type ProjectFileKind = "tableSetup" | "object" | "image" | "document";
 
-export type ProjectObjectKind =
-  | "group"
-  | "card"
-  | "deck"
-  | "token"
-  | "zone"
-  | "counter"
-  | "die"
-  | "label"
-  | "image";
+export const projectObjectKinds = [
+  "group",
+  "card",
+  "deck",
+  "token",
+  "zone",
+  "counter",
+  "die",
+  "label",
+  "image"
+] as const;
 
-export type ProjectObjectTransform = {
+export type ProjectObjectKind = (typeof projectObjectKinds)[number];
+
+export type ProjectObjectRectTransform = {
+  height: number;
+  pivotX: number;
+  pivotY: number;
   rotation: number;
-  scale: number;
+  scaleX: number;
+  scaleY: number;
+  width: number;
   x: number;
   y: number;
+};
+
+export type ProjectObjectComponents = {
+  rectTransform?: ProjectObjectRectTransform;
 };
 
 export type ProjectObjectNode = {
@@ -36,8 +48,8 @@ export type ProjectObjectNode = {
   name: string;
   kind: ProjectObjectKind;
   visible: boolean;
+  components?: ProjectObjectComponents;
   children?: ProjectObjectNode[];
-  transform?: ProjectObjectTransform;
 };
 
 export type ProjectFileNode = {
@@ -82,3 +94,41 @@ export type UpdateProjectFileTreeResponse = {
 export type ApiErrorResponse = {
   message: string;
 };
+
+const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; width: number }> = {
+  card: { height: 350, width: 250 },
+  counter: { height: 56, width: 120 },
+  deck: { height: 350, width: 250 },
+  die: { height: 72, width: 72 },
+  group: { height: 240, width: 320 },
+  image: { height: 180, width: 240 },
+  label: { height: 32, width: 160 },
+  token: { height: 96, width: 96 },
+  zone: { height: 220, width: 320 }
+};
+
+export function getDefaultProjectObjectRectTransform(
+  kind: ProjectObjectKind = "group"
+): ProjectObjectRectTransform {
+  const size = defaultProjectObjectSizes[kind];
+
+  return {
+    height: size.height,
+    pivotX: 0.5,
+    pivotY: 0.5,
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+    width: size.width,
+    x: 0,
+    y: 0
+  };
+}
+
+export function createDefaultProjectObjectComponents(
+  kind: ProjectObjectKind = "group"
+): ProjectObjectComponents {
+  return {
+    rectTransform: getDefaultProjectObjectRectTransform(kind)
+  };
+}

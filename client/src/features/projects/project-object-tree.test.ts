@@ -3,7 +3,7 @@ import type {
   ProjectFileNode,
   ProjectObjectKind,
   ProjectObjectNode,
-  ProjectObjectTransform
+  ProjectObjectRectTransform
 } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
@@ -13,10 +13,10 @@ import {
   findProjectObjectNodeLocation,
   getExpandableProjectObjectNodeIds,
   getProjectObjectNodeChildren,
-  getProjectObjectNodeTransform,
+  getProjectObjectNodeRectTransform,
   moveProjectObjectNode,
   renameProjectObjectNode,
-  setProjectObjectNodeTransform,
+  setProjectObjectNodeRectTransform,
   setProjectObjectNodeVisibility,
   updateProjectFileNodeObjectTree
 } from "./project-object-tree";
@@ -126,34 +126,48 @@ describe("project object tree helpers", () => {
 
   it("updates visibility and transforms only when the target object exists", () => {
     const objectTree = createObjectTree();
-    const transform: ProjectObjectTransform = {
+    const rectTransform: ProjectObjectRectTransform = {
+      height: 120,
+      pivotX: 0.5,
+      pivotY: 0.5,
       rotation: 15,
-      scale: 2,
+      scaleX: 2,
+      scaleY: 2,
+      width: 80,
       x: 10,
       y: 20
     };
     const visibilityTree = setProjectObjectNodeVisibility(objectTree, "die-1", false);
-    const transformTree = setProjectObjectNodeTransform(objectTree, "die-1", transform);
+    const transformTree = setProjectObjectNodeRectTransform(objectTree, "die-1", rectTransform);
 
     expect(findProjectObjectNode(visibilityTree, "die-1")?.visible).toBe(false);
     expect(findProjectObjectNode(objectTree, "die-1")?.visible).toBe(true);
-    expect(findProjectObjectNode(transformTree, "die-1")?.transform).toEqual(transform);
+    expect(findProjectObjectNode(transformTree, "die-1")?.components?.rectTransform).toEqual(
+      rectTransform
+    );
     expect(setProjectObjectNodeVisibility(objectTree, "missing-object", false)).toBe(objectTree);
-    expect(setProjectObjectNodeTransform(objectTree, "missing-object", transform)).toBe(objectTree);
+    expect(setProjectObjectNodeRectTransform(objectTree, "missing-object", rectTransform)).toBe(
+      objectTree
+    );
   });
 
-  it("merges missing transform fields with defaults", () => {
+  it("merges missing rect transform fields with defaults", () => {
     const object = {
       id: "partial-transform",
       kind: "card",
       name: "Partial transform",
-      transform: { x: 12 },
+      components: { rectTransform: { x: 12 } },
       visible: true
     } as ProjectObjectNode;
 
-    expect(getProjectObjectNodeTransform(object)).toEqual({
+    expect(getProjectObjectNodeRectTransform(object)).toEqual({
+      height: 350,
+      pivotX: 0.5,
+      pivotY: 0.5,
       rotation: 0,
-      scale: 1,
+      scaleX: 1,
+      scaleY: 1,
+      width: 250,
       x: 12,
       y: 0
     });
