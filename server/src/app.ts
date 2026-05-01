@@ -1,14 +1,6 @@
 import cors from "@fastify/cors";
 import Fastify from "fastify";
-import { registerCardTemplatesController } from "./controllers/card-templates-controller.js";
-import { registerCollectionsController } from "./controllers/collections-controller.js";
-import { registerComponentsController } from "./controllers/components-controller.js";
 import { registerHealthController } from "./controllers/health-controller.js";
-import { registerPieceTemplatesController } from "./controllers/piece-templates-controller.js";
-import { registerProjectsController } from "./controllers/projects-controller.js";
-import { registerRuntimeSessionsController } from "./controllers/runtime-sessions-controller.js";
-import { registerTableSetupController } from "./controllers/table-setup-controller.js";
-import { registerTileTemplatesController } from "./controllers/tile-templates-controller.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -21,14 +13,6 @@ export async function buildApp() {
   });
 
   registerHealthController(app);
-  registerProjectsController(app);
-  registerCardTemplatesController(app);
-  registerTileTemplatesController(app);
-  registerPieceTemplatesController(app);
-  registerComponentsController(app);
-  registerCollectionsController(app);
-  registerTableSetupController(app);
-  registerRuntimeSessionsController(app);
 
   return app;
 }

@@ -13,9 +13,20 @@
   background: #f6f7f4;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: linear-gradient(180deg, rgba(45, 212, 191, 0.1), transparent 260px), #f6f7f4;
+  background: #f6f7f4;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
 }

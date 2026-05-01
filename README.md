@@ -1,10 +1,10 @@
 # BG Maker
 
-Monorepo for a board game prototyping web app.
+Monorepo base for a tabletop engine reboot.
 
 ## Workspaces
 
-- `client`: React, Vite, Tailwind CSS, TanStack Query, TanStack Router, Axios, Mantine.
+- `client`: React, Vite, Tailwind CSS, Mantine, and the existing frontend dependency set.
 - `shared`: shared TypeScript types and constants.
 - `server`: Fastify API.
 
@@ -17,4 +17,8 @@ pnpm build
 pnpm typecheck
 ```
 
-The client runs on `http://localhost:5173` and proxies `/api` to the Fastify server on `http://localhost:3000`.
+The client runs on `http://localhost:5174` and proxies `/api` to the Fastify server on `http://localhost:3000`.
+
+## Vision
+
+See [`docs/tabletop-engine-vision.md`](docs/tabletop-engine-vision.md).

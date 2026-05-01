@@ -1,0 +1,37 @@
+.app-shell {
+  min-height: 100vh;
+  background: #f6f7f4;
+  color: #1f2937;
+}
+
+.app-header {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #d9e1dc;
+  display: flex;
+  min-height: 72px;
+  padding: 12px 18px;
+}
+
+.brand-mark {
+  align-items: center;
+  background: #24443f;
+  border-radius: 8px;
+  color: #ffffff;
+  display: flex;
+  font-size: 13px;
+  font-weight: 800;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.app-header h1 {
+  font-size: 20px;
+  letter-spacing: 0;
+  line-height: 1.1;
+}
+
+.app-main {
+  min-height: calc(100vh - 72px);
+}
