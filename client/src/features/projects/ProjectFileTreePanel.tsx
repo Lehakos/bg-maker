@@ -18,11 +18,11 @@ import {
 } from "@dnd-kit/core";
 import type { ProjectFileNode } from "@bg-maker/shared";
 import {
-  ArrowLeft,
   Boxes,
   ChevronDown,
   ChevronRight,
   Folder,
+  LockKeyhole,
   Pencil,
   Plus,
   Rows3,
@@ -46,6 +46,7 @@ import {
   deleteProjectFileNode,
   findProjectFileNode,
   findProjectFileNodeLocation,
+  isProtectedProjectFileNode,
   moveProjectFileNodeToParent,
   renameProjectFileNode,
   sortProjectFileTree,
@@ -57,6 +58,7 @@ import {
   type ProjectFileCreateType
 } from "./ProjectFileCreateModal";
 import { ProjectFileNodeIcon } from "./project-file-tree-ui";
+import { getProjectImageAssetUrl } from "./project-image-assets";
 
 const indentationWidth = 18;
 const nodeDropActivationPadding = 8;
@@ -90,22 +92,20 @@ type NodeDropTargetData = {
 
 type ProjectFileTreePanelProps = {
   fileTree: ProjectFileNode[];
-  projectName: string;
+  projectId: string;
   saving: boolean;
   saveError?: Error | null;
   selectedNodeId: string | null;
-  onBack: () => void;
   onFileTreeChange: (fileTree: ProjectFileNode[]) => void;
   onSelectNode: (nodeId: string | null) => void;
 };
 
 export function ProjectFileTreePanel({
   fileTree,
-  projectName,
+  projectId,
   saving,
   saveError,
   selectedNodeId,
-  onBack,
   onFileTreeChange,
   onSelectNode
 }: ProjectFileTreePanelProps) {
@@ -136,8 +136,8 @@ export function ProjectFileTreePanel({
     : undefined;
   const contextMenuActions = createContextMenuActions({
     disabled: saving,
-    canDelete: Boolean(contextMenuNode),
-    canRename: Boolean(contextMenuNode),
+    canDelete: Boolean(contextMenuNode && !isProtectedProjectFileNode(contextMenuNode)),
+    canRename: Boolean(contextMenuNode && !isProtectedProjectFileNode(contextMenuNode)),
     onCreate: handleRequestCreateNode,
     onRename: handleRequestRenameNode,
     onDelete: handleDeleteNode
@@ -338,23 +338,6 @@ export function ProjectFileTreePanel({
       className="flex min-h-0 flex-col overflow-hidden border-b border-slate-200 bg-white text-slate-700 md:border-b-0 md:border-r"
       onContextMenu={(event) => handleContextMenu(event)}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-slate-200 bg-slate-50 px-2">
-        <button
-          aria-label="Back to projects"
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-          type="button"
-          onClick={onBack}
-        >
-          <ArrowLeft size={16} />
-        </button>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-slate-600">
-            File tree
-          </h2>
-          <p className="truncate text-[11px] leading-none text-slate-500">{projectName}</p>
-        </div>
-      </div>
-
       <DndContext
         sensors={sensors}
         collisionDetection={fileTreeCollisionDetection}
@@ -368,6 +351,7 @@ export function ProjectFileTreePanel({
           expandedFolderIds={expandedFolderIds}
           fileTree={fileTree}
           flattenedFileTree={flattenedFileTree}
+          projectId={projectId}
           renameDraft={renameDraft}
           renamingNodeId={renamingNodeId}
           selectedNodeId={selectedNodeId}
@@ -416,6 +400,7 @@ type ProjectFileTreeListProps = {
   expandedFolderIds: Set<string>;
   fileTree: ProjectFileNode[];
   flattenedFileTree: FlattenedProjectFileNode[];
+  projectId: string;
   renameDraft: string;
   renamingNodeId: string | null;
   selectedNodeId: string | null;
@@ -432,6 +417,7 @@ function ProjectFileTreeList({
   expandedFolderIds,
   fileTree,
   flattenedFileTree,
+  projectId,
   renameDraft,
   renamingNodeId,
   selectedNodeId,
@@ -470,6 +456,7 @@ function ProjectFileTreeList({
             depth={item.depth}
             expanded={expandedFolderIds.has(item.id)}
             item={item}
+            projectId={projectId}
             renameDraft={renameDraft}
             renaming={renamingNodeId === item.id}
             selected={selectedNodeId === item.id}
@@ -492,6 +479,7 @@ type ProjectFileTreeNodeProps = {
   depth: number;
   expanded: boolean;
   item: FlattenedProjectFileNode;
+  projectId: string;
   renameDraft: string;
   renaming: boolean;
   selected: boolean;
@@ -509,6 +497,7 @@ function ProjectFileTreeNode({
   depth,
   expanded,
   item,
+  projectId,
   renameDraft,
   renaming,
   selected,
@@ -527,7 +516,7 @@ function ProjectFileTreeNode({
     transform
   } = useDraggable({
     id: item.id,
-    disabled: renaming
+    disabled: renaming || isProtectedProjectFileNode(item.node)
   });
   const canHighlightDrop = nodeCanHighlightDrop({
     activeNodeId,
@@ -552,6 +541,7 @@ function ProjectFileTreeNode({
     transform: getDragTransformStyle(transform)
   };
   const { node } = item;
+  const protectedNode = isProtectedProjectFileNode(node);
   const hasChildren = node.type === "folder" && Boolean(node.children?.length);
   const iconClassName = getProjectFileNodeIconClassName(node);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -607,9 +597,13 @@ function ProjectFileTreeNode({
           "group flex h-7 min-w-max items-center pr-2 text-[13px] leading-none transition-colors",
           isOver && canHighlightDrop
             ? "bg-emerald-100 text-slate-950 outline outline-1 -outline-offset-1 outline-emerald-500"
-            : selected
+            : selected && protectedNode
+              ? "bg-teal-100 text-teal-950 outline outline-1 -outline-offset-1 outline-teal-500"
+              : selected
               ? "bg-sky-100 text-slate-950 outline outline-1 -outline-offset-1 outline-sky-500"
-              : "text-slate-700 hover:bg-slate-100"
+              : protectedNode
+                ? "bg-teal-50 text-teal-950 hover:bg-teal-100"
+                : "text-slate-700 hover:bg-slate-100"
         )}
         style={{ paddingLeft: `${8 + depth * indentationWidth}px` }}
         onContextMenu={(event) => onContextMenu(event, node.id)}
@@ -634,7 +628,11 @@ function ProjectFileTreeNode({
 
         {renaming ? (
           <div className="flex h-full min-w-0 flex-1 items-center gap-2">
-            <ProjectFileNodeIcon className={cx("shrink-0", iconClassName)} node={node} size={17} />
+            <ProjectFileNodeVisual
+              iconClassName={iconClassName}
+              node={node}
+              projectId={projectId}
+            />
             <input
               ref={renameInputRef}
               className="h-5 min-w-32 flex-1 rounded border border-sky-500 bg-white px-1 text-[13px] text-slate-950 outline-none"
@@ -653,13 +651,54 @@ function ProjectFileTreeNode({
             {...listeners}
             onClick={handleSelect}
           >
-            <ProjectFileNodeIcon className={cx("shrink-0", iconClassName)} node={node} size={17} />
+            <ProjectFileNodeVisual
+              iconClassName={iconClassName}
+              node={node}
+              projectId={projectId}
+            />
             <span className="truncate">{node.name}</span>
+            {protectedNode ? (
+              <span
+                aria-label="System folder"
+                title="System folder"
+                className="inline-flex shrink-0 text-teal-600"
+              >
+                <LockKeyhole aria-hidden size={12} />
+              </span>
+            ) : null}
           </button>
         )}
       </div>
     </div>
   );
+}
+
+type ProjectFileNodeVisualProps = {
+  iconClassName: string;
+  node: ProjectFileNode;
+  projectId: string;
+};
+
+function ProjectFileNodeVisual({ iconClassName, node, projectId }: ProjectFileNodeVisualProps) {
+  const imageAssetId = node.kind === "image" ? node.imageAsset?.id : undefined;
+  const [failedImageAssetId, setFailedImageAssetId] = useState<string | null>(null);
+  const previewFailed = Boolean(imageAssetId && failedImageAssetId === imageAssetId);
+
+  if (imageAssetId && !previewFailed) {
+    return (
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded border border-slate-200 bg-white">
+        <img
+          alt=""
+          className="h-full w-full object-cover"
+          draggable={false}
+          src={getProjectImageAssetUrl(projectId, imageAssetId)}
+          onError={() => setFailedImageAssetId(imageAssetId)}
+        />
+      </span>
+    );
+  }
+
+  return <ProjectFileNodeIcon className={cx("shrink-0", iconClassName)} node={node} size={17} />;
 }
 
 function createContextMenuActions({
@@ -971,6 +1010,10 @@ function getDragTransformStyle(transform: { x: number; y: number } | null) {
 }
 
 function getProjectFileNodeIconClassName(node: ProjectFileNode) {
+  if (isProtectedProjectFileNode(node)) {
+    return "text-teal-600";
+  }
+
   if (node.type === "folder") {
     return "text-sky-600";
   }

@@ -2,7 +2,8 @@ import type { Project, ProjectFileNode, ProjectObjectNode } from "@bg-maker/shar
 import { Alert, Button, Center, Loader } from "@mantine/core";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAppHeaderContent } from "../../app/app-header-context";
 import { ProjectFileTreePanel } from "./ProjectFileTreePanel";
 import { ProjectObjectInspectorPanel } from "./ProjectObjectInspectorPanel";
 import { ProjectObjectTreePanel } from "./ProjectObjectTreePanel";
@@ -14,6 +15,7 @@ import {
 } from "./project-editor-commands";
 import { useProject, useUpdateProjectFileTree } from "./project-hooks";
 import { findProjectFileNode, sortProjectFileTree } from "./project-file-tree";
+import { formatProjectDate } from "./project-format";
 import { findProjectObjectNode, isProjectObjectTreeFileNode } from "./project-object-tree";
 
 export function ProjectWorkspacePage() {
@@ -22,9 +24,9 @@ export function ProjectWorkspacePage() {
   const project = useProject(projectId);
   const updateFileTree = useUpdateProjectFileTree(projectId);
 
-  function goToProjects() {
+  const goToProjects = useCallback(() => {
     void navigate({ to: "/" });
-  }
+  }, [navigate]);
 
   if (project.isLoading) {
     return (
@@ -84,6 +86,10 @@ function LoadedProjectWorkspace({
   onSaveFileTree
 }: LoadedProjectWorkspaceProps) {
   const initialFileTree = useMemo(() => sortProjectFileTree(project.fileTree), [project.fileTree]);
+  const headerContent = useMemo(
+    () => <ProjectWorkspaceHeader project={project} onBack={onBack} />,
+    [onBack, project]
+  );
   const {
     canRedo,
     canUndo,
@@ -95,6 +101,7 @@ function LoadedProjectWorkspace({
     initialState: initialFileTree,
     onStateChange: onSaveFileTree
   });
+  useAppHeaderContent(headerContent);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
     () => initialFileTree[0]?.id ?? null
   );
@@ -219,11 +226,10 @@ function LoadedProjectWorkspace({
     <section className="grid h-[calc(100vh-72px)] min-h-0 w-full grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] overflow-hidden bg-[#f6f7f4] text-slate-800 md:grid-cols-[minmax(260px,340px)_minmax(0,1fr)_minmax(260px,320px)] md:grid-rows-1">
       <ProjectFileTreePanel
         fileTree={fileTree}
-        projectName={project.name}
+        projectId={project.id}
         saveError={saveError}
         saving={saving}
         selectedNodeId={effectiveSelectedNodeId}
-        onBack={onBack}
         onFileTreeChange={persistFileTree}
         onSelectNode={setSelectedNodeId}
       />
@@ -258,6 +264,37 @@ function LoadedProjectWorkspace({
         />
       </div>
     </section>
+  );
+}
+
+type ProjectWorkspaceHeaderProps = {
+  project: Project;
+  onBack: () => void;
+};
+
+function ProjectWorkspaceHeader({ project, onBack }: ProjectWorkspaceHeaderProps) {
+  return (
+    <div className="flex w-full min-w-0 items-center justify-between gap-4">
+      <div className="flex min-w-0 items-center gap-4">
+        <button
+          aria-label="Back to projects"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+          type="button"
+          onClick={onBack}
+        >
+          <ArrowLeft size={24} />
+        </button>
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-semibold uppercase leading-tight tracking-[0.12em] text-slate-600">
+            File tree
+          </h1>
+          <p className="truncate text-sm font-medium text-slate-600">{project.name}</p>
+        </div>
+      </div>
+      <p className="hidden shrink-0 text-sm text-slate-500 sm:block">
+        Updated {formatProjectDate(project.updatedAt)}
+      </p>
+    </div>
   );
 }
 

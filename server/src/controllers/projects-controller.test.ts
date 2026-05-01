@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { apiPaths, type UploadProjectImageAssetResponse } from "@bg-maker/shared";
+import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app.js";
 import { maxProjectImageAssetBytes, ProjectService } from "../services/project-service.js";
@@ -23,7 +24,8 @@ afterEach(async () => {
 
 describe("projects controller image assets", () => {
   it("uploads supported images and serves only assets present in the file tree", async () => {
-    const project = await projectService.createProject({ name: "Images" });
+    const project = await projectService.createProject({ name: "Assets" });
+    const uploadData = await createTestPngBuffer();
     const uploadResponse = await app.inject({
       method: "POST",
       url: apiPaths.projectImageAssets(project.id),
@@ -31,16 +33,16 @@ describe("projects controller image assets", () => {
         "content-type": "image/png",
         "x-file-name": "token.png"
       },
-      payload: Buffer.from("image-data")
+      payload: uploadData
     });
     const uploadPayload = uploadResponse.json<UploadProjectImageAssetResponse>();
 
     expect(uploadResponse.statusCode).toBe(201);
     expect(uploadPayload.imageAsset).toMatchObject({
-      byteSize: 10,
       contentType: "image/png",
       fileName: "token.png"
     });
+    expect(uploadPayload.imageAsset.byteSize).toBeLessThan(uploadData.byteLength);
 
     await expectGetImageAssetStatus(project.id, uploadPayload.imageAsset.id, 404);
 
@@ -55,8 +57,8 @@ describe("projects controller image assets", () => {
             type: "file"
           }
         ],
-        id: "images",
-        name: "Images",
+        id: "assets",
+        name: "Assets",
         type: "folder"
       }
     ]);
@@ -67,18 +69,18 @@ describe("projects controller image assets", () => {
     });
 
     expect(getResponse.statusCode).toBe(200);
-    expect(getResponse.headers["content-type"]).toContain("image/png");
-    expect(getResponse.rawPayload.toString()).toBe("image-data");
+    expect(getResponse.headers["content-type"]).toContain(uploadPayload.imageAsset.contentType);
+    expect(getResponse.rawPayload.byteLength).toBe(uploadPayload.imageAsset.byteSize);
 
     await projectService.updateProjectFileTree(project.id, [
-      { children: [], id: "images", name: "Images", type: "folder" }
+      { children: [], id: "assets", name: "Assets", type: "folder" }
     ]);
 
     await expectGetImageAssetStatus(project.id, uploadPayload.imageAsset.id, 404);
   });
 
   it("rejects unsupported or oversized image uploads", async () => {
-    const project = await projectService.createProject({ name: "Images" });
+    const project = await projectService.createProject({ name: "Assets" });
     const unsupportedResponse = await app.inject({
       method: "POST",
       url: apiPaths.projectImageAssets(project.id),
@@ -87,6 +89,15 @@ describe("projects controller image assets", () => {
         "x-file-name": "bad.svg"
       },
       payload: Buffer.from("<svg />")
+    });
+    const gifResponse = await app.inject({
+      method: "POST",
+      url: apiPaths.projectImageAssets(project.id),
+      headers: {
+        "content-type": "image/gif",
+        "x-file-name": "bad.gif"
+      },
+      payload: Buffer.from("gif")
     });
     const oversizedResponse = await app.inject({
       method: "POST",
@@ -99,6 +110,7 @@ describe("projects controller image assets", () => {
     });
 
     expect(unsupportedResponse.statusCode).toBe(415);
+    expect(gifResponse.statusCode).toBe(415);
     expect(oversizedResponse.statusCode).toBe(413);
   });
 });
@@ -110,4 +122,17 @@ async function expectGetImageAssetStatus(projectId: string, assetId: string, sta
   });
 
   expect(response.statusCode).toBe(statusCode);
+}
+
+async function createTestPngBuffer() {
+  return await sharp({
+    create: {
+      background: { alpha: 1, b: 48, g: 32, r: 224 },
+      channels: 4,
+      height: 96,
+      width: 96
+    }
+  })
+    .png({ compressionLevel: 0 })
+    .toBuffer();
 }

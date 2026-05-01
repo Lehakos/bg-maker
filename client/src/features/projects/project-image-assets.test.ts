@@ -37,7 +37,7 @@ function imageFile(id: string, name: string, asset = imageAsset): ProjectFileNod
 describe("project image asset helpers", () => {
   it("resolves available image assets from image file nodes", () => {
     const fileTree = [
-      folder("images", "Images", [imageFile("image-file-1", "Token")]),
+      folder("assets", "Assets", [imageFile("image-file-1", "Token")]),
       imageFile("root-image", "Root image", { ...imageAsset, id: "asset-2" })
     ];
     const imageAssets = getProjectImageAssetOptions("project 1", fileTree);
@@ -51,8 +51,8 @@ describe("project image asset helpers", () => {
     expect(getProjectImageAssetOptionById([], "asset-1")).toBeUndefined();
   });
 
-  it("adds uploaded image assets to the Images folder and hides deleted assets", () => {
-    const fileTree = [folder("images", "Images")];
+  it("adds uploaded image assets to the Assets folder and hides deleted assets", () => {
+    const fileTree = [folder("assets", "Assets")];
     const { fileTree: nextFileTree, fileNode } = appendProjectImageAssetFileNode(
       fileTree,
       imageAsset
@@ -68,5 +68,15 @@ describe("project image asset helpers", () => {
     expect(
       getProjectImageAssetOptionById(getProjectImageAssetOptions("project-1", []), "asset-1")
     ).toBeUndefined();
+  });
+
+  it("creates the Assets folder when uploading into a tree that does not have it yet", () => {
+    const { fileTree: nextFileTree, fileNode } = appendProjectImageAssetFileNode([], imageAsset);
+
+    expect(findProjectFileNode(nextFileTree, "assets")).toMatchObject({
+      name: "Assets",
+      type: "folder"
+    });
+    expect(findProjectFileNode(nextFileTree, fileNode.id)).toMatchObject({ imageAsset });
   });
 });

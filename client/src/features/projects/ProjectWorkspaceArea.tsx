@@ -5,7 +5,6 @@ import type {
   ProjectObjectRectTransform
 } from "@bg-maker/shared";
 import {
-  Layers3,
   Maximize2,
   MousePointer2,
   Move,
@@ -27,15 +26,14 @@ import {
   createUpdateProjectObjectRectTransformCommand,
   type ProjectEditorCommand
 } from "./project-editor-commands";
-import {
-  countProjectFileTreeNodes,
-  findProjectFileNode,
-  findProjectFileNodeLocation
-} from "./project-file-tree";
+import { findProjectFileNode, findProjectFileNodeLocation } from "./project-file-tree";
 import { getProjectFileNodeTypeLabel } from "./project-file-tree-labels";
 import { ProjectFileNodeIcon } from "./project-file-tree-ui";
-import { formatProjectDate } from "./project-format";
-import { getProjectImageAssetOptions, type ProjectImageAssetOption } from "./project-image-assets";
+import {
+  getProjectImageAssetOptionById,
+  getProjectImageAssetOptions,
+  type ProjectImageAssetOption
+} from "./project-image-assets";
 import { getProjectObjectNodeRectTransform } from "./project-object-tree";
 import { ProjectObjectSurface } from "./ProjectObjectSurface";
 
@@ -82,7 +80,6 @@ export function ProjectWorkspaceArea({
   onUndo
 }: ProjectWorkspaceAreaProps) {
   const [activeTool, setActiveTool] = useState<WorkspaceTool>("select");
-  const totalNodes = countProjectFileTreeNodes(fileTree);
   const selectedNode = useMemo(
     () => (selectedNodeId ? findProjectFileNode(fileTree, selectedNodeId) : undefined),
     [fileTree, selectedNodeId]
@@ -105,21 +102,6 @@ export function ProjectWorkspaceArea({
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#eef1ed]">
-      <div className="flex min-h-[72px] items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-3">
-        <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold leading-tight text-slate-950">
-            {project.name}
-          </h1>
-          <p className="truncate text-sm text-slate-500">
-            Updated {formatProjectDate(project.updatedAt)}
-          </p>
-        </div>
-        <div className="hidden shrink-0 items-center gap-2 text-sm text-slate-500 sm:flex">
-          <Layers3 size={16} />
-          {totalNodes}
-        </div>
-      </div>
-
       <WorkspaceToolbar
         activeTool={activeTool}
         canRedo={canRedo}
@@ -286,7 +268,13 @@ function WorkspaceViewport({
   }
 
   if (selectedNode) {
-    return <SelectedFileWorkspace node={selectedNode} parentFolderName={parentFolderName} />;
+    return (
+      <SelectedFileWorkspace
+        imageAssets={imageAssets}
+        node={selectedNode}
+        parentFolderName={parentFolderName}
+      />
+    );
   }
 
   return <ProjectWorkspacePlaceholder />;
@@ -441,12 +429,16 @@ function ObjectScene({
 }
 
 type SelectedFileWorkspaceProps = {
+  imageAssets: ProjectImageAssetOption[];
   node: ProjectFileNode;
   parentFolderName?: string;
 };
 
-function SelectedFileWorkspace({ node, parentFolderName }: SelectedFileWorkspaceProps) {
+function SelectedFileWorkspace({ imageAssets, node, parentFolderName }: SelectedFileWorkspaceProps) {
   const childCount = node.type === "folder" ? (node.children ?? []).length : 0;
+  const selectedImageAsset = node.imageAsset
+    ? getProjectImageAssetOptionById(imageAssets, node.imageAsset.id)
+    : undefined;
 
   return (
     <div className="mx-auto flex h-full max-w-5xl flex-col gap-6 overflow-auto p-5">
@@ -467,6 +459,19 @@ function SelectedFileWorkspace({ node, parentFolderName }: SelectedFileWorkspace
         {node.type === "folder" ? <WorkspaceStat label="Items" value={String(childCount)} /> : null}
         {parentFolderName ? <WorkspaceStat label="Folder" value={parentFolderName} /> : null}
       </div>
+
+      {selectedImageAsset ? (
+        <section
+          aria-label={`${node.name} preview`}
+          className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-4"
+        >
+          <img
+            alt={node.name}
+            className="max-h-full max-w-full rounded-md object-contain shadow-sm"
+            src={selectedImageAsset.url}
+          />
+        </section>
+      ) : null}
     </div>
   );
 }

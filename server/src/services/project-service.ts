@@ -29,9 +29,12 @@ import {
   getDefaultProjectObjectRectTransform,
   getDefaultProjectObjectShape,
   getDefaultProjectObjectText,
+  projectAssetsFolderId,
+  projectAssetsFolderName,
   projectImageAssetContentTypes,
   projectObjectKinds as sharedProjectObjectKinds
 } from "@bg-maker/shared";
+import sharp from "sharp";
 
 type ProjectStoreData = {
   projects: Project[];
@@ -52,8 +55,14 @@ export type ProjectImageAssetContent = {
   imageAsset: ProjectImageAsset;
 };
 
+type OptimizedProjectImageAsset = {
+  contentType: ProjectImageAssetContentType;
+  data: Buffer;
+};
+
 const defaultDataDirectory = join(process.cwd(), ".bg-maker");
 export const maxProjectImageAssetBytes = 10 * 1024 * 1024;
+const maxProjectImageAssetDimension = 4096;
 const maxProjectFileTreeDepth = 12;
 const maxProjectFileTreeNodes = 500;
 const maxProjectObjectTreeDepth = 24;
@@ -194,12 +203,6 @@ export class ProjectService {
       return null;
     }
 
-    const contentType = normalizeProjectImageAssetContentType(request.contentType);
-
-    if (!contentType) {
-      throw new ProjectValidationError("Unsupported image content type");
-    }
-
     if (!Buffer.isBuffer(request.data) || request.data.byteLength === 0) {
       throw new ProjectValidationError("Image asset data is required");
     }
@@ -208,16 +211,20 @@ export class ProjectService {
       throw new ProjectValidationError("Image asset is too large");
     }
 
+    const optimizedImageAsset = await optimizeProjectImageAsset(request);
     const imageAsset: ProjectImageAsset = {
       id: randomUUID(),
       fileName: normalizeProjectImageAssetFileName(request.fileName),
-      contentType,
-      byteSize: request.data.byteLength,
+      contentType: optimizedImageAsset.contentType,
+      byteSize: optimizedImageAsset.data.byteLength,
       createdAt: new Date().toISOString()
     };
 
     await mkdir(this.getProjectImageAssetDirectory(project.id), { recursive: true });
-    await writeFile(this.getProjectImageAssetPath(project.id, imageAsset.id), request.data);
+    await writeFile(
+      this.getProjectImageAssetPath(project.id, imageAsset.id),
+      optimizedImageAsset.data
+    );
 
     return imageAsset;
   }
@@ -388,8 +395,8 @@ function createDefaultProjectFileTree(): ProjectFileNode[] {
       children: []
     },
     {
-      id: "images",
-      name: "Images",
+      id: projectAssetsFolderId,
+      name: projectAssetsFolderName,
       type: "folder",
       children: []
     }
@@ -404,7 +411,64 @@ function normalizeProjectFileTree(value: unknown): ProjectFileNode[] {
   const nodeIds = new Set<string>();
   const nodeCount = { value: 0 };
 
-  return value.map((node) => normalizeProjectFileNode(node, 0, nodeIds, nodeCount));
+  return ensureProjectAssetsFolder(
+    value.map((node) => normalizeProjectFileNode(node, 0, nodeIds, nodeCount))
+  );
+}
+
+function ensureProjectAssetsFolder(fileTree: ProjectFileNode[]): ProjectFileNode[] {
+  const { assetsNode, fileTree: fileTreeWithoutAssets } = extractProjectAssetsFolder(fileTree);
+
+  if (assetsNode && assetsNode.type !== "folder") {
+    throw new ProjectValidationError("Project assets folder is invalid");
+  }
+
+  return [
+    ...fileTreeWithoutAssets,
+    {
+      id: projectAssetsFolderId,
+      name: projectAssetsFolderName,
+      type: "folder",
+      children: assetsNode?.children ?? []
+    }
+  ];
+}
+
+function extractProjectAssetsFolder(fileTree: ProjectFileNode[]): {
+  assetsNode?: ProjectFileNode;
+  fileTree: ProjectFileNode[];
+} {
+  let assetsNode: ProjectFileNode | undefined;
+  const nextFileTree = fileTree.reduce<ProjectFileNode[]>((nodes, node) => {
+    if (node.id === projectAssetsFolderId) {
+      assetsNode = node;
+      return nodes;
+    }
+
+    if (node.type === "folder") {
+      const extractedChildren = extractProjectAssetsFolder(node.children ?? []);
+
+      if (extractedChildren.assetsNode) {
+        assetsNode = extractedChildren.assetsNode;
+      }
+
+      nodes.push({
+        ...node,
+        children: extractedChildren.fileTree
+      });
+
+      return nodes;
+    }
+
+    nodes.push(node);
+
+    return nodes;
+  }, []);
+
+  return {
+    assetsNode,
+    fileTree: nextFileTree
+  };
 }
 
 function normalizeProjectFileNode(
@@ -789,6 +853,82 @@ function normalizeProjectImageAsset(value: unknown): ProjectImageAsset | undefin
     byteSize,
     createdAt
   };
+}
+
+async function optimizeProjectImageAsset(
+  request: CreateProjectImageAssetRequest
+): Promise<OptimizedProjectImageAsset> {
+  const declaredContentType = normalizeProjectImageAssetContentType(request.contentType);
+
+  if (!declaredContentType) {
+    throw new ProjectValidationError("Unsupported image content type");
+  }
+
+  const metadata = await getProjectImageAssetMetadata(request.data);
+  const sourceContentType = getProjectImageAssetContentTypeFromSharpFormat(metadata.format);
+
+  if (!sourceContentType) {
+    throw new ProjectValidationError("Unsupported image content type");
+  }
+
+  return {
+    contentType: sourceContentType,
+    data: await encodeProjectImageAsset(request.data, sourceContentType)
+  };
+}
+
+async function getProjectImageAssetMetadata(data: Buffer) {
+  try {
+    return await sharp(data).metadata();
+  } catch {
+    throw new ProjectValidationError("Invalid image asset data");
+  }
+}
+
+async function encodeProjectImageAsset(
+  data: Buffer,
+  contentType: ProjectImageAssetContentType
+): Promise<Buffer> {
+  try {
+    const image = sharp(data)
+      .rotate()
+      .resize({
+        fit: "inside",
+        height: maxProjectImageAssetDimension,
+        width: maxProjectImageAssetDimension,
+        withoutEnlargement: true
+      });
+
+    if (contentType === "image/jpeg") {
+      return await image.jpeg({ mozjpeg: true, quality: 82 }).toBuffer();
+    }
+
+    if (contentType === "image/png") {
+      return await image.png({ adaptiveFiltering: true, compressionLevel: 9 }).toBuffer();
+    }
+
+    return await image.webp({ effort: 4, quality: 82 }).toBuffer();
+  } catch {
+    throw new ProjectValidationError("Invalid image asset data");
+  }
+}
+
+function getProjectImageAssetContentTypeFromSharpFormat(
+  format: string | undefined
+): ProjectImageAssetContentType | null {
+  if (format === "jpeg" || format === "jpg") {
+    return "image/jpeg";
+  }
+
+  if (format === "png") {
+    return "image/png";
+  }
+
+  if (format === "webp") {
+    return "image/webp";
+  }
+
+  return null;
 }
 
 function normalizeFiniteNumber(

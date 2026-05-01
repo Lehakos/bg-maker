@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Project } from "@bg-maker/shared";
+import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   maxProjectImageAssetBytes,
@@ -35,7 +36,7 @@ describe("ProjectService", () => {
       fileTree: [
         { children: [], id: "table-setups", name: "Table setups", type: "folder" },
         { children: [], id: "objects", name: "Objects", type: "folder" },
-        { children: [], id: "images", name: "Images", type: "folder" }
+        { children: [], id: "assets", name: "Assets", type: "folder" }
       ],
       name: "Table Quest",
       notes: "",
@@ -104,7 +105,10 @@ describe("ProjectService", () => {
 
     await expect(projectService.listProjects()).resolves.toHaveLength(1);
     await expect(projectService.getProject("valid")).resolves.toMatchObject({
-      fileTree: [{ id: "bad-file", kind: "document", name: "Bad file", type: "file" }],
+      fileTree: [
+        { id: "bad-file", kind: "document", name: "Bad file", type: "file" },
+        { children: [], id: "assets", name: "Assets", type: "folder" }
+      ],
       id: "valid"
     });
     await expect(projectService.getProject("invalid")).resolves.toBeNull();
@@ -287,6 +291,12 @@ describe("ProjectService", () => {
           id: "folder-1",
           name: "Folder 1",
           type: "folder"
+        },
+        {
+          children: [],
+          id: "assets",
+          name: "Assets",
+          type: "folder"
         }
       ],
       id: "project-1"
@@ -295,19 +305,50 @@ describe("ProjectService", () => {
     await expect(readStoredProjects()).resolves.toEqual([updatedProject]);
   });
 
+  it("restores the protected Assets folder as a root folder", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        children: [
+          {
+            children: [{ id: "asset-file", kind: "image", name: "Token", type: "file" }],
+            id: "assets",
+            name: "Renamed assets",
+            type: "folder"
+          }
+        ],
+        id: "folder-1",
+        name: "Folder 1",
+        type: "folder"
+      }
+    ]);
+
+    expect(updatedProject?.fileTree).toMatchObject([
+      { children: [], id: "folder-1", name: "Folder 1", type: "folder" },
+      {
+        children: [{ id: "asset-file", kind: "image", name: "Token", type: "file" }],
+        id: "assets",
+        name: "Assets",
+        type: "folder"
+      }
+    ]);
+  });
+
   it("stores image asset bytes and only serves assets present in the file tree", async () => {
-    const project = await projectService.createProject({ name: "Images" });
+    const project = await projectService.createProject({ name: "Assets" });
+    const uploadData = await createTestPngBuffer();
     const imageAsset = await projectService.createProjectImageAsset(project.id, {
       contentType: "image/png",
-      data: Buffer.from("image-data"),
+      data: uploadData,
       fileName: " token.png "
     });
 
     expect(imageAsset).toMatchObject({
-      byteSize: 10,
       contentType: "image/png",
       fileName: "token.png"
     });
+    expect(imageAsset?.byteSize).toBeLessThan(uploadData.byteLength);
     expect(await projectService.getProjectImageAsset(project.id, imageAsset!.id)).toBeNull();
 
     await projectService.updateProjectFileTree(project.id, [
@@ -321,26 +362,26 @@ describe("ProjectService", () => {
             type: "file"
           }
         ],
-        id: "images",
-        name: "Images",
+        id: "assets",
+        name: "Assets",
         type: "folder"
       }
     ]);
 
     const loadedImageAsset = await projectService.getProjectImageAsset(project.id, imageAsset!.id);
 
-    expect(loadedImageAsset?.data.toString()).toBe("image-data");
+    expect(loadedImageAsset?.data.byteLength).toBe(imageAsset?.byteSize);
     expect(loadedImageAsset?.imageAsset).toEqual(imageAsset);
 
     await projectService.updateProjectFileTree(project.id, [
-      { children: [], id: "images", name: "Images", type: "folder" }
+      { children: [], id: "assets", name: "Assets", type: "folder" }
     ]);
 
     expect(await projectService.getProjectImageAsset(project.id, imageAsset!.id)).toBeNull();
   });
 
   it("rejects invalid image asset uploads", async () => {
-    const project = await projectService.createProject({ name: "Images" });
+    const project = await projectService.createProject({ name: "Assets" });
 
     await expect(
       projectService.createProjectImageAsset(project.id, {
@@ -349,6 +390,20 @@ describe("ProjectService", () => {
         fileName: "bad.svg"
       })
     ).rejects.toThrow(new ProjectValidationError("Unsupported image content type"));
+    await expect(
+      projectService.createProjectImageAsset(project.id, {
+        contentType: "image/gif",
+        data: Buffer.from("gif"),
+        fileName: "bad.gif"
+      })
+    ).rejects.toThrow(new ProjectValidationError("Unsupported image content type"));
+    await expect(
+      projectService.createProjectImageAsset(project.id, {
+        contentType: "image/png",
+        data: Buffer.from("not an image"),
+        fileName: "bad.png"
+      })
+    ).rejects.toThrow(new ProjectValidationError("Invalid image asset data"));
     await expect(
       projectService.createProjectImageAsset(project.id, {
         contentType: "image/png",
@@ -410,6 +465,19 @@ async function readStoredProjects() {
   const parsedStore = JSON.parse(rawStore) as { projects: Project[] };
 
   return parsedStore.projects;
+}
+
+async function createTestPngBuffer() {
+  return await sharp({
+    create: {
+      background: { alpha: 1, b: 48, g: 32, r: 224 },
+      channels: 4,
+      height: 96,
+      width: 96
+    }
+  })
+    .png({ compressionLevel: 0 })
+    .toBuffer();
 }
 
 function createStoredProject(overrides: Partial<Project> = {}): Project {

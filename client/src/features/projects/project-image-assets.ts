@@ -1,5 +1,14 @@
-import { apiPaths, type ProjectFileNode, type ProjectImageAsset } from "@bg-maker/shared";
-import { appendProjectFileNode, createProjectFileNode } from "./project-file-tree";
+import {
+  apiPaths,
+  projectAssetsFolderId,
+  type ProjectFileNode,
+  type ProjectImageAsset
+} from "@bg-maker/shared";
+import {
+  appendProjectFileNode,
+  createProjectFileNode,
+  ensureProjectAssetsFolder
+} from "./project-file-tree";
 
 export type ProjectImageAssetOption = {
   asset: ProjectImageAsset;
@@ -15,11 +24,11 @@ export function appendProjectImageAssetFileNode(
   imageAsset: ProjectImageAsset
 ) {
   const fileNode = createProjectFileNode("image", imageAsset.fileName, { imageAsset });
-  const parentId = findProjectImagesFolderId(fileTree);
+  const fileTreeWithAssets = ensureProjectAssetsFolder(fileTree);
 
   return {
     fileNode,
-    fileTree: appendProjectFileNode(fileTree, parentId, fileNode)
+    fileTree: appendProjectFileNode(fileTreeWithAssets, projectAssetsFolderId, fileNode)
   };
 }
 
@@ -77,37 +86,4 @@ function collectProjectImageAssetOptions(
       url: getProjectImageAssetUrl(projectId, node.imageAsset.id)
     });
   });
-}
-
-function findProjectImagesFolderId(fileTree: ProjectFileNode[]) {
-  const explicitFolder = findProjectFolderId(fileTree, (node) => node.id === "images");
-
-  if (explicitFolder) {
-    return explicitFolder;
-  }
-
-  return findProjectFolderId(fileTree, (node) => node.name.trim().toLowerCase() === "images");
-}
-
-function findProjectFolderId(
-  fileTree: ProjectFileNode[],
-  matches: (node: ProjectFileNode) => boolean
-): string | null {
-  for (const node of fileTree) {
-    if (node.type !== "folder") {
-      continue;
-    }
-
-    if (matches(node)) {
-      return node.id;
-    }
-
-    const childFolderId = findProjectFolderId(node.children ?? [], matches);
-
-    if (childFolderId) {
-      return childFolderId;
-    }
-  }
-
-  return null;
 }

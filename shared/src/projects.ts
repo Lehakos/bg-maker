@@ -13,16 +13,14 @@ export type ProjectFileNodeType = "folder" | "file";
 
 export type ProjectFileKind = "tableSetup" | "object" | "image" | "document";
 
+export const projectAssetsFolderId = "assets";
+export const projectAssetsFolderName = "Assets";
+
 export const projectObjectKinds = ["group", "label", "image", "shape"] as const;
 
 export type ProjectObjectKind = (typeof projectObjectKinds)[number];
 
-export const projectImageAssetContentTypes = [
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/webp"
-] as const;
+export const projectImageAssetContentTypes = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export type ProjectImageAssetContentType = (typeof projectImageAssetContentTypes)[number];
 

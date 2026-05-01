@@ -4,7 +4,11 @@ import type {
   ProjectImageAsset,
   ProjectObjectKind
 } from "@bg-maker/shared";
-import { getDefaultProjectObjectName } from "@bg-maker/shared";
+import {
+  getDefaultProjectObjectName,
+  projectAssetsFolderId,
+  projectAssetsFolderName
+} from "@bg-maker/shared";
 import { createProjectObjectNode } from "./project-object-tree";
 
 export type ProjectFileTreeParentId = string | null;
@@ -42,6 +46,15 @@ export function createFolderNode(name = "New folder"): ProjectFileNode {
   };
 }
 
+export function createProjectAssetsFolderNode(children: ProjectFileNode[] = []): ProjectFileNode {
+  return {
+    id: projectAssetsFolderId,
+    name: projectAssetsFolderName,
+    type: "folder",
+    children
+  };
+}
+
 export function createProjectFileNode(
   kind: ProjectFileKind,
   name = getDefaultProjectFileNodeName(kind),
@@ -73,6 +86,20 @@ export function appendProjectFileNode(
   node: ProjectFileNode
 ): ProjectFileNode[] {
   return sortProjectFileTree(appendProjectFileNodeInChildren(fileTree, parentId, node));
+}
+
+export function ensureProjectAssetsFolder(fileTree: ProjectFileNode[]): ProjectFileNode[] {
+  const assetsLocation = findProjectFileNodeLocation(fileTree, projectAssetsFolderId);
+  const assetsChildren =
+    assetsLocation?.node.type === "folder" ? (assetsLocation.node.children ?? []) : [];
+  const fileTreeWithoutAssets = assetsLocation
+    ? removeProjectFileNode(fileTree, projectAssetsFolderId)
+    : fileTree;
+
+  return sortProjectFileTree([
+    ...fileTreeWithoutAssets,
+    createProjectAssetsFolderNode(assetsChildren)
+  ]);
 }
 
 export function sortProjectFileTree(fileTree: ProjectFileNode[]): ProjectFileNode[] {
@@ -121,7 +148,11 @@ export function moveProjectFileNodeToParent(
 ) {
   const activeLocation = findProjectFileNodeLocation(fileTree, activeId);
 
-  if (!activeLocation || activeId === targetParentId) {
+  if (
+    !activeLocation ||
+    activeId === targetParentId ||
+    isProtectedProjectFileNode(activeLocation.node)
+  ) {
     return fileTree;
   }
 
@@ -150,6 +181,10 @@ export function deleteProjectFileNode(
   fileTree: ProjectFileNode[],
   nodeId: string
 ): ProjectFileNode[] {
+  if (isProtectedProjectFileNode(findProjectFileNode(fileTree, nodeId))) {
+    return fileTree;
+  }
+
   return sortProjectFileTree(removeProjectFileNode(fileTree, nodeId));
 }
 
@@ -158,7 +193,15 @@ export function renameProjectFileNode(
   nodeId: string,
   name: string
 ): ProjectFileNode[] {
+  if (isProtectedProjectFileNode(findProjectFileNode(fileTree, nodeId))) {
+    return fileTree;
+  }
+
   return sortProjectFileTree(renameProjectFileNodeInChildren(fileTree, nodeId, name));
+}
+
+export function isProtectedProjectFileNode(node: ProjectFileNode | null | undefined) {
+  return node?.type === "folder" && node.id === projectAssetsFolderId;
 }
 
 function renameProjectFileNodeInChildren(

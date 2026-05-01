@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   appendProjectFileNode,
   countProjectFileTreeNodes,
+  createProjectAssetsFolderNode,
   createProjectFileNode,
   deleteProjectFileNode,
+  ensureProjectAssetsFolder,
   findProjectFileNode,
   findProjectFileNodeLocation,
   getProjectFileNodeChildren,
@@ -170,6 +172,30 @@ describe("project file tree helpers", () => {
     expect(findProjectFileNode(deletedFileTree, "folder-beta")).toBeUndefined();
     expect(findProjectFileNode(deletedFileTree, "deep-object")).toBeUndefined();
     expect(countProjectFileTreeNodes(fileTree)).toBe(11);
+  });
+
+  it("preserves the protected Assets folder across rename, delete, and move helpers", () => {
+    const assetsFolder = createProjectAssetsFolderNode([file("asset-file", "Token", "image")]);
+    const fileTree = [folder("folder-alpha", "Alpha"), assetsFolder];
+
+    expect(renameProjectFileNode(fileTree, "assets", "Images")).toBe(fileTree);
+    expect(deleteProjectFileNode(fileTree, "assets")).toBe(fileTree);
+    expect(moveProjectFileNodeToParent(fileTree, "assets", "folder-alpha")).toBe(fileTree);
+  });
+
+  it("creates or restores a root Assets folder", () => {
+    const nestedAssets = createProjectAssetsFolderNode([file("asset-file", "Token", "image")]);
+    const restoredFileTree = ensureProjectAssetsFolder([
+      folder("folder-alpha", "Alpha", [nestedAssets])
+    ]);
+
+    expect(
+      findProjectFileNodeLocation(ensureProjectAssetsFolder([]), "assets")?.parentId
+    ).toBeNull();
+    expect(findProjectFileNodeLocation(restoredFileTree, "assets")).toMatchObject({
+      parentId: null
+    });
+    expect(findProjectFileNode(restoredFileTree, "asset-file")).toBeDefined();
   });
 
   it("moves nodes to valid parents and keeps the target tree sorted", () => {

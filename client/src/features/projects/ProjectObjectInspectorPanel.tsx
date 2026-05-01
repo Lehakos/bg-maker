@@ -862,7 +862,7 @@ export function ProjectObjectInspectorPanel({
               ) : null}
               <label className="flex h-9 cursor-pointer items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 text-sm font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50">
                 <input
-                  accept="image/gif,image/jpeg,image/png,image/webp"
+                  accept="image/jpeg,image/png,image/webp"
                   className="sr-only"
                   disabled={uploadingImage}
                   type="file"
