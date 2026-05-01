@@ -34,11 +34,14 @@ export function createProjectFileNode(
   kind: ProjectFileKind,
   name = getDefaultProjectFileNodeName(kind)
 ): ProjectFileNode {
+  const objectTree = kind === "tableSetup" || kind === "object" ? { objectTree: [] } : {};
+
   return {
     id: crypto.randomUUID(),
     name: name.trim() || getDefaultProjectFileNodeName(kind),
     type: "file",
-    kind
+    kind,
+    ...objectTree
   };
 }
 

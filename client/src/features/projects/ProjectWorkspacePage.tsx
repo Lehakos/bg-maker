@@ -1,12 +1,18 @@
-import type { Project, ProjectFileNode } from "@bg-maker/shared";
+import type { Project, ProjectFileNode, ProjectObjectNode } from "@bg-maker/shared";
 import { Alert, Button, Center, Loader } from "@mantine/core";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ProjectFileTreePanel } from "./ProjectFileTreePanel";
+import { ProjectObjectTreePanel } from "./ProjectObjectTreePanel";
 import { ProjectPreviewArea } from "./ProjectPreviewArea";
 import { useProject, useUpdateProjectFileTree } from "./project-hooks";
-import { sortProjectFileTree } from "./project-file-tree";
+import { findProjectFileNode, sortProjectFileTree } from "./project-file-tree";
+import {
+  findProjectObjectNode,
+  isProjectObjectTreeFileNode,
+  updateProjectFileNodeObjectTree
+} from "./project-object-tree";
 
 export function ProjectWorkspacePage() {
   const { projectId } = useParams({ from: "/projects/$projectId" });
@@ -80,14 +86,58 @@ function LoadedProjectWorkspace({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
     () => initialFileTree[0]?.id ?? null
   );
+  const [selectedObject, setSelectedObject] = useState<{
+    fileNodeId: string;
+    objectId: string | null;
+  } | null>(null);
+  const selectedFileNode = useMemo(
+    () => (selectedNodeId ? findProjectFileNode(fileTree, selectedNodeId) : undefined),
+    [fileTree, selectedNodeId]
+  );
+  const selectedContentFileNode = isProjectObjectTreeFileNode(selectedFileNode)
+    ? selectedFileNode
+    : null;
+  const selectedObjectId = useMemo(() => {
+    if (!selectedContentFileNode || selectedObject?.fileNodeId !== selectedContentFileNode.id) {
+      return null;
+    }
+
+    if (!selectedObject.objectId) {
+      return null;
+    }
+
+    return findProjectObjectNode(selectedContentFileNode.objectTree ?? [], selectedObject.objectId)
+      ? selectedObject.objectId
+      : null;
+  }, [selectedContentFileNode, selectedObject]);
 
   function persistFileTree(nextFileTree: ProjectFileNode[]) {
     setFileTree(nextFileTree);
     onSaveFileTree(nextFileTree);
   }
 
+  function persistObjectTree(fileNodeId: string, objectTree: ProjectObjectNode[]) {
+    const nextFileTree = updateProjectFileNodeObjectTree(fileTree, fileNodeId, objectTree);
+
+    if (nextFileTree !== fileTree) {
+      persistFileTree(nextFileTree);
+    }
+  }
+
+  function selectObject(objectId: string | null) {
+    if (!selectedContentFileNode) {
+      setSelectedObject(null);
+      return;
+    }
+
+    setSelectedObject({
+      fileNodeId: selectedContentFileNode.id,
+      objectId
+    });
+  }
+
   return (
-    <section className="grid h-[calc(100vh-72px)] w-full grid-cols-1 overflow-hidden bg-[#f6f7f4] text-slate-800 md:grid-cols-[minmax(280px,360px)_1fr]">
+    <section className="grid h-[calc(100vh-72px)] w-full grid-cols-1 overflow-hidden bg-[#f6f7f4] text-slate-800 md:grid-cols-[minmax(260px,340px)_minmax(0,1fr)_minmax(260px,320px)]">
       <ProjectFileTreePanel
         fileTree={fileTree}
         projectName={project.name}
@@ -99,6 +149,13 @@ function LoadedProjectWorkspace({
         onSelectNode={setSelectedNodeId}
       />
       <ProjectPreviewArea fileTree={fileTree} project={project} selectedNodeId={selectedNodeId} />
+      <ProjectObjectTreePanel
+        contentFileNode={selectedContentFileNode}
+        saving={saving}
+        selectedObjectId={selectedObjectId}
+        onObjectTreeChange={persistObjectTree}
+        onSelectObject={selectObject}
+      />
     </section>
   );
 }

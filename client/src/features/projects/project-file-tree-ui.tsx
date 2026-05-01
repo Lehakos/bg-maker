@@ -1,5 +1,13 @@
 import type { ProjectFileNode } from "@bg-maker/shared";
-import { FileImage, FileText, Folder, FolderOpen, Rows3, type LucideProps } from "lucide-react";
+import {
+  Boxes,
+  FileImage,
+  FileText,
+  Folder,
+  FolderOpen,
+  Rows3,
+  type LucideProps
+} from "lucide-react";
 
 type ProjectFileNodeIconProps = LucideProps & {
   node: ProjectFileNode;
@@ -16,6 +24,10 @@ export function ProjectFileNodeIcon({ node, ...iconProps }: ProjectFileNodeIconP
 
   if (node.kind === "tableSetup") {
     return <Rows3 {...iconProps} />;
+  }
+
+  if (node.kind === "object") {
+    return <Boxes {...iconProps} />;
   }
 
   return <FileText {...iconProps} />;

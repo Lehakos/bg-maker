@@ -6,6 +6,8 @@ import type {
   Project,
   ProjectFileKind,
   ProjectFileNode,
+  ProjectObjectKind,
+  ProjectObjectNode,
   ProjectSummary
 } from "@bg-maker/shared";
 
@@ -20,7 +22,20 @@ type ProjectServiceOptions = {
 const defaultDataDirectory = join(process.cwd(), ".bg-maker");
 const maxProjectFileTreeDepth = 12;
 const maxProjectFileTreeNodes = 500;
+const maxProjectObjectTreeDepth = 24;
+const maxProjectObjectTreeNodes = 1000;
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
+const projectObjectKinds = new Set<ProjectObjectKind>([
+  "group",
+  "card",
+  "deck",
+  "token",
+  "zone",
+  "counter",
+  "die",
+  "label",
+  "image"
+]);
 
 export class ProjectValidationError extends Error {
   constructor(message: string) {
@@ -297,14 +312,92 @@ function normalizeProjectFileNode(
     };
   }
 
+  const kind = projectFileKinds.has(record.kind as ProjectFileKind)
+    ? (record.kind as ProjectFileKind)
+    : "document";
+  const objectTree = isProjectObjectTreeFileKind(kind)
+    ? {
+        objectTree: Array.isArray(record.objectTree)
+          ? normalizeProjectObjectTree(record.objectTree)
+          : []
+      }
+    : {};
+
   return {
     id,
     name,
     type: "file",
-    kind: projectFileKinds.has(record.kind as ProjectFileKind)
-      ? (record.kind as ProjectFileKind)
-      : "document"
+    kind,
+    ...objectTree
   };
+}
+
+function normalizeProjectObjectTree(value: unknown): ProjectObjectNode[] {
+  if (!Array.isArray(value)) {
+    throw new ProjectValidationError("Project object tree must be an array");
+  }
+
+  const nodeIds = new Set<string>();
+  const nodeCount = { value: 0 };
+
+  return value.map((node) => normalizeProjectObjectNode(node, 0, nodeIds, nodeCount));
+}
+
+function normalizeProjectObjectNode(
+  value: unknown,
+  depth: number,
+  nodeIds: Set<string>,
+  nodeCount: { value: number }
+): ProjectObjectNode {
+  if (!value || typeof value !== "object") {
+    throw new ProjectValidationError("Project object tree nodes must be objects");
+  }
+
+  if (depth > maxProjectObjectTreeDepth) {
+    throw new ProjectValidationError("Project object tree is too deeply nested");
+  }
+
+  nodeCount.value += 1;
+
+  if (nodeCount.value > maxProjectObjectTreeNodes) {
+    throw new ProjectValidationError("Project object tree has too many nodes");
+  }
+
+  const record = value as Partial<Record<keyof ProjectObjectNode, unknown>>;
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+
+  if (!id) {
+    throw new ProjectValidationError("Project object tree node id is required");
+  }
+
+  if (nodeIds.has(id)) {
+    throw new ProjectValidationError("Project object tree node ids must be unique");
+  }
+
+  if (!name) {
+    throw new ProjectValidationError("Project object tree node name is required");
+  }
+
+  nodeIds.add(id);
+
+  return {
+    id,
+    name,
+    kind: projectObjectKinds.has(record.kind as ProjectObjectKind)
+      ? (record.kind as ProjectObjectKind)
+      : "group",
+    visible: record.visible !== false,
+    children: Array.isArray(record.children)
+      ? record.children.map((child) =>
+          normalizeProjectObjectNode(child, depth + 1, nodeIds, nodeCount)
+        )
+      : []
+  };
+}
+
+function isProjectObjectTreeFileKind(kind: ProjectFileKind) {
+  return kind === "tableSetup" || kind === "object";
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
