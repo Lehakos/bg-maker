@@ -2,8 +2,9 @@ import type { Project, ProjectFileNode, ProjectObjectNode } from "@bg-maker/shar
 import { Alert, Button, Center, Loader } from "@mantine/core";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import { useAppHeaderContent } from "../../app/app-header-context";
+import { PanelResizeHandle } from "./PanelResizeHandle";
 import { ProjectFileTreePanel } from "./ProjectFileTreePanel";
 import { ProjectObjectInspectorPanel } from "./ProjectObjectInspectorPanel";
 import { ProjectObjectTreePanel } from "./ProjectObjectTreePanel";
@@ -17,6 +18,28 @@ import { useProject, useUpdateProjectFileTree } from "./project-hooks";
 import { findProjectFileNode, sortProjectFileTree } from "./project-file-tree";
 import { formatProjectDate } from "./project-format";
 import { findProjectObjectNode, isProjectObjectTreeFileNode } from "./project-object-tree";
+import {
+  normalizeResizablePanelSize,
+  useElementSize,
+  useResizablePanelSize
+} from "./resizable-panel-state";
+
+const sidePanelMinWidth = 260;
+const sidePanelDefaultWidth = 320;
+const workspaceContentMinWidth = 240;
+const rightInspectorPanelMinHeight = 180;
+const rightInspectorPanelDefaultHeight = 360;
+const rightObjectTreePanelMinHeight = 180;
+const unconstrainedPanelMaxSize = Number.MAX_SAFE_INTEGER;
+const leftPanelWidthStorageKey = "bg-maker:workspace:left-panel-width";
+const rightPanelWidthStorageKey = "bg-maker:workspace:right-panel-width";
+const rightInspectorHeightStorageKey = "bg-maker:workspace:right-inspector-height";
+
+type WorkspaceStyle = CSSProperties & {
+  "--workspace-left-panel-width": string;
+  "--workspace-right-inspector-panel-height": string;
+  "--workspace-right-panel-width": string;
+};
 
 export function ProjectWorkspacePage() {
   const { projectId } = useParams({ from: "/projects/$projectId" });
@@ -150,6 +173,62 @@ function LoadedProjectWorkspace({
       findProjectObjectNode(selectedContentFileNode.objectTree ?? [], selectedObjectId) ?? null
     );
   }, [selectedContentFileNode, selectedObjectId]);
+  const [workspaceElementRef, workspaceSize] = useElementSize<HTMLElement>();
+  const [rightPanelElementRef, rightPanelSize] = useElementSize<HTMLDivElement>();
+  const [leftPanelWidth, setLeftPanelWidth] = useResizablePanelSize({
+    defaultSize: sidePanelDefaultWidth,
+    maxSize: unconstrainedPanelMaxSize,
+    minSize: sidePanelMinWidth,
+    storageKey: leftPanelWidthStorageKey
+  });
+  const [rightPanelWidth, setRightPanelWidth] = useResizablePanelSize({
+    defaultSize: sidePanelDefaultWidth,
+    maxSize: unconstrainedPanelMaxSize,
+    minSize: sidePanelMinWidth,
+    storageKey: rightPanelWidthStorageKey
+  });
+  const rightPanelWidthForLeftConstraint = normalizeResizablePanelSize(rightPanelWidth, {
+    maxSize: unconstrainedPanelMaxSize,
+    minSize: sidePanelMinWidth
+  });
+  const effectiveLeftPanelMaxWidth = getSidePanelMaxWidth(
+    workspaceSize.width,
+    rightPanelWidthForLeftConstraint
+  );
+  const effectiveLeftPanelWidth = normalizeResizablePanelSize(leftPanelWidth, {
+    maxSize: effectiveLeftPanelMaxWidth,
+    minSize: sidePanelMinWidth
+  });
+  const effectiveRightPanelMaxWidth = getSidePanelMaxWidth(
+    workspaceSize.width,
+    effectiveLeftPanelWidth
+  );
+  const effectiveRightPanelWidth = normalizeResizablePanelSize(rightPanelWidth, {
+    maxSize: effectiveRightPanelMaxWidth,
+    minSize: sidePanelMinWidth
+  });
+  const effectiveRightInspectorPanelMaxHeight = getNestedPanelMaxSize(
+    rightPanelSize.height,
+    rightObjectTreePanelMinHeight
+  );
+  const [rightInspectorPanelHeight, setRightInspectorPanelHeight] = useResizablePanelSize({
+    defaultSize: rightInspectorPanelDefaultHeight,
+    maxSize: effectiveRightInspectorPanelMaxHeight,
+    minSize: rightInspectorPanelMinHeight,
+    storageKey: rightInspectorHeightStorageKey
+  });
+  const effectiveRightInspectorPanelHeight = normalizeResizablePanelSize(
+    rightInspectorPanelHeight,
+    {
+      maxSize: effectiveRightInspectorPanelMaxHeight,
+      minSize: rightInspectorPanelMinHeight
+    }
+  );
+  const workspaceStyle: WorkspaceStyle = {
+    "--workspace-left-panel-width": `${Math.round(effectiveLeftPanelWidth)}px`,
+    "--workspace-right-inspector-panel-height": `${Math.round(effectiveRightInspectorPanelHeight)}px`,
+    "--workspace-right-panel-width": `${Math.round(effectiveRightPanelWidth)}px`
+  };
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -223,16 +302,33 @@ function LoadedProjectWorkspace({
   }
 
   return (
-    <section className="grid h-[calc(100vh-72px)] min-h-0 w-full grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] overflow-hidden bg-[#f6f7f4] text-slate-800 md:grid-cols-[minmax(260px,340px)_minmax(0,1fr)_minmax(260px,320px)] md:grid-rows-1">
-      <ProjectFileTreePanel
-        fileTree={fileTree}
-        projectId={project.id}
-        saveError={saveError}
-        saving={saving}
-        selectedNodeId={effectiveSelectedNodeId}
-        onFileTreeChange={persistFileTree}
-        onSelectNode={setSelectedNodeId}
-      />
+    <section
+      ref={workspaceElementRef}
+      className="grid h-[calc(100vh-72px)] min-h-0 w-full grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] overflow-hidden bg-[#f6f7f4] text-slate-800 md:grid-cols-[var(--workspace-left-panel-width)_minmax(0,1fr)_var(--workspace-right-panel-width)] md:grid-rows-1"
+      style={workspaceStyle}
+    >
+      <div className="relative min-h-0">
+        <ProjectFileTreePanel
+          className="h-full"
+          fileTree={fileTree}
+          projectId={project.id}
+          saveError={saveError}
+          saving={saving}
+          selectedNodeId={effectiveSelectedNodeId}
+          onFileTreeChange={persistFileTree}
+          onSelectNode={setSelectedNodeId}
+        />
+        <PanelResizeHandle
+          axis="horizontal"
+          className="hidden md:block"
+          edge="right"
+          label="Resize file tree panel"
+          maxSize={effectiveLeftPanelMaxWidth}
+          minSize={sidePanelMinWidth}
+          size={effectiveLeftPanelWidth}
+          onSizeChange={setLeftPanelWidth}
+        />
+      </div>
       <ProjectWorkspaceArea
         contentFileNode={selectedContentFileNode}
         fileTree={fileTree}
@@ -246,22 +342,51 @@ function LoadedProjectWorkspace({
         onSelectObject={selectObject}
         onUndo={undo}
       />
-      <div className="flex min-h-0 flex-col overflow-hidden border-t border-slate-200 bg-white md:border-l md:border-t-0">
-        <ProjectObjectInspectorPanel
-          contentFileNode={selectedContentFileNode}
-          fileTree={fileTree}
-          projectId={project.id}
-          selectedObject={selectedProjectObject}
-          onFileTreeChange={persistFileTree}
-          onObjectTreeChange={persistObjectTree}
+      <div
+        ref={rightPanelElementRef}
+        className="relative flex min-h-0 flex-col overflow-hidden border-t border-slate-200 bg-white md:border-l md:border-t-0"
+      >
+        <PanelResizeHandle
+          axis="horizontal"
+          className="hidden md:block"
+          edge="left"
+          label="Resize editor panels"
+          maxSize={effectiveRightPanelMaxWidth}
+          minSize={sidePanelMinWidth}
+          size={effectiveRightPanelWidth}
+          onSizeChange={setRightPanelWidth}
         />
-        <ProjectObjectTreePanel
-          contentFileNode={selectedContentFileNode}
-          saving={saving}
-          selectedObjectId={selectedObjectId}
-          onObjectTreeChange={persistObjectTree}
-          onSelectObject={selectObject}
-        />
+        <div className="relative flex min-h-0 flex-1 basis-0 flex-col md:flex-none md:basis-[var(--workspace-right-inspector-panel-height)]">
+          <ProjectObjectInspectorPanel
+            className="h-full"
+            contentFileNode={selectedContentFileNode}
+            fileTree={fileTree}
+            projectId={project.id}
+            selectedObject={selectedProjectObject}
+            onFileTreeChange={persistFileTree}
+            onObjectTreeChange={persistObjectTree}
+          />
+          <PanelResizeHandle
+            axis="vertical"
+            className="hidden md:block"
+            edge="bottom"
+            label="Resize inspector panel"
+            maxSize={effectiveRightInspectorPanelMaxHeight}
+            minSize={rightInspectorPanelMinHeight}
+            size={effectiveRightInspectorPanelHeight}
+            onSizeChange={setRightInspectorPanelHeight}
+          />
+        </div>
+        <div className="min-h-0 flex flex-1 basis-0 flex-col">
+          <ProjectObjectTreePanel
+            className="h-full"
+            contentFileNode={selectedContentFileNode}
+            saving={saving}
+            selectedObjectId={selectedObjectId}
+            onObjectTreeChange={persistObjectTree}
+            onSelectObject={selectObject}
+          />
+        </div>
       </div>
     </section>
   );
@@ -309,4 +434,20 @@ function isEditableKeyboardTarget(target: EventTarget | null) {
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLSelectElement
   );
+}
+
+function getSidePanelMaxWidth(workspaceWidth: number, oppositePanelWidth: number) {
+  if (workspaceWidth <= 0) {
+    return unconstrainedPanelMaxSize;
+  }
+
+  return Math.max(sidePanelMinWidth, workspaceWidth - oppositePanelWidth - workspaceContentMinWidth);
+}
+
+function getNestedPanelMaxSize(containerSize: number, oppositePanelMinSize: number) {
+  if (containerSize <= 0) {
+    return unconstrainedPanelMaxSize;
+  }
+
+  return Math.max(rightInspectorPanelMinHeight, containerSize - oppositePanelMinSize);
 }

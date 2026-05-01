@@ -87,6 +87,7 @@ import {
 } from "./project-object-inspector-state";
 
 type ProjectObjectInspectorPanelProps = {
+  className?: string;
   contentFileNode: ProjectFileNode | null;
   fileTree: ProjectFileNode[];
   projectId: string;
@@ -218,6 +219,7 @@ const shapeVariantOptions = [
 ] as const;
 
 export function ProjectObjectInspectorPanel({
+  className,
   contentFileNode,
   fileTree,
   projectId,
@@ -664,7 +666,12 @@ export function ProjectObjectInspectorPanel({
     : undefined;
 
   return (
-    <aside className="flex min-h-0 flex-1 basis-0 flex-col overflow-hidden border-b border-slate-200 bg-white text-slate-700">
+    <aside
+      className={cx(
+        "flex min-h-0 flex-1 basis-0 flex-col overflow-hidden border-b border-slate-200 bg-white text-slate-700",
+        className
+      )}
+    >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
         <SlidersHorizontal className="shrink-0 text-teal-700" size={15} />
         <div className="min-w-0 flex-1">
@@ -1355,4 +1362,8 @@ function getFallbackImageDraftValue(): ProjectObjectImage {
     positionX: 50,
     positionY: 50
   };
+}
+
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
 }

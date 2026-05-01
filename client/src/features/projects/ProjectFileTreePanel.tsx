@@ -91,6 +91,7 @@ type NodeDropTargetData = {
 };
 
 type ProjectFileTreePanelProps = {
+  className?: string;
   fileTree: ProjectFileNode[];
   projectId: string;
   saving: boolean;
@@ -101,6 +102,7 @@ type ProjectFileTreePanelProps = {
 };
 
 export function ProjectFileTreePanel({
+  className,
   fileTree,
   projectId,
   saving,
@@ -335,7 +337,10 @@ export function ProjectFileTreePanel({
 
   return (
     <aside
-      className="flex min-h-0 flex-col overflow-hidden border-b border-slate-200 bg-white text-slate-700 md:border-b-0 md:border-r"
+      className={cx(
+        "flex min-h-0 flex-col overflow-hidden border-b border-slate-200 bg-white text-slate-700 md:border-b-0 md:border-r",
+        className
+      )}
       onContextMenu={(event) => handleContextMenu(event)}
     >
       <DndContext

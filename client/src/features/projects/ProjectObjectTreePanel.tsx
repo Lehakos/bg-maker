@@ -92,6 +92,7 @@ type ObjectDropIndicator = {
 };
 
 type ProjectObjectTreePanelProps = {
+  className?: string;
   contentFileNode: ProjectFileNode | null;
   saving: boolean;
   selectedObjectId: string | null;
@@ -100,6 +101,7 @@ type ProjectObjectTreePanelProps = {
 };
 
 export function ProjectObjectTreePanel({
+  className,
   contentFileNode,
   saving,
   selectedObjectId,
@@ -436,7 +438,10 @@ export function ProjectObjectTreePanel({
 
   return (
     <aside
-      className="flex min-h-0 flex-1 basis-0 flex-col overflow-hidden bg-white text-slate-700"
+      className={cx(
+        "flex min-h-0 flex-1 basis-0 flex-col overflow-hidden bg-white text-slate-700",
+        className
+      )}
       onContextMenu={(event) => handleContextMenu(event)}
     >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
