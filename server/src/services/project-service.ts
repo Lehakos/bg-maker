@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { CreateProjectRequest, Project, ProjectSummary } from "@bg-maker/shared";
+import type {
+  CreateProjectRequest,
+  Project,
+  ProjectFileKind,
+  ProjectFileNode,
+  ProjectSummary
+} from "@bg-maker/shared";
 
 type ProjectStoreData = {
   projects: Project[];
@@ -12,6 +18,9 @@ type ProjectServiceOptions = {
 };
 
 const defaultDataDirectory = join(process.cwd(), ".bg-maker");
+const maxProjectFileTreeDepth = 12;
+const maxProjectFileTreeNodes = 500;
+const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
 
 export class ProjectValidationError extends Error {
   constructor(message: string) {
@@ -54,7 +63,8 @@ export class ProjectService {
       tableSetupsCount: 0,
       objectsCount: 0,
       playtestsCount: 0,
-      notes: ""
+      notes: "",
+      fileTree: createDefaultProjectFileTree()
     };
 
     const store = await this.readStore();
@@ -65,13 +75,38 @@ export class ProjectService {
     return project;
   }
 
+  async updateProjectFileTree(projectId: string, fileTree: unknown): Promise<Project | null> {
+    const normalizedFileTree = normalizeProjectFileTree(fileTree);
+    const store = await this.readStore();
+    const projectIndex = store.projects.findIndex((project) => project.id === projectId);
+
+    if (projectIndex === -1) {
+      return null;
+    }
+
+    const project = store.projects[projectIndex];
+    const updatedProject: Project = {
+      ...project,
+      fileTree: normalizedFileTree,
+      updatedAt: new Date().toISOString()
+    };
+    const projects = [...store.projects];
+    projects[projectIndex] = updatedProject;
+
+    await this.writeStore({ projects });
+
+    return updatedProject;
+  }
+
   private async readStore(): Promise<ProjectStoreData> {
     try {
       const rawStore = await readFile(this.storePath, "utf8");
       const parsedStore = JSON.parse(rawStore) as Partial<ProjectStoreData>;
 
       return {
-        projects: Array.isArray(parsedStore.projects) ? parsedStore.projects.filter(isProject) : []
+        projects: Array.isArray(parsedStore.projects)
+          ? parsedStore.projects.map(normalizeProject).filter((project) => project !== null)
+          : []
       };
     } catch (error) {
       if (isNodeError(error) && error.code === "ENOENT") {
@@ -113,24 +148,163 @@ function toProjectSummary(project: Project): ProjectSummary {
   };
 }
 
-function isProject(value: unknown): value is Project {
+function normalizeProject(value: unknown): Project | null {
   if (!value || typeof value !== "object") {
-    return false;
+    return null;
   }
 
   const project = value as Partial<Record<keyof Project, unknown>>;
+  const {
+    id,
+    name,
+    description,
+    createdAt,
+    updatedAt,
+    tableSetupsCount,
+    objectsCount,
+    playtestsCount,
+    notes,
+    fileTree
+  } = project;
 
-  return (
-    typeof project.id === "string" &&
-    typeof project.name === "string" &&
-    typeof project.description === "string" &&
-    typeof project.createdAt === "string" &&
-    typeof project.updatedAt === "string" &&
-    typeof project.tableSetupsCount === "number" &&
-    typeof project.objectsCount === "number" &&
-    typeof project.playtestsCount === "number" &&
-    typeof project.notes === "string"
-  );
+  const hasProjectShape =
+    typeof id === "string" &&
+    typeof name === "string" &&
+    typeof description === "string" &&
+    typeof createdAt === "string" &&
+    typeof updatedAt === "string" &&
+    typeof tableSetupsCount === "number" &&
+    typeof objectsCount === "number" &&
+    typeof playtestsCount === "number" &&
+    typeof notes === "string";
+
+  if (!hasProjectShape) {
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    description,
+    createdAt,
+    updatedAt,
+    tableSetupsCount,
+    objectsCount,
+    playtestsCount,
+    notes,
+    fileTree: Array.isArray(fileTree)
+      ? normalizeStoredProjectFileTree(fileTree)
+      : createDefaultProjectFileTree()
+  };
+}
+
+function normalizeStoredProjectFileTree(value: unknown): ProjectFileNode[] {
+  try {
+    return normalizeProjectFileTree(value);
+  } catch {
+    return [];
+  }
+}
+
+function createDefaultProjectFileTree(): ProjectFileNode[] {
+  return [
+    {
+      id: "table-setups",
+      name: "Table setups",
+      type: "folder",
+      children: []
+    },
+    {
+      id: "objects",
+      name: "Objects",
+      type: "folder",
+      children: []
+    },
+    {
+      id: "images",
+      name: "Images",
+      type: "folder",
+      children: []
+    }
+  ];
+}
+
+function normalizeProjectFileTree(value: unknown): ProjectFileNode[] {
+  if (!Array.isArray(value)) {
+    throw new ProjectValidationError("Project file tree must be an array");
+  }
+
+  const nodeIds = new Set<string>();
+  const nodeCount = { value: 0 };
+
+  return value.map((node) => normalizeProjectFileNode(node, 0, nodeIds, nodeCount));
+}
+
+function normalizeProjectFileNode(
+  value: unknown,
+  depth: number,
+  nodeIds: Set<string>,
+  nodeCount: { value: number }
+): ProjectFileNode {
+  if (!value || typeof value !== "object") {
+    throw new ProjectValidationError("Project file tree nodes must be objects");
+  }
+
+  if (depth > maxProjectFileTreeDepth) {
+    throw new ProjectValidationError("Project file tree is too deeply nested");
+  }
+
+  nodeCount.value += 1;
+
+  if (nodeCount.value > maxProjectFileTreeNodes) {
+    throw new ProjectValidationError("Project file tree has too many nodes");
+  }
+
+  const record = value as Partial<Record<keyof ProjectFileNode, unknown>>;
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+
+  if (!id) {
+    throw new ProjectValidationError("Project file tree node id is required");
+  }
+
+  if (nodeIds.has(id)) {
+    throw new ProjectValidationError("Project file tree node ids must be unique");
+  }
+
+  if (!name) {
+    throw new ProjectValidationError("Project file tree node name is required");
+  }
+
+  if (record.type !== "folder" && record.type !== "file") {
+    throw new ProjectValidationError("Project file tree node type is invalid");
+  }
+
+  nodeIds.add(id);
+
+  if (record.type === "folder") {
+    const children = Array.isArray(record.children)
+      ? record.children.map((child) =>
+          normalizeProjectFileNode(child, depth + 1, nodeIds, nodeCount)
+        )
+      : [];
+
+    return {
+      id,
+      name,
+      type: "folder",
+      children
+    };
+  }
+
+  return {
+    id,
+    name,
+    type: "file",
+    kind: projectFileKinds.has(record.kind as ProjectFileKind)
+      ? (record.kind as ProjectFileKind)
+      : "document"
+  };
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

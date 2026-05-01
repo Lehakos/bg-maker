@@ -9,8 +9,21 @@ export type ProjectSummary = {
   playtestsCount: number;
 };
 
+export type ProjectFileNodeType = "folder" | "file";
+
+export type ProjectFileKind = "tableSetup" | "object" | "image" | "document";
+
+export type ProjectFileNode = {
+  id: string;
+  name: string;
+  type: ProjectFileNodeType;
+  kind?: ProjectFileKind;
+  children?: ProjectFileNode[];
+};
+
 export type Project = ProjectSummary & {
   notes: string;
+  fileTree: ProjectFileNode[];
 };
 
 export type ListProjectsResponse = {
@@ -27,6 +40,14 @@ export type CreateProjectRequest = {
 };
 
 export type CreateProjectResponse = {
+  project: Project;
+};
+
+export type UpdateProjectFileTreeRequest = {
+  fileTree: ProjectFileNode[];
+};
+
+export type UpdateProjectFileTreeResponse = {
   project: Project;
 };
 

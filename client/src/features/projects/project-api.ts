@@ -5,7 +5,9 @@ import {
   type GetProjectResponse,
   type ListProjectsResponse,
   type Project,
-  type ProjectSummary
+  type ProjectSummary,
+  type UpdateProjectFileTreeRequest,
+  type UpdateProjectFileTreeResponse
 } from "@bg-maker/shared";
 import { apiRequest } from "../../lib/api-client";
 
@@ -26,6 +28,21 @@ export async function createProject(request: CreateProjectRequest): Promise<Proj
     method: "POST",
     body: JSON.stringify(request)
   });
+
+  return response.project;
+}
+
+export async function updateProjectFileTree(
+  projectId: string,
+  request: UpdateProjectFileTreeRequest
+): Promise<Project> {
+  const response = await apiRequest<UpdateProjectFileTreeResponse>(
+    apiPaths.projectFileTree(projectId),
+    {
+      method: "PATCH",
+      body: JSON.stringify(request)
+    }
+  );
 
   return response.project;
 }

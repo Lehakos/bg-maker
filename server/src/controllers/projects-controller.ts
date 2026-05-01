@@ -4,7 +4,8 @@ import {
   type CreateProjectRequest,
   type CreateProjectResponse,
   type GetProjectResponse,
-  type ListProjectsResponse
+  type ListProjectsResponse,
+  type UpdateProjectFileTreeResponse
 } from "@bg-maker/shared";
 import type { FastifyInstance } from "fastify";
 import {
@@ -62,6 +63,34 @@ export function registerProjectsController(
       return { project };
     }
   );
+
+  app.patch<{ Params: ProjectRouteParams }>(
+    `${apiPaths.projects}/:projectId/file-tree`,
+    async (request, reply): Promise<UpdateProjectFileTreeResponse | ApiErrorResponse> => {
+      try {
+        const project = await projectService.updateProjectFileTree(
+          request.params.projectId,
+          getProjectFileTreePayload(request.body)
+        );
+
+        if (!project) {
+          reply.code(404);
+
+          return { message: "Project not found" };
+        }
+
+        return { project };
+      } catch (error) {
+        if (error instanceof ProjectValidationError) {
+          reply.code(400);
+
+          return { message: error.message };
+        }
+
+        throw error;
+      }
+    }
+  );
 }
 
 function toCreateProjectRequest(body: unknown): CreateProjectRequest {
@@ -75,4 +104,14 @@ function toCreateProjectRequest(body: unknown): CreateProjectRequest {
     name: typeof record.name === "string" ? record.name : "",
     description: typeof record.description === "string" ? record.description : undefined
   };
+}
+
+function getProjectFileTreePayload(body: unknown): unknown {
+  if (!body || typeof body !== "object") {
+    return undefined;
+  }
+
+  const record = body as Record<string, unknown>;
+
+  return record.fileTree;
 }

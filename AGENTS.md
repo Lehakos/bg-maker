@@ -20,6 +20,12 @@
 - On the client, put business logic in reusable hooks, stores or nearby hook-level helpers.
 - On the server, put business logic in services and keep controllers thin.
 
+## Styling and CSS
+
+- Prefer Tailwind utility classes for UI styling.
+- If custom CSS is still needed, create a dedicated stylesheet next to the component that owns those styles and import it from that component.
+- Keep global CSS files limited to resets, app-wide primitives, design tokens, and truly shared base behavior.
+
 ## Code Decomposition and Reuse
 
 - Avoid very large files when a focused module, hook, helper, service, or component would make the code easier to understand and maintain.

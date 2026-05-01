@@ -1,26 +1,18 @@
-import {
-  Alert,
-  Badge,
-  Box,
-  Button,
-  Center,
-  Group,
-  Loader,
-  SimpleGrid,
-  Stack,
-  Text,
-  Title
-} from "@mantine/core";
+import type { Project, ProjectFileNode } from "@bg-maker/shared";
+import { Alert, Button, Center, Loader } from "@mantine/core";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { AlertCircle, ArrowLeft, Boxes, LibraryBig, Rows3, Sparkles } from "lucide-react";
-import type { ReactNode } from "react";
-import { formatProjectDate } from "./project-format";
-import { useProject } from "./project-hooks";
+import { AlertCircle, ArrowLeft } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ProjectFileTreePanel } from "./ProjectFileTreePanel";
+import { ProjectPreviewArea } from "./ProjectPreviewArea";
+import { useProject, useUpdateProjectFileTree } from "./project-hooks";
+import { sortProjectFileTree } from "./project-file-tree";
 
 export function ProjectWorkspacePage() {
   const { projectId } = useParams({ from: "/projects/$projectId" });
   const navigate = useNavigate();
   const project = useProject(projectId);
+  const updateFileTree = useUpdateProjectFileTree(projectId);
 
   function goToProjects() {
     void navigate({ to: "/" });
@@ -28,7 +20,7 @@ export function ProjectWorkspacePage() {
 
   if (project.isLoading) {
     return (
-      <Center className="project-loading" aria-label="Загрузка проекта">
+      <Center className="min-h-[calc(100vh-72px)]" aria-label="Загрузка проекта">
         <Loader color="teal" />
       </Center>
     );
@@ -36,8 +28,9 @@ export function ProjectWorkspacePage() {
 
   if (project.isError) {
     return (
-      <Stack className="project-workspace" gap="lg">
+      <div className="flex min-h-[calc(100vh-72px)] w-full flex-col gap-4 p-6">
         <Button
+          className="w-fit"
           variant="subtle"
           color="gray"
           leftSection={<ArrowLeft size={16} />}
@@ -48,7 +41,7 @@ export function ProjectWorkspacePage() {
         <Alert color="red" icon={<AlertCircle size={16} />} radius="sm">
           {project.error.message}
         </Alert>
-      </Stack>
+      </div>
     );
   }
 
@@ -57,88 +50,55 @@ export function ProjectWorkspacePage() {
   }
 
   return (
-    <Stack className="project-workspace" gap="xl">
-      <Group justify="space-between" align="center" gap="md">
-        <Button
-          variant="subtle"
-          color="gray"
-          leftSection={<ArrowLeft size={16} />}
-          onClick={goToProjects}
-        >
-          К проектам
-        </Button>
-        <Badge color="teal" variant="light" radius="sm">
-          Обновлен {formatProjectDate(project.data.updatedAt)}
-        </Badge>
-      </Group>
-
-      <Box className="workspace-heading">
-        <Stack gap="xs">
-          <Group gap="sm" align="center">
-            <Boxes size={24} />
-            <Text c="dimmed" size="sm" fw={700}>
-              Project
-            </Text>
-          </Group>
-          <Title order={2}>{project.data.name}</Title>
-          {project.data.description ? (
-            <Text c="dimmed" maw={760}>
-              {project.data.description}
-            </Text>
-          ) : null}
-        </Stack>
-      </Box>
-
-      <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
-        <WorkspaceSection
-          icon={<Rows3 size={22} />}
-          title="Table Setups"
-          count={project.data.tableSetupsCount}
-          emptyText="Стартовые раскладки появятся здесь."
-        />
-        <WorkspaceSection
-          icon={<LibraryBig size={22} />}
-          title="Object Library"
-          count={project.data.objectsCount}
-          emptyText="Объекты проекта появятся здесь."
-        />
-        <WorkspaceSection
-          icon={<Sparkles size={22} />}
-          title="Playtests"
-          count={project.data.playtestsCount}
-          emptyText="Запуски плейтестов появятся здесь."
-        />
-      </SimpleGrid>
-    </Stack>
+    <LoadedProjectWorkspace
+      project={project.data}
+      saveError={updateFileTree.error}
+      saving={updateFileTree.isPending}
+      onBack={goToProjects}
+      onSaveFileTree={(nextFileTree) => updateFileTree.mutate(nextFileTree)}
+    />
   );
 }
 
-type WorkspaceSectionProps = {
-  icon: ReactNode;
-  title: string;
-  count: number;
-  emptyText: string;
+type LoadedProjectWorkspaceProps = {
+  project: Project;
+  saving: boolean;
+  saveError?: Error | null;
+  onBack: () => void;
+  onSaveFileTree: (fileTree: ProjectFileNode[]) => void;
 };
 
-function WorkspaceSection({ icon, title, count, emptyText }: WorkspaceSectionProps) {
+function LoadedProjectWorkspace({
+  project,
+  saving,
+  saveError,
+  onBack,
+  onSaveFileTree
+}: LoadedProjectWorkspaceProps) {
+  const initialFileTree = useMemo(() => sortProjectFileTree(project.fileTree), [project.fileTree]);
+  const [fileTree, setFileTree] = useState<ProjectFileNode[]>(() => initialFileTree);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
+    () => initialFileTree[0]?.id ?? null
+  );
+
+  function persistFileTree(nextFileTree: ProjectFileNode[]) {
+    setFileTree(nextFileTree);
+    onSaveFileTree(nextFileTree);
+  }
+
   return (
-    <Box className="workspace-section">
-      <Stack gap="md">
-        <Group justify="space-between" gap="md">
-          <Group gap="sm">
-            <Box className="workspace-section-icon" aria-hidden>
-              {icon}
-            </Box>
-            <Title order={3}>{title}</Title>
-          </Group>
-          <Badge color="gray" variant="outline" radius="sm">
-            {count}
-          </Badge>
-        </Group>
-        <Text c="dimmed" size="sm">
-          {emptyText}
-        </Text>
-      </Stack>
-    </Box>
+    <section className="grid h-[calc(100vh-72px)] w-full grid-cols-1 overflow-hidden bg-[#f6f7f4] text-slate-800 md:grid-cols-[minmax(280px,360px)_1fr]">
+      <ProjectFileTreePanel
+        fileTree={fileTree}
+        projectName={project.name}
+        saveError={saveError}
+        saving={saving}
+        selectedNodeId={selectedNodeId}
+        onBack={onBack}
+        onFileTreeChange={persistFileTree}
+        onSelectNode={setSelectedNodeId}
+      />
+      <ProjectPreviewArea fileTree={fileTree} project={project} selectedNodeId={selectedNodeId} />
+    </section>
   );
 }

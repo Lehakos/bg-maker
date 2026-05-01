@@ -42,13 +42,12 @@
 
 .app-main {
   min-height: calc(100vh - 72px);
-  padding: 28px;
 }
 
-.project-picker,
-.project-workspace {
+.project-picker {
   margin: 0 auto;
   max-width: 1180px;
+  padding: 28px;
   width: 100%;
 }
 
@@ -57,8 +56,7 @@
   padding-bottom: 22px;
 }
 
-.project-page-heading h2,
-.workspace-heading h2 {
+.project-page-heading h2 {
   font-size: 28px;
   letter-spacing: 0;
   line-height: 1.15;
@@ -84,7 +82,6 @@
 }
 
 .project-card h3,
-.workspace-section h3,
 .empty-projects h3 {
   font-size: 18px;
   letter-spacing: 0;
@@ -122,47 +119,16 @@
   width: 64px;
 }
 
-.workspace-heading {
-  background: #ffffff;
-  border: 1px solid #d9e1dc;
-  border-radius: 8px;
-  padding: 28px;
-}
-
-.workspace-heading svg {
-  color: #b85c38;
-}
-
-.workspace-section {
-  background: #ffffff;
-  border: 1px solid #d9e1dc;
-  border-radius: 8px;
-  min-height: 180px;
-  padding: 22px;
-}
-
-.workspace-section-icon {
-  align-items: center;
-  background: #f0ede5;
-  border-radius: 8px;
-  color: #4f5f7a;
-  display: flex;
-  height: 42px;
-  justify-content: center;
-  width: 42px;
-}
-
 @media (max-width: 720px) {
-  .app-main {
-    padding: 20px 14px;
-  }
-
   .project-page-heading {
     align-items: flex-start;
   }
 
-  .project-page-heading h2,
-  .workspace-heading h2 {
+  .project-picker {
+    padding: 20px 14px;
+  }
+
+  .project-page-heading h2 {
     font-size: 24px;
   }
 }
