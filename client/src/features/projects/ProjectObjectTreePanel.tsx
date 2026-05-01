@@ -436,7 +436,7 @@ export function ProjectObjectTreePanel({
 
   return (
     <aside
-      className="flex min-h-0 flex-1 flex-col bg-white text-slate-700"
+      className="flex min-h-0 flex-1 basis-0 flex-col overflow-hidden bg-white text-slate-700"
       onContextMenu={(event) => handleContextMenu(event)}
     >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">

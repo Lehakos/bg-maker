@@ -1,4 +1,9 @@
-import type { ProjectFileKind, ProjectFileNode, ProjectObjectKind } from "@bg-maker/shared";
+import type {
+  ProjectFileKind,
+  ProjectFileNode,
+  ProjectImageAsset,
+  ProjectObjectKind
+} from "@bg-maker/shared";
 import { getDefaultProjectObjectName } from "@bg-maker/shared";
 import { createProjectObjectNode } from "./project-object-tree";
 
@@ -12,6 +17,7 @@ export type ProjectFileTreeLocation = {
 };
 
 export type CreateProjectFileNodeOptions = {
+  imageAsset?: ProjectImageAsset;
   objectRootKind?: ProjectObjectKind;
 };
 
@@ -48,12 +54,15 @@ export function createProjectFileNode(
       : kind === "object"
         ? { objectTree: [createProjectObjectNode(options.objectRootKind ?? "group", nextName)] }
         : {};
+  const imageAsset =
+    kind === "image" && options.imageAsset ? { imageAsset: options.imageAsset } : {};
 
   return {
     id: crypto.randomUUID(),
     name: nextName,
     type: "file",
     kind,
+    ...imageAsset,
     ...objectTree
   };
 }

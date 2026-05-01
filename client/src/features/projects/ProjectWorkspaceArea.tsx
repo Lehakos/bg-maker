@@ -35,9 +35,9 @@ import {
 import { getProjectFileNodeTypeLabel } from "./project-file-tree-labels";
 import { ProjectFileNodeIcon } from "./project-file-tree-ui";
 import { formatProjectDate } from "./project-format";
+import { getProjectImageAssetOptions, type ProjectImageAssetOption } from "./project-image-assets";
 import { getProjectObjectNodeRectTransform } from "./project-object-tree";
-import { ProjectObjectKindIcon } from "./project-object-tree-ui";
-import { getProjectObjectKindLabel } from "./project-object-tree-labels";
+import { ProjectObjectSurface } from "./ProjectObjectSurface";
 
 const workspaceTools = [
   { id: "select", label: "Select", icon: MousePointer2 },
@@ -98,9 +98,13 @@ export function ProjectWorkspaceArea({
     () => contentFileNode?.objectTree ?? [],
     [contentFileNode?.objectTree]
   );
+  const imageAssets = useMemo(
+    () => getProjectImageAssetOptions(project.id, fileTree),
+    [fileTree, project.id]
+  );
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-col bg-[#eef1ed]">
+    <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#eef1ed]">
       <div className="flex min-h-[72px] items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-3">
         <div className="min-w-0">
           <h1 className="truncate text-xl font-semibold leading-tight text-slate-950">
@@ -137,6 +141,7 @@ export function ProjectWorkspaceArea({
         <WorkspaceViewport
           activeTool={activeTool}
           contentFileNode={contentFileNode}
+          imageAssets={imageAssets}
           objectTree={objectTree}
           parentFolderName={parentFolder?.name}
           selectedNode={selectedNode}
@@ -232,6 +237,7 @@ function ToolbarIconButton({
 type WorkspaceViewportProps = {
   activeTool: WorkspaceTool;
   contentFileNode: ProjectFileNode | null;
+  imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
   parentFolderName?: string;
   selectedNode?: ProjectFileNode;
@@ -243,6 +249,7 @@ type WorkspaceViewportProps = {
 function WorkspaceViewport({
   activeTool,
   contentFileNode,
+  imageAssets,
   objectTree,
   parentFolderName,
   selectedNode,
@@ -255,6 +262,7 @@ function WorkspaceViewport({
       <TableLayoutWorkspace
         activeTool={activeTool}
         fileNode={contentFileNode}
+        imageAssets={imageAssets}
         objectTree={objectTree}
         selectedObjectId={selectedObjectId}
         onExecuteCommand={onExecuteCommand}
@@ -268,6 +276,7 @@ function WorkspaceViewport({
       <ObjectFileWorkspace
         activeTool={activeTool}
         fileNode={contentFileNode}
+        imageAssets={imageAssets}
         objectTree={objectTree}
         selectedObjectId={selectedObjectId}
         onExecuteCommand={onExecuteCommand}
@@ -286,6 +295,7 @@ function WorkspaceViewport({
 type TableLayoutWorkspaceProps = {
   activeTool: WorkspaceTool;
   fileNode: ProjectFileNode;
+  imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
   selectedObjectId: string | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
@@ -295,6 +305,7 @@ type TableLayoutWorkspaceProps = {
 function TableLayoutWorkspace({
   activeTool,
   fileNode,
+  imageAssets,
   objectTree,
   selectedObjectId,
   onExecuteCommand,
@@ -315,6 +326,7 @@ function TableLayoutWorkspace({
           <ObjectScene
             activeTool={activeTool}
             fileNodeId={fileNode.id}
+            imageAssets={imageAssets}
             objectTree={objectTree}
             selectedObjectId={selectedObjectId}
             size="small"
@@ -336,6 +348,7 @@ function TableLayoutWorkspace({
 type ObjectFileWorkspaceProps = {
   activeTool: WorkspaceTool;
   fileNode: ProjectFileNode;
+  imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
   selectedObjectId: string | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
@@ -345,6 +358,7 @@ type ObjectFileWorkspaceProps = {
 function ObjectFileWorkspace({
   activeTool,
   fileNode,
+  imageAssets,
   objectTree,
   selectedObjectId,
   onExecuteCommand,
@@ -356,6 +370,7 @@ function ObjectFileWorkspace({
         <ObjectScene
           activeTool={activeTool}
           fileNodeId={fileNode.id}
+          imageAssets={imageAssets}
           objectTree={objectTree}
           selectedObjectId={selectedObjectId}
           size="large"
@@ -376,6 +391,7 @@ function ObjectFileWorkspace({
 type ObjectSceneProps = {
   activeTool: WorkspaceTool;
   fileNodeId: string;
+  imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
   selectedObjectId: string | null;
   size: "large" | "medium" | "small";
@@ -386,12 +402,18 @@ type ObjectSceneProps = {
 function ObjectScene({
   activeTool,
   fileNodeId,
+  imageAssets,
   objectTree,
   selectedObjectId,
   size,
   onExecuteCommand,
   onSelectObject
 }: ObjectSceneProps) {
+  const imageAssetById = useMemo(
+    () => new Map(imageAssets.map((imageAsset) => [imageAsset.asset.id, imageAsset])),
+    [imageAssets]
+  );
+
   return (
     <div
       className={cx(
@@ -404,6 +426,7 @@ function ObjectScene({
           key={object.id}
           activeTool={activeTool}
           fileNodeId={fileNodeId}
+          imageAssetById={imageAssetById}
           object={object}
           root
           selectedObjectId={selectedObjectId}
@@ -464,6 +487,7 @@ function ProjectWorkspacePlaceholder() {
 type SceneObjectFrameProps = {
   activeTool: WorkspaceTool;
   fileNodeId: string;
+  imageAssetById: Map<string, ProjectImageAssetOption>;
   object: ProjectObjectNode;
   root?: boolean;
   selectedObjectId: string | null;
@@ -484,6 +508,7 @@ type TransformDragState = {
 function SceneObjectFrame({
   activeTool,
   fileNodeId,
+  imageAssetById,
   object,
   root = false,
   selectedObjectId,
@@ -613,12 +638,13 @@ function SceneObjectFrame({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
-      <ProjectObjectSurface object={object} />
+      <ProjectObjectSurface imageAssetById={imageAssetById} object={object} />
       {(object.children ?? []).map((child, index) => (
         <SceneObjectFrame
           key={child.id}
           activeTool={activeTool}
           fileNodeId={fileNodeId}
+          imageAssetById={imageAssetById}
           object={child}
           selectedObjectId={selectedObjectId}
           siblingIndex={index}
@@ -628,61 +654,6 @@ function SceneObjectFrame({
         />
       ))}
       {selected ? <ObjectSelectionOverlay activeTool={activeTool} /> : null}
-    </div>
-  );
-}
-
-type ProjectObjectSurfaceProps = {
-  object: ProjectObjectNode;
-};
-
-function ProjectObjectSurface({ object }: ProjectObjectSurfaceProps) {
-  if (object.kind === "group") {
-    return <GroupVisual object={object} />;
-  }
-
-  if (object.kind === "shape") {
-    return <ShapeVisual object={object} />;
-  }
-
-  return <GenericObjectVisual object={object} />;
-}
-
-type GroupVisualProps = {
-  object: ProjectObjectNode;
-};
-
-function GroupVisual({ object }: GroupVisualProps) {
-  return (
-    <div className="relative h-full w-full rounded-md border-2 border-dashed border-teal-500/70 bg-teal-50/20 text-teal-800 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]">
-      <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md border border-teal-500/30 bg-white/85 px-2 py-1 text-xs font-semibold shadow-sm">
-        <ProjectObjectKindIcon className="shrink-0" kind={object.kind} size={14} />
-        <span className="truncate">{object.name}</span>
-      </div>
-    </div>
-  );
-}
-
-function ShapeVisual({ object }: GenericObjectVisualProps) {
-  return (
-    <div className="relative flex h-full w-full items-center justify-center rounded-md border border-emerald-500/70 bg-emerald-100/60 p-3 text-center text-emerald-900 shadow-[0_12px_30px_rgba(15,23,42,0.12)]">
-      <span className="max-w-full truncate text-sm font-semibold">{object.name}</span>
-    </div>
-  );
-}
-
-type GenericObjectVisualProps = {
-  object: ProjectObjectNode;
-};
-
-function GenericObjectVisual({ object }: GenericObjectVisualProps) {
-  return (
-    <div className="relative flex h-full w-full items-center justify-center rounded-md border border-slate-300 bg-white/80 p-3 text-center text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.12)]">
-      <div className="min-w-0">
-        <ProjectObjectKindIcon className="mx-auto text-teal-700" kind={object.kind} size={24} />
-        <p className="mt-2 truncate text-sm font-semibold text-slate-950">{object.name}</p>
-        <p className="text-xs text-slate-500">{getProjectObjectKindLabel(object.kind)}</p>
-      </div>
     </div>
   );
 }

@@ -5,9 +5,11 @@ import {
   type GetProjectResponse,
   type ListProjectsResponse,
   type Project,
+  type ProjectImageAsset,
   type ProjectSummary,
   type UpdateProjectFileTreeRequest,
-  type UpdateProjectFileTreeResponse
+  type UpdateProjectFileTreeResponse,
+  type UploadProjectImageAssetResponse
 } from "@bg-maker/shared";
 import { apiRequest } from "../../lib/api-client";
 
@@ -45,4 +47,23 @@ export async function updateProjectFileTree(
   );
 
   return response.project;
+}
+
+export async function uploadProjectImageAsset(
+  projectId: string,
+  file: File
+): Promise<ProjectImageAsset> {
+  const response = await apiRequest<UploadProjectImageAssetResponse>(
+    apiPaths.projectImageAssets(projectId),
+    {
+      method: "POST",
+      body: file,
+      headers: {
+        "Content-Type": file.type,
+        "X-File-Name": file.name
+      }
+    }
+  );
+
+  return response.imageAsset;
 }

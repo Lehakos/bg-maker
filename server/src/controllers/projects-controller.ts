@@ -5,7 +5,8 @@ import {
   type CreateProjectResponse,
   type GetProjectResponse,
   type ListProjectsResponse,
-  type UpdateProjectFileTreeResponse
+  type UpdateProjectFileTreeResponse,
+  type UploadProjectImageAssetResponse
 } from "@bg-maker/shared";
 import type { FastifyInstance } from "fastify";
 import {
@@ -91,6 +92,66 @@ export function registerProjectsController(
       }
     }
   );
+
+  app.post<{ Params: ProjectRouteParams }>(
+    `${apiPaths.projects}/:projectId/image-assets`,
+    async (request, reply): Promise<UploadProjectImageAssetResponse | ApiErrorResponse> => {
+      try {
+        if (!Buffer.isBuffer(request.body)) {
+          reply.code(400);
+
+          return { message: "Image asset data is required" };
+        }
+
+        const imageAsset = await projectService.createProjectImageAsset(request.params.projectId, {
+          contentType: getHeaderValue(request.headers["content-type"]),
+          data: request.body,
+          fileName: getHeaderValue(request.headers["x-file-name"])
+        });
+
+        if (!imageAsset) {
+          reply.code(404);
+
+          return { message: "Project not found" };
+        }
+
+        reply.code(201);
+
+        return { imageAsset };
+      } catch (error) {
+        if (error instanceof ProjectValidationError) {
+          reply.code(error.message === "Unsupported image content type" ? 415 : 400);
+
+          return { message: error.message };
+        }
+
+        throw error;
+      }
+    }
+  );
+
+  app.get<{ Params: ProjectRouteParams & { assetId: string } }>(
+    `${apiPaths.projects}/:projectId/image-assets/:assetId`,
+    async (request, reply): Promise<ApiErrorResponse | Buffer> => {
+      const imageAsset = await projectService.getProjectImageAsset(
+        request.params.projectId,
+        request.params.assetId
+      );
+
+      if (!imageAsset) {
+        reply.code(404);
+
+        return { message: "Image asset not found" };
+      }
+
+      reply
+        .header("Cache-Control", "no-store")
+        .header("Content-Length", String(imageAsset.data.byteLength))
+        .header("Content-Type", imageAsset.imageAsset.contentType);
+
+      return imageAsset.data;
+    }
+  );
 }
 
 function toCreateProjectRequest(body: unknown): CreateProjectRequest {
@@ -114,4 +175,12 @@ function getProjectFileTreePayload(body: unknown): unknown {
   const record = body as Record<string, unknown>;
 
   return record.fileTree;
+}
+
+function getHeaderValue(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0] ?? "";
+  }
+
+  return value ?? "";
 }

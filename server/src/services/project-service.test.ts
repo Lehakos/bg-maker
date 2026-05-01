@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Project } from "@bg-maker/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ProjectService, ProjectValidationError } from "./project-service.js";
+import {
+  maxProjectImageAssetBytes,
+  ProjectService,
+  ProjectValidationError
+} from "./project-service.js";
 
 let testDirectory: string;
 let storePath: string;
@@ -124,12 +128,25 @@ describe("ProjectService", () => {
                     kind: "shape",
                     name: " Shape 1 ",
                     components: {
+                      appearance: {
+                        backgroundColor: "#ABCDEF",
+                        backgroundOpacity: -1,
+                        borderColor: "red",
+                        borderRadius: -1,
+                        borderStyle: "dotted",
+                        borderWidth: 2000,
+                        opacity: 2,
+                        padding: -4
+                      },
                       rectTransform: {
                         rotation: 5000,
                         scaleX: 99,
                         scaleY: 99,
                         x: -12000,
                         y: Number.POSITIVE_INFINITY
+                      },
+                      shape: {
+                        variant: "triangle"
                       }
                     },
                     visible: false
@@ -145,6 +162,13 @@ describe("ProjectService", () => {
           },
           {
             id: "image-file",
+            imageAsset: {
+              id: "asset-1",
+              byteSize: 321,
+              contentType: "image/png",
+              createdAt: "2026-01-02T00:00:00.000Z",
+              fileName: " token.png "
+            },
             kind: "image",
             name: "Image file",
             objectTree: [{ id: "ignored-object", name: "Ignored", type: "group" }],
@@ -182,6 +206,16 @@ describe("ProjectService", () => {
                       kind: "shape",
                       name: "Shape 1",
                       components: {
+                        appearance: {
+                          backgroundColor: "#abcdef",
+                          backgroundOpacity: 0,
+                          borderColor: "#10b981",
+                          borderRadius: 0,
+                          borderStyle: "dotted",
+                          borderWidth: 1000,
+                          opacity: 1,
+                          padding: 0
+                        },
                         rectTransform: {
                           height: 120,
                           pivotX: 0.5,
@@ -192,6 +226,9 @@ describe("ProjectService", () => {
                           width: 120,
                           x: -10000,
                           y: 0
+                        },
+                        shape: {
+                          variant: "triangle"
                         }
                       },
                       visible: false
@@ -207,6 +244,13 @@ describe("ProjectService", () => {
             },
             {
               id: "image-file",
+              imageAsset: {
+                id: "asset-1",
+                byteSize: 321,
+                contentType: "image/png",
+                createdAt: "2026-01-02T00:00:00.000Z",
+                fileName: "token.png"
+              },
               kind: "image",
               name: "Image file",
               type: "file"
@@ -249,6 +293,76 @@ describe("ProjectService", () => {
     });
     expect(updatedProject?.updatedAt).not.toBe("2026-01-01T00:00:00.000Z");
     await expect(readStoredProjects()).resolves.toEqual([updatedProject]);
+  });
+
+  it("stores image asset bytes and only serves assets present in the file tree", async () => {
+    const project = await projectService.createProject({ name: "Images" });
+    const imageAsset = await projectService.createProjectImageAsset(project.id, {
+      contentType: "image/png",
+      data: Buffer.from("image-data"),
+      fileName: " token.png "
+    });
+
+    expect(imageAsset).toMatchObject({
+      byteSize: 10,
+      contentType: "image/png",
+      fileName: "token.png"
+    });
+    expect(await projectService.getProjectImageAsset(project.id, imageAsset!.id)).toBeNull();
+
+    await projectService.updateProjectFileTree(project.id, [
+      {
+        children: [
+          {
+            id: "image-file",
+            imageAsset: imageAsset!,
+            kind: "image",
+            name: "Token",
+            type: "file"
+          }
+        ],
+        id: "images",
+        name: "Images",
+        type: "folder"
+      }
+    ]);
+
+    const loadedImageAsset = await projectService.getProjectImageAsset(project.id, imageAsset!.id);
+
+    expect(loadedImageAsset?.data.toString()).toBe("image-data");
+    expect(loadedImageAsset?.imageAsset).toEqual(imageAsset);
+
+    await projectService.updateProjectFileTree(project.id, [
+      { children: [], id: "images", name: "Images", type: "folder" }
+    ]);
+
+    expect(await projectService.getProjectImageAsset(project.id, imageAsset!.id)).toBeNull();
+  });
+
+  it("rejects invalid image asset uploads", async () => {
+    const project = await projectService.createProject({ name: "Images" });
+
+    await expect(
+      projectService.createProjectImageAsset(project.id, {
+        contentType: "image/svg+xml",
+        data: Buffer.from("svg"),
+        fileName: "bad.svg"
+      })
+    ).rejects.toThrow(new ProjectValidationError("Unsupported image content type"));
+    await expect(
+      projectService.createProjectImageAsset(project.id, {
+        contentType: "image/png",
+        data: Buffer.alloc(maxProjectImageAssetBytes + 1),
+        fileName: "huge.png"
+      })
+    ).rejects.toThrow(new ProjectValidationError("Image asset is too large"));
+    await expect(
+      projectService.createProjectImageAsset("missing", {
+        contentType: "image/png",
+        data: Buffer.from("image"),
+        fileName: "token.png"
+      })
+    ).resolves.toBeNull();
   });
 
   it("returns null for missing projects without writing a matching project", async () => {

@@ -216,7 +216,7 @@ function LoadedProjectWorkspace({
   }
 
   return (
-    <section className="grid h-[calc(100vh-72px)] w-full grid-cols-1 overflow-hidden bg-[#f6f7f4] text-slate-800 md:grid-cols-[minmax(260px,340px)_minmax(0,1fr)_minmax(260px,320px)]">
+    <section className="grid h-[calc(100vh-72px)] min-h-0 w-full grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] overflow-hidden bg-[#f6f7f4] text-slate-800 md:grid-cols-[minmax(260px,340px)_minmax(0,1fr)_minmax(260px,320px)] md:grid-rows-1">
       <ProjectFileTreePanel
         fileTree={fileTree}
         projectName={project.name}
@@ -240,10 +240,13 @@ function LoadedProjectWorkspace({
         onSelectObject={selectObject}
         onUndo={undo}
       />
-      <div className="flex min-h-0 flex-col border-t border-slate-200 bg-white md:border-l md:border-t-0">
+      <div className="flex min-h-0 flex-col overflow-hidden border-t border-slate-200 bg-white md:border-l md:border-t-0">
         <ProjectObjectInspectorPanel
           contentFileNode={selectedContentFileNode}
+          fileTree={fileTree}
+          projectId={project.id}
           selectedObject={selectedProjectObject}
+          onFileTreeChange={persistFileTree}
           onObjectTreeChange={persistObjectTree}
         />
         <ProjectObjectTreePanel

@@ -335,7 +335,7 @@ export function ProjectFileTreePanel({
 
   return (
     <aside
-      className="flex min-h-0 flex-col border-b border-slate-200 bg-white text-slate-700 md:border-b-0 md:border-r"
+      className="flex min-h-0 flex-col overflow-hidden border-b border-slate-200 bg-white text-slate-700 md:border-b-0 md:border-r"
       onContextMenu={(event) => handleContextMenu(event)}
     >
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-slate-200 bg-slate-50 px-2">

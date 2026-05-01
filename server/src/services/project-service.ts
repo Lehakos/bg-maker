@@ -6,14 +6,30 @@ import type {
   Project,
   ProjectFileKind,
   ProjectFileNode,
+  ProjectImageAsset,
+  ProjectImageAssetContentType,
+  ProjectObjectAppearance,
+  ProjectObjectBorderStyle,
+  ProjectObjectImage,
+  ProjectObjectImageFit,
   ProjectObjectKind,
   ProjectObjectNode,
   ProjectObjectRectTransform,
+  ProjectObjectShape,
+  ProjectObjectShapeVariant,
+  ProjectObjectText,
+  ProjectObjectTextAlign,
+  ProjectObjectTextVerticalAlign,
   ProjectSummary
 } from "@bg-maker/shared";
 import {
   createDefaultProjectObjectNode,
+  getDefaultProjectObjectAppearance,
+  getDefaultProjectObjectImage,
   getDefaultProjectObjectRectTransform,
+  getDefaultProjectObjectShape,
+  getDefaultProjectObjectText,
+  projectImageAssetContentTypes,
   projectObjectKinds as sharedProjectObjectKinds
 } from "@bg-maker/shared";
 
@@ -25,19 +41,68 @@ type ProjectServiceOptions = {
   storePath?: string;
 };
 
+export type CreateProjectImageAssetRequest = {
+  contentType: string;
+  data: Buffer;
+  fileName: string;
+};
+
+export type ProjectImageAssetContent = {
+  data: Buffer;
+  imageAsset: ProjectImageAsset;
+};
+
 const defaultDataDirectory = join(process.cwd(), ".bg-maker");
+export const maxProjectImageAssetBytes = 10 * 1024 * 1024;
 const maxProjectFileTreeDepth = 12;
 const maxProjectFileTreeNodes = 500;
 const maxProjectObjectTreeDepth = 24;
 const maxProjectObjectTreeNodes = 1000;
+const maxProjectObjectAppearanceSize = 1000;
 const maxProjectObjectCoordinate = 10000;
 const maxProjectObjectDimension = 10000;
+const maxProjectObjectOpacity = 1;
 const maxProjectObjectRotation = 3600;
 const maxProjectObjectScale = 8;
+const maxProjectTextContentLength = 2000;
+const maxProjectTextFontSize = 512;
+const maxProjectTextFontWeight = 900;
+const maxProjectTextLineHeight = 4;
+const minProjectTextFontSize = 1;
+const minProjectTextFontWeight = 100;
+const minProjectTextLineHeight = 0.5;
 const minProjectObjectDimension = 1;
+const minProjectObjectOpacity = 0;
 const minProjectObjectScale = 0.1;
+const projectImageAssetContentTypeSet = new Set<ProjectImageAssetContentType>(
+  projectImageAssetContentTypes
+);
+const projectObjectBorderStyles = new Set<ProjectObjectBorderStyle>([
+  "none",
+  "solid",
+  "dashed",
+  "dotted"
+]);
+const projectObjectImageFits = new Set<ProjectObjectImageFit>([
+  "contain",
+  "cover",
+  "fill",
+  "scaleDown"
+]);
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
 const projectObjectKinds = new Set<ProjectObjectKind>(sharedProjectObjectKinds);
+const projectObjectShapeVariants = new Set<ProjectObjectShapeVariant>([
+  "diamond",
+  "ellipse",
+  "rectangle",
+  "triangle"
+]);
+const projectObjectTextAligns = new Set<ProjectObjectTextAlign>(["center", "left", "right"]);
+const projectObjectTextVerticalAligns = new Set<ProjectObjectTextVerticalAlign>([
+  "bottom",
+  "middle",
+  "top"
+]);
 
 export class ProjectValidationError extends Error {
   constructor(message: string) {
@@ -47,7 +112,10 @@ export class ProjectValidationError extends Error {
 }
 
 export class ProjectService {
-  constructor(private readonly storePath: string) {}
+  constructor(
+    private readonly storePath: string,
+    private readonly imageAssetDirectory = join(dirname(storePath), "image-assets")
+  ) {}
 
   async listProjects(): Promise<ProjectSummary[]> {
     const store = await this.readStore();
@@ -115,6 +183,80 @@ export class ProjectService {
     return updatedProject;
   }
 
+  async createProjectImageAsset(
+    projectId: string,
+    request: CreateProjectImageAssetRequest
+  ): Promise<ProjectImageAsset | null> {
+    const store = await this.readStore();
+    const project = store.projects.find((item) => item.id === projectId);
+
+    if (!project) {
+      return null;
+    }
+
+    const contentType = normalizeProjectImageAssetContentType(request.contentType);
+
+    if (!contentType) {
+      throw new ProjectValidationError("Unsupported image content type");
+    }
+
+    if (!Buffer.isBuffer(request.data) || request.data.byteLength === 0) {
+      throw new ProjectValidationError("Image asset data is required");
+    }
+
+    if (request.data.byteLength > maxProjectImageAssetBytes) {
+      throw new ProjectValidationError("Image asset is too large");
+    }
+
+    const imageAsset: ProjectImageAsset = {
+      id: randomUUID(),
+      fileName: normalizeProjectImageAssetFileName(request.fileName),
+      contentType,
+      byteSize: request.data.byteLength,
+      createdAt: new Date().toISOString()
+    };
+
+    await mkdir(this.getProjectImageAssetDirectory(project.id), { recursive: true });
+    await writeFile(this.getProjectImageAssetPath(project.id, imageAsset.id), request.data);
+
+    return imageAsset;
+  }
+
+  async getProjectImageAsset(
+    projectId: string,
+    assetId: string
+  ): Promise<ProjectImageAssetContent | null> {
+    if (!isSafeProjectImageAssetId(assetId)) {
+      return null;
+    }
+
+    const store = await this.readStore();
+    const project = store.projects.find((item) => item.id === projectId);
+
+    if (!project) {
+      return null;
+    }
+
+    const imageAsset = findProjectImageAsset(project.fileTree, assetId);
+
+    if (!imageAsset) {
+      return null;
+    }
+
+    try {
+      return {
+        data: await readFile(this.getProjectImageAssetPath(project.id, imageAsset.id)),
+        imageAsset
+      };
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
   private async readStore(): Promise<ProjectStoreData> {
     try {
       const rawStore = await readFile(this.storePath, "utf8");
@@ -140,6 +282,14 @@ export class ProjectService {
     const temporaryStorePath = `${this.storePath}.${process.pid}.${Date.now()}.tmp`;
     await writeFile(temporaryStorePath, `${JSON.stringify(store, null, 2)}\n`, "utf8");
     await rename(temporaryStorePath, this.storePath);
+  }
+
+  private getProjectImageAssetDirectory(projectId: string) {
+    return join(this.imageAssetDirectory, projectId);
+  }
+
+  private getProjectImageAssetPath(projectId: string, assetId: string) {
+    return join(this.getProjectImageAssetDirectory(projectId), assetId);
   }
 }
 
@@ -333,12 +483,14 @@ function normalizeProjectFileNode(
             )
           }
         : {};
+  const imageAsset = kind === "image" ? normalizeProjectImageAsset(record.imageAsset) : undefined;
 
   return {
     id,
     name,
     type: "file",
     kind,
+    ...(imageAsset ? { imageAsset } : {}),
     ...objectTree
   };
 }
@@ -413,20 +565,44 @@ function normalizeProjectObjectNode(
     name,
     kind,
     visible: record.visible !== false,
-    components: {
-      rectTransform: normalizeProjectObjectRectTransform(
-        record.components && typeof record.components === "object"
-          ? (record.components as Record<string, unknown>).rectTransform
-          : undefined,
-        kind
-      )
-    },
+    components: normalizeProjectObjectComponents(record.components, kind, name),
     children: Array.isArray(record.children)
       ? record.children.map((child) =>
           normalizeProjectObjectNode(child, depth + 1, nodeIds, nodeCount)
         )
       : []
   };
+}
+
+function normalizeProjectObjectComponents(value: unknown, kind: ProjectObjectKind, name: string) {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const components = {
+    appearance: normalizeProjectObjectAppearance(record.appearance, kind),
+    rectTransform: normalizeProjectObjectRectTransform(record.rectTransform, kind)
+  };
+
+  if (kind === "label") {
+    return {
+      ...components,
+      text: normalizeProjectObjectText(record.text, kind, name)
+    };
+  }
+
+  if (kind === "image") {
+    return {
+      ...components,
+      image: normalizeProjectObjectImage(record.image)
+    };
+  }
+
+  if (kind === "shape") {
+    return {
+      ...components,
+      shape: normalizeProjectObjectShape(record.shape)
+    };
+  }
+
+  return components;
 }
 
 function normalizeProjectObjectRectTransform(
@@ -476,6 +652,145 @@ function normalizeProjectObjectRectTransform(
   };
 }
 
+function normalizeProjectObjectAppearance(
+  value: unknown,
+  kind: ProjectObjectKind
+): ProjectObjectAppearance {
+  const defaultAppearance = getDefaultProjectObjectAppearance(kind);
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    backgroundColor: normalizeHexColor(record.backgroundColor, defaultAppearance.backgroundColor),
+    backgroundOpacity: normalizeFiniteNumber(
+      record.backgroundOpacity,
+      typeof record.backgroundVisible === "boolean"
+        ? Number(record.backgroundVisible)
+        : defaultAppearance.backgroundOpacity,
+      {
+        max: maxProjectObjectOpacity,
+        min: minProjectObjectOpacity
+      }
+    ),
+    borderColor: normalizeHexColor(record.borderColor, defaultAppearance.borderColor),
+    borderRadius: normalizeFiniteNumber(record.borderRadius, defaultAppearance.borderRadius, {
+      max: maxProjectObjectAppearanceSize,
+      min: 0
+    }),
+    borderStyle: projectObjectBorderStyles.has(record.borderStyle as ProjectObjectBorderStyle)
+      ? (record.borderStyle as ProjectObjectBorderStyle)
+      : defaultAppearance.borderStyle,
+    borderWidth: normalizeFiniteNumber(record.borderWidth, defaultAppearance.borderWidth, {
+      max: maxProjectObjectAppearanceSize,
+      min: 0
+    }),
+    opacity: normalizeFiniteNumber(record.opacity, defaultAppearance.opacity, {
+      max: maxProjectObjectOpacity,
+      min: minProjectObjectOpacity
+    }),
+    padding: normalizeFiniteNumber(record.padding, defaultAppearance.padding, {
+      max: maxProjectObjectAppearanceSize,
+      min: 0
+    })
+  };
+}
+
+function normalizeProjectObjectText(
+  value: unknown,
+  kind: ProjectObjectKind,
+  name: string
+): ProjectObjectText {
+  const defaultText = getDefaultProjectObjectText(kind, name);
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const content = typeof record.content === "string" ? record.content : defaultText.content;
+
+  return {
+    color: normalizeHexColor(record.color, defaultText.color),
+    content: content.slice(0, maxProjectTextContentLength),
+    fontSize: normalizeFiniteNumber(record.fontSize, defaultText.fontSize, {
+      max: maxProjectTextFontSize,
+      min: minProjectTextFontSize
+    }),
+    fontWeight: normalizeFiniteNumber(record.fontWeight, defaultText.fontWeight, {
+      max: maxProjectTextFontWeight,
+      min: minProjectTextFontWeight
+    }),
+    lineHeight: normalizeFiniteNumber(record.lineHeight, defaultText.lineHeight, {
+      max: maxProjectTextLineHeight,
+      min: minProjectTextLineHeight
+    }),
+    textAlign: projectObjectTextAligns.has(record.textAlign as ProjectObjectTextAlign)
+      ? (record.textAlign as ProjectObjectTextAlign)
+      : defaultText.textAlign,
+    verticalAlign: projectObjectTextVerticalAligns.has(
+      record.verticalAlign as ProjectObjectTextVerticalAlign
+    )
+      ? (record.verticalAlign as ProjectObjectTextVerticalAlign)
+      : defaultText.verticalAlign
+  };
+}
+
+function normalizeProjectObjectImage(value: unknown): ProjectObjectImage {
+  const defaultImage = getDefaultProjectObjectImage();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const assetId = typeof record.assetId === "string" ? record.assetId.trim() : "";
+
+  return {
+    assetId: isSafeProjectImageAssetId(assetId) ? assetId : defaultImage.assetId,
+    fit: projectObjectImageFits.has(record.fit as ProjectObjectImageFit)
+      ? (record.fit as ProjectObjectImageFit)
+      : defaultImage.fit,
+    positionX: normalizeFiniteNumber(record.positionX, defaultImage.positionX, {
+      max: 100,
+      min: 0
+    }),
+    positionY: normalizeFiniteNumber(record.positionY, defaultImage.positionY, {
+      max: 100,
+      min: 0
+    })
+  };
+}
+
+function normalizeProjectObjectShape(value: unknown): ProjectObjectShape {
+  const defaultShape = getDefaultProjectObjectShape();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    variant: projectObjectShapeVariants.has(record.variant as ProjectObjectShapeVariant)
+      ? (record.variant as ProjectObjectShapeVariant)
+      : defaultShape.variant
+  };
+}
+
+function normalizeProjectImageAsset(value: unknown): ProjectImageAsset | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  const fileName = normalizeProjectImageAssetFileName(
+    typeof record.fileName === "string" ? record.fileName : ""
+  );
+  const contentType = normalizeProjectImageAssetContentType(record.contentType);
+  const byteSize =
+    typeof record.byteSize === "number" && Number.isFinite(record.byteSize) && record.byteSize > 0
+      ? Math.min(Math.round(record.byteSize), maxProjectImageAssetBytes)
+      : 0;
+  const createdAt = typeof record.createdAt === "string" ? record.createdAt : "";
+
+  if (!isSafeProjectImageAssetId(id) || !contentType || byteSize <= 0 || !createdAt) {
+    return undefined;
+  }
+
+  return {
+    id,
+    fileName,
+    contentType,
+    byteSize,
+    createdAt
+  };
+}
+
 function normalizeFiniteNumber(
   value: unknown,
   fallback: number,
@@ -486,6 +801,61 @@ function normalizeFiniteNumber(
   }
 
   return Math.min(bounds.max, Math.max(bounds.min, value));
+}
+
+function normalizeHexColor(value: unknown, fallback: string) {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const trimmedValue = value.trim();
+
+  return /^#[0-9a-fA-F]{6}$/.test(trimmedValue) ? trimmedValue.toLowerCase() : fallback;
+}
+
+function normalizeProjectImageAssetContentType(
+  value: unknown
+): ProjectImageAssetContentType | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const contentType = value.split(";")[0]?.trim().toLowerCase();
+
+  return projectImageAssetContentTypeSet.has(contentType as ProjectImageAssetContentType)
+    ? (contentType as ProjectImageAssetContentType)
+    : null;
+}
+
+function normalizeProjectImageAssetFileName(value: string) {
+  const trimmedValue = value.trim().replaceAll(/[\\/]/g, "");
+
+  return trimmedValue.slice(0, 180) || "image";
+}
+
+function isSafeProjectImageAssetId(assetId: string) {
+  return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(assetId);
+}
+
+function findProjectImageAsset(
+  fileTree: ProjectFileNode[],
+  assetId: string
+): ProjectImageAsset | null {
+  for (const node of fileTree) {
+    if (node.type === "folder") {
+      const imageAsset = findProjectImageAsset(node.children ?? [], assetId);
+
+      if (imageAsset) {
+        return imageAsset;
+      }
+    }
+
+    if (node.type === "file" && node.kind === "image" && node.imageAsset?.id === assetId) {
+      return node.imageAsset;
+    }
+  }
+
+  return null;
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

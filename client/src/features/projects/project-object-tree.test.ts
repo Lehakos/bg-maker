@@ -1,9 +1,13 @@
 import type {
   ProjectFileKind,
   ProjectFileNode,
+  ProjectObjectAppearance,
+  ProjectObjectImage,
   ProjectObjectKind,
   ProjectObjectNode,
-  ProjectObjectRectTransform
+  ProjectObjectRectTransform,
+  ProjectObjectShape,
+  ProjectObjectText
 } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
@@ -12,11 +16,19 @@ import {
   findProjectObjectNode,
   findProjectObjectNodeLocation,
   getExpandableProjectObjectNodeIds,
+  getProjectObjectNodeAppearance,
   getProjectObjectNodeChildren,
+  getProjectObjectNodeImage,
   getProjectObjectNodeRectTransform,
+  getProjectObjectNodeShape,
+  getProjectObjectNodeText,
   moveProjectObjectNode,
   renameProjectObjectNode,
+  setProjectObjectNodeAppearance,
+  setProjectObjectNodeImage,
   setProjectObjectNodeRectTransform,
+  setProjectObjectNodeShape,
+  setProjectObjectNodeText,
   setProjectObjectNodeVisibility,
   updateProjectFileNodeObjectTree
 } from "./project-object-tree";
@@ -171,6 +183,52 @@ describe("project object tree helpers", () => {
       x: 12,
       y: 0
     });
+  });
+
+  it("merges and updates behavior components without mutating the original tree", () => {
+    const objectTree = createObjectTree();
+    const appearance: ProjectObjectAppearance = {
+      backgroundColor: "#abcdef",
+      backgroundOpacity: 0,
+      borderColor: "#123456",
+      borderRadius: 8,
+      borderStyle: "solid",
+      borderWidth: 2,
+      opacity: 0.8,
+      padding: 6
+    };
+    const text: ProjectObjectText = {
+      color: "#111111",
+      content: "Updated label",
+      fontSize: 18,
+      fontWeight: 700,
+      lineHeight: 1.3,
+      textAlign: "left",
+      verticalAlign: "top"
+    };
+    const image: ProjectObjectImage = {
+      assetId: "asset-1",
+      fit: "cover",
+      positionX: 40,
+      positionY: 60
+    };
+    const shape: ProjectObjectShape = {
+      variant: "triangle"
+    };
+
+    const appearanceTree = setProjectObjectNodeAppearance(objectTree, "shape-1", appearance);
+    const textTree = setProjectObjectNodeText(objectTree, "label-1", text);
+    const imageTree = setProjectObjectNodeImage(objectTree, "image-1", image);
+    const shapeTree = setProjectObjectNodeShape(objectTree, "shape-1", shape);
+
+    expect(
+      getProjectObjectNodeAppearance(findProjectObjectNode(appearanceTree, "shape-1")!)
+    ).toEqual(appearance);
+    expect(getProjectObjectNodeText(findProjectObjectNode(textTree, "label-1")!)).toEqual(text);
+    expect(getProjectObjectNodeImage(findProjectObjectNode(imageTree, "image-1")!)).toEqual(image);
+    expect(getProjectObjectNodeShape(findProjectObjectNode(shapeTree, "shape-1")!)).toEqual(shape);
+    expect(findProjectObjectNode(objectTree, "image-1")?.components?.image).toBeUndefined();
+    expect(setProjectObjectNodeImage(objectTree, "missing-object", image)).toBe(objectTree);
   });
 
   it("updates object trees only for supported project file nodes", () => {

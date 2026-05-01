@@ -13,11 +13,7 @@ import {
   sortProjectFileTree
 } from "./project-file-tree";
 
-function folder(
-  id: string,
-  name: string,
-  children: ProjectFileNode[] = []
-): ProjectFileNode {
+function folder(id: string, name: string, children: ProjectFileNode[] = []): ProjectFileNode {
   return {
     children,
     id,
@@ -65,9 +61,9 @@ describe("project file tree helpers", () => {
       "root-image",
       "root-doc"
     ]);
-    expect(getProjectFileNodeChildren(sortedFileTree, "folder-alpha").map((node) => node.id)).toEqual(
-      ["alpha-image-2", "alpha-image-10"]
-    );
+    expect(
+      getProjectFileNodeChildren(sortedFileTree, "folder-alpha").map((node) => node.id)
+    ).toEqual(["alpha-image-2", "alpha-image-10"]);
     expect(fileTree.map((node) => node.id)).toEqual([
       "root-image",
       "folder-beta",
@@ -128,11 +124,39 @@ describe("project file tree helpers", () => {
       name: "Title label",
       visible: true,
       components: {
+        appearance: {
+          backgroundColor: "#ffffff"
+        },
         rectTransform: {
           height: 32,
           width: 160
+        },
+        text: {
+          content: "Title label"
         }
       }
+    });
+  });
+
+  it("creates image file nodes with uploaded asset metadata", () => {
+    const imageFile = createProjectFileNode("image", "token.png", {
+      imageAsset: {
+        id: "asset-1",
+        byteSize: 123,
+        contentType: "image/png",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        fileName: "token.png"
+      }
+    });
+
+    expect(imageFile).toMatchObject({
+      imageAsset: {
+        id: "asset-1",
+        contentType: "image/png",
+        fileName: "token.png"
+      },
+      kind: "image",
+      name: "token.png"
     });
   });
 

@@ -1,9 +1,13 @@
 import type {
+  ProjectObjectAppearance,
+  ProjectObjectImage,
   ProjectFileKind,
   ProjectFileNode,
   ProjectObjectKind,
   ProjectObjectNode,
-  ProjectObjectRectTransform
+  ProjectObjectRectTransform,
+  ProjectObjectShape,
+  ProjectObjectText
 } from "@bg-maker/shared";
 import { projectObjectComponentEngine } from "./project-object-components";
 
@@ -159,12 +163,78 @@ export function getProjectObjectNodeRectTransform(
   return projectObjectComponentEngine.getRectTransform(object);
 }
 
+export function getProjectObjectNodeAppearance(object: ProjectObjectNode): ProjectObjectAppearance {
+  return projectObjectComponentEngine.getAppearance(object);
+}
+
+export function getProjectObjectNodeText(object: ProjectObjectNode): ProjectObjectText {
+  return projectObjectComponentEngine.getText(object);
+}
+
+export function getProjectObjectNodeImage(object: ProjectObjectNode): ProjectObjectImage {
+  return projectObjectComponentEngine.getImage(object);
+}
+
+export function getProjectObjectNodeShape(object: ProjectObjectNode): ProjectObjectShape {
+  return projectObjectComponentEngine.getShape(object);
+}
+
 export function setProjectObjectNodeRectTransform(
   objectTree: ProjectObjectNode[],
   nodeId: string,
   rectTransform: ProjectObjectRectTransform
 ): ProjectObjectNode[] {
-  const result = setProjectObjectNodeRectTransformInChildren(objectTree, nodeId, rectTransform);
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withRectTransform(node, rectTransform)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeAppearance(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  appearance: ProjectObjectAppearance
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withAppearance(node, appearance)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeText(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  text: ProjectObjectText
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withText(node, text)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeImage(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  image: ProjectObjectImage
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withImage(node, image)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeShape(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  shape: ProjectObjectShape
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withShape(node, shape)
+  );
 
   return result.changed ? result.nodes : objectTree;
 }
@@ -412,24 +482,20 @@ function setProjectObjectNodeVisibilityInChildren(
   return { changed, nodes };
 }
 
-function setProjectObjectNodeRectTransformInChildren(
+function updateProjectObjectNodeInChildren(
   objectTree: ProjectObjectNode[],
   nodeId: string,
-  rectTransform: ProjectObjectRectTransform
+  updateNode: (node: ProjectObjectNode) => ProjectObjectNode
 ): ProjectObjectTreeUpdateResult {
   let changed = false;
   const nodes = objectTree.map((node) => {
     if (node.id === nodeId) {
       changed = true;
 
-      return projectObjectComponentEngine.withRectTransform(node, rectTransform);
+      return updateNode(node);
     }
 
-    const childResult = setProjectObjectNodeRectTransformInChildren(
-      node.children ?? [],
-      nodeId,
-      rectTransform
-    );
+    const childResult = updateProjectObjectNodeInChildren(node.children ?? [], nodeId, updateNode);
 
     if (childResult.changed) {
       changed = true;
