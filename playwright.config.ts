@@ -2,9 +2,12 @@ import { defineConfig, devices } from "@playwright/test";
 
 const apiPort = 3310;
 const clientPort = 5180;
+const e2eDataDirectory = `/private/tmp/bg-maker-e2e-${process.pid}`;
+process.env.BGM_E2E_DATA_DIR = e2eDataDirectory;
 
 export default defineConfig({
   testDir: "./e2e",
+  globalTeardown: "./e2e/global-teardown.ts",
   fullyParallel: false,
   workers: 1,
   reporter: process.env.CI ? "github" : "list",
@@ -20,7 +23,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `HOST=127.0.0.1 PORT=${apiPort} pnpm --filter @bg-maker/server exec tsx src/index.ts`,
+      command: `HOST=127.0.0.1 PORT=${apiPort} BGM_DATA_DIR=${e2eDataDirectory} pnpm --filter @bg-maker/server exec tsx src/index.ts`,
       url: `http://127.0.0.1:${apiPort}/api/health`,
       timeout: 120_000,
       reuseExistingServer: false

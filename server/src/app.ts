@@ -1,6 +1,7 @@
 import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { registerHealthController } from "./controllers/health-controller.js";
+import { registerProjectsController } from "./controllers/projects-controller.js";
 
 export async function buildApp() {
   const app = Fastify({
@@ -13,6 +14,7 @@ export async function buildApp() {
   });
 
   registerHealthController(app);
+  registerProjectsController(app);
 
   return app;
 }

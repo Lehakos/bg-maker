@@ -13,6 +13,14 @@
   padding: 12px 18px;
 }
 
+.brand-link {
+  align-items: center;
+  color: inherit;
+  display: flex;
+  gap: 12px;
+  text-decoration: none;
+}
+
 .brand-mark {
   align-items: center;
   background: #24443f;
@@ -34,4 +42,127 @@
 
 .app-main {
   min-height: calc(100vh - 72px);
+  padding: 28px;
+}
+
+.project-picker,
+.project-workspace {
+  margin: 0 auto;
+  max-width: 1180px;
+  width: 100%;
+}
+
+.project-page-heading {
+  border-bottom: 1px solid #d9e1dc;
+  padding-bottom: 22px;
+}
+
+.project-page-heading h2,
+.workspace-heading h2 {
+  font-size: 28px;
+  letter-spacing: 0;
+  line-height: 1.15;
+}
+
+.project-loading,
+.not-found-page {
+  min-height: 420px;
+}
+
+.project-card {
+  background: #ffffff;
+  border-color: #d9e1dc;
+  min-height: 250px;
+}
+
+.project-card-content {
+  min-height: 100%;
+}
+
+.project-card-title {
+  min-width: 0;
+}
+
+.project-card h3,
+.workspace-section h3,
+.empty-projects h3 {
+  font-size: 18px;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.project-card-description {
+  min-height: 44px;
+}
+
+.project-card-stats {
+  min-height: 28px;
+}
+
+.project-card-action {
+  margin-top: auto;
+}
+
+.empty-projects {
+  background: #ffffff;
+  border: 1px dashed #b9c8c0;
+  border-radius: 8px;
+  min-height: 360px;
+  padding: 32px;
+}
+
+.empty-projects-icon {
+  align-items: center;
+  background: #eaf1ed;
+  border-radius: 8px;
+  color: #24443f;
+  display: flex;
+  height: 64px;
+  justify-content: center;
+  width: 64px;
+}
+
+.workspace-heading {
+  background: #ffffff;
+  border: 1px solid #d9e1dc;
+  border-radius: 8px;
+  padding: 28px;
+}
+
+.workspace-heading svg {
+  color: #b85c38;
+}
+
+.workspace-section {
+  background: #ffffff;
+  border: 1px solid #d9e1dc;
+  border-radius: 8px;
+  min-height: 180px;
+  padding: 22px;
+}
+
+.workspace-section-icon {
+  align-items: center;
+  background: #f0ede5;
+  border-radius: 8px;
+  color: #4f5f7a;
+  display: flex;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+@media (max-width: 720px) {
+  .app-main {
+    padding: 20px 14px;
+  }
+
+  .project-page-heading {
+    align-items: flex-start;
+  }
+
+  .project-page-heading h2,
+  .workspace-heading h2 {
+    font-size: 24px;
+  }
 }

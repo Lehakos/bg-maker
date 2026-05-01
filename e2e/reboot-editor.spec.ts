@@ -1,9 +1,20 @@
-import { expect, test } from "@playwright/test";
+import { test } from "@playwright/test";
+import { BgMakerGame } from "./game-objects/bg-maker-game";
 
-test("loads the clean application base", async ({ page }) => {
-  await page.goto("/");
+test("creates and opens a project", async ({ page }) => {
+  const game = new BgMakerGame(page);
+  await game.projects.goto();
 
-  await expect(page.getByRole("heading", { name: "BG Maker" })).toBeVisible();
-  await expect(page.getByText("Clean tabletop engine base")).toBeVisible();
-  await expect(page.getByLabel("Application workspace")).toBeVisible();
+  const projectName = `E2E Project ${Date.now()}`;
+
+  const workspace = await game.projects.createProject({
+    name: projectName,
+    description: "Проверка выбора проекта"
+  });
+
+  await workspace.expectProjectOpen(projectName);
+
+  await workspace.goToProjects();
+  await game.projects.expectReady();
+  await game.projects.expectProjectVisible(projectName);
 });

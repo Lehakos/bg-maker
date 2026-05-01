@@ -1,23 +1,26 @@
-import { Box, Group, Text, Title } from "@mantine/core";
+import { Box, Text, Title } from "@mantine/core";
+import { Link, Outlet } from "@tanstack/react-router";
 import "./app.css";
 
 export function App() {
   return (
     <Box className="app-shell">
       <header className="app-header">
-        <Group gap="sm" wrap="nowrap">
+        <Link to="/" className="brand-link">
           <Box className="brand-mark" aria-hidden>
             BG
           </Box>
           <Box>
             <Title order={1}>BG Maker</Title>
             <Text c="dimmed" size="sm">
-              Clean tabletop engine base
+              Tabletop engine workspace
             </Text>
           </Box>
-        </Group>
+        </Link>
       </header>
-      <main className="app-main" aria-label="Application workspace" />
+      <main className="app-main" aria-label="Application workspace">
+        <Outlet />
+      </main>
     </Box>
   );
 }
