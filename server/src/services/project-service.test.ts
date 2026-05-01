@@ -149,6 +149,13 @@ describe("ProjectService", () => {
             name: "Image file",
             objectTree: [{ id: "ignored-object", name: "Ignored", type: "group" }],
             type: "file"
+          },
+          {
+            id: "empty-object-file",
+            kind: "object",
+            name: "Empty object file",
+            objectTree: [],
+            type: "file"
           }
         ],
         id: " folder-1 ",
@@ -202,6 +209,34 @@ describe("ProjectService", () => {
               id: "image-file",
               kind: "image",
               name: "Image file",
+              type: "file"
+            },
+            {
+              id: "empty-object-file",
+              kind: "object",
+              name: "Empty object file",
+              objectTree: [
+                {
+                  children: [],
+                  components: {
+                    rectTransform: {
+                      height: 240,
+                      pivotX: 0.5,
+                      pivotY: 0.5,
+                      rotation: 0,
+                      scaleX: 1,
+                      scaleY: 1,
+                      width: 320,
+                      x: 0,
+                      y: 0
+                    }
+                  },
+                  id: "empty-object-file:root",
+                  kind: "group",
+                  name: "Empty object file",
+                  visible: true
+                }
+              ],
               type: "file"
             }
           ],

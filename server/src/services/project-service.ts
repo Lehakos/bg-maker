@@ -12,6 +12,7 @@ import type {
   ProjectSummary
 } from "@bg-maker/shared";
 import {
+  createDefaultProjectObjectNode,
   getDefaultProjectObjectRectTransform,
   projectObjectKinds as sharedProjectObjectKinds
 } from "@bg-maker/shared";
@@ -316,13 +317,22 @@ function normalizeProjectFileNode(
   const kind = projectFileKinds.has(record.kind as ProjectFileKind)
     ? (record.kind as ProjectFileKind)
     : "document";
-  const objectTree = isProjectObjectTreeFileKind(kind)
-    ? {
-        objectTree: Array.isArray(record.objectTree)
-          ? normalizeProjectObjectTree(record.objectTree)
-          : []
-      }
-    : {};
+  const objectTree =
+    kind === "tableSetup"
+      ? {
+          objectTree: Array.isArray(record.objectTree)
+            ? normalizeProjectObjectTree(record.objectTree)
+            : []
+        }
+      : kind === "object"
+        ? {
+            objectTree: ensureProjectObjectFileRoot(
+              Array.isArray(record.objectTree) ? normalizeProjectObjectTree(record.objectTree) : [],
+              id,
+              name
+            )
+          }
+        : {};
 
   return {
     id,
@@ -331,6 +341,18 @@ function normalizeProjectFileNode(
     kind,
     ...objectTree
   };
+}
+
+function ensureProjectObjectFileRoot(
+  objectTree: ProjectObjectNode[],
+  fileNodeId: string,
+  fileNodeName: string
+): ProjectObjectNode[] {
+  if (objectTree.length > 0) {
+    return objectTree;
+  }
+
+  return [createDefaultProjectObjectNode(`${fileNodeId}:root`, "group", fileNodeName)];
 }
 
 function normalizeProjectObjectTree(value: unknown): ProjectObjectNode[] {
@@ -464,10 +486,6 @@ function normalizeFiniteNumber(
   }
 
   return Math.min(bounds.max, Math.max(bounds.min, value));
-}
-
-function isProjectObjectTreeFileKind(kind: ProjectFileKind) {
-  return kind === "tableSetup" || kind === "object";
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

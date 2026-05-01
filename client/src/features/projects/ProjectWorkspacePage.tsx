@@ -116,19 +116,23 @@ function LoadedProjectWorkspace({
   const selectedContentFileNode = isProjectObjectTreeFileNode(selectedFileNode)
     ? selectedFileNode
     : null;
+  const defaultSelectedObjectId =
+    selectedContentFileNode?.kind === "object"
+      ? (selectedContentFileNode.objectTree?.[0]?.id ?? null)
+      : null;
   const selectedObjectId = useMemo(() => {
     if (!selectedContentFileNode || selectedObject?.fileNodeId !== selectedContentFileNode.id) {
-      return null;
+      return defaultSelectedObjectId;
     }
 
     if (!selectedObject.objectId) {
-      return null;
+      return defaultSelectedObjectId;
     }
 
     return findProjectObjectNode(selectedContentFileNode.objectTree ?? [], selectedObject.objectId)
       ? selectedObject.objectId
-      : null;
-  }, [selectedContentFileNode, selectedObject]);
+      : defaultSelectedObjectId;
+  }, [defaultSelectedObjectId, selectedContentFileNode, selectedObject]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {

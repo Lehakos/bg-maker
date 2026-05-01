@@ -107,6 +107,22 @@ const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; wid
   zone: { height: 220, width: 320 }
 };
 
+const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
+  card: "New card",
+  counter: "New counter",
+  deck: "New deck",
+  die: "New die",
+  group: "New group",
+  image: "New image",
+  label: "New label",
+  token: "New token",
+  zone: "New zone"
+};
+
+export function getDefaultProjectObjectName(kind: ProjectObjectKind = "group") {
+  return defaultProjectObjectNames[kind];
+}
+
 export function getDefaultProjectObjectRectTransform(
   kind: ProjectObjectKind = "group"
 ): ProjectObjectRectTransform {
@@ -130,5 +146,20 @@ export function createDefaultProjectObjectComponents(
 ): ProjectObjectComponents {
   return {
     rectTransform: getDefaultProjectObjectRectTransform(kind)
+  };
+}
+
+export function createDefaultProjectObjectNode(
+  id: string,
+  kind: ProjectObjectKind = "group",
+  name = getDefaultProjectObjectName(kind)
+): ProjectObjectNode {
+  return {
+    id,
+    name: name.trim() || getDefaultProjectObjectName(kind),
+    kind,
+    visible: true,
+    children: [],
+    components: createDefaultProjectObjectComponents(kind)
   };
 }

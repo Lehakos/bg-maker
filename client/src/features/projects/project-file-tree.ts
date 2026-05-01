@@ -1,4 +1,6 @@
-import type { ProjectFileKind, ProjectFileNode } from "@bg-maker/shared";
+import type { ProjectFileKind, ProjectFileNode, ProjectObjectKind } from "@bg-maker/shared";
+import { getDefaultProjectObjectName } from "@bg-maker/shared";
+import { createProjectObjectNode } from "./project-object-tree";
 
 export type ProjectFileTreeParentId = string | null;
 
@@ -7,6 +9,10 @@ export type ProjectFileTreeLocation = {
   parentId: ProjectFileTreeParentId;
   index: number;
   ancestors: string[];
+};
+
+export type CreateProjectFileNodeOptions = {
+  objectRootKind?: ProjectObjectKind;
 };
 
 const projectFileKindSortOrder: Record<ProjectFileKind, number> = {
@@ -32,13 +38,20 @@ export function createFolderNode(name = "New folder"): ProjectFileNode {
 
 export function createProjectFileNode(
   kind: ProjectFileKind,
-  name = getDefaultProjectFileNodeName(kind)
+  name = getDefaultProjectFileNodeName(kind),
+  options: CreateProjectFileNodeOptions = {}
 ): ProjectFileNode {
-  const objectTree = kind === "tableSetup" || kind === "object" ? { objectTree: [] } : {};
+  const nextName = name.trim() || getDefaultProjectFileNodeName(kind, options.objectRootKind);
+  const objectTree =
+    kind === "tableSetup"
+      ? { objectTree: [] }
+      : kind === "object"
+        ? { objectTree: [createProjectObjectNode(options.objectRootKind ?? "group", nextName)] }
+        : {};
 
   return {
     id: crypto.randomUUID(),
-    name: name.trim() || getDefaultProjectFileNodeName(kind),
+    name: nextName,
     type: "file",
     kind,
     ...objectTree
@@ -173,13 +186,13 @@ export function countProjectFileTreeNodes(fileTree: ProjectFileNode[]): number {
   }, 0);
 }
 
-function getDefaultProjectFileNodeName(kind: ProjectFileKind) {
+function getDefaultProjectFileNodeName(kind: ProjectFileKind, objectRootKind?: ProjectObjectKind) {
   if (kind === "tableSetup") {
     return "New table setup";
   }
 
   if (kind === "object") {
-    return "New object";
+    return getDefaultProjectObjectName(objectRootKind ?? "group");
   }
 
   if (kind === "image") {

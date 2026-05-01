@@ -51,7 +51,11 @@ import {
   sortProjectFileTree,
   type ProjectFileTreeParentId
 } from "./project-file-tree";
-import { ProjectFileCreateModal, type ProjectFileCreateType } from "./ProjectFileCreateModal";
+import {
+  ProjectFileCreateModal,
+  type ProjectFileCreateData,
+  type ProjectFileCreateType
+} from "./ProjectFileCreateModal";
 import { ProjectFileNodeIcon } from "./project-file-tree-ui";
 
 const indentationWidth = 18;
@@ -201,7 +205,7 @@ export function ProjectFileTreePanel({
     });
   }
 
-  function handleCreateNode(name: string) {
+  function handleCreateNode({ name, objectRootKind }: ProjectFileCreateData) {
     if (!createRequest) {
       return;
     }
@@ -209,7 +213,7 @@ export function ProjectFileTreePanel({
     const nextNode =
       createRequest.type === "folder"
         ? createFolderNode(name)
-        : createProjectFileNode(createRequest.type, name);
+        : createProjectFileNode(createRequest.type, name, { objectRootKind });
     const nextFileTree = appendProjectFileNode(fileTree, createRequest.parentId, nextNode);
 
     if (createRequest.parentId) {

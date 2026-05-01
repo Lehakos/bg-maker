@@ -153,12 +153,20 @@ export function ProjectObjectTreePanel({
   const contextMenuObject = contextMenu?.nodeId
     ? findProjectObjectNode(objectTree, contextMenu.nodeId)
     : undefined;
+  const isObjectFile = contentFileNode?.kind === "object";
+  const objectFileRootId = isObjectFile ? (objectTree[0]?.id ?? null) : null;
+  const lockedRootObjectId = isObjectFile && objectTree.length === 1 ? objectFileRootId : null;
+  const contextMenuParentId = contextMenu?.parentId ?? null;
+  const canCreateObject = Boolean(
+    contentFileNode && (!isObjectFile || contextMenuParentId !== null || objectTree.length === 0)
+  );
   const contextMenuActions = createObjectTreeContextMenuActions({
     disabled: saving || !contentFileNode,
-    canDelete: Boolean(contextMenuObject),
+    canCreate: canCreateObject,
+    canDelete: Boolean(contextMenuObject && contextMenuObject.id !== lockedRootObjectId),
     canRename: Boolean(contextMenuObject),
     nodeId: contextMenu?.nodeId ?? null,
-    parentId: contextMenu?.parentId ?? null,
+    parentId: contextMenuParentId,
     onCreate: handleCreateObject,
     onDelete: handleDeleteContextObject,
     onRename: handleRequestRenameObject
@@ -202,6 +210,10 @@ export function ProjectObjectTreePanel({
 
   function handleCreateObject(kind: ProjectObjectKind, parentId: ProjectObjectTreeParentId) {
     if (!contentFileNode) {
+      return;
+    }
+
+    if (contentFileNode.kind === "object" && parentId === null && objectTree.length > 0) {
       return;
     }
 
@@ -275,6 +287,10 @@ export function ProjectObjectTreePanel({
       return;
     }
 
+    if (nodeId === lockedRootObjectId) {
+      return;
+    }
+
     const objectLocation = findProjectObjectNodeLocation(objectTree, nodeId);
     const nextObjectTree = deleteProjectObjectNode(objectTree, nodeId);
 
@@ -322,6 +338,10 @@ export function ProjectObjectTreePanel({
     }
 
     if (dropTargetId === rootDropTargetId) {
+      if (contentFileNode.kind === "object") {
+        return;
+      }
+
       const nextObjectTree = moveProjectObjectNode(objectTree, activeId, null, objectTree.length);
 
       if (nextObjectTree !== objectTree) {
@@ -350,6 +370,15 @@ export function ProjectObjectTreePanel({
       dropIntent === "inside"
         ? (targetLocation.node.children?.length ?? 0)
         : targetLocation.index + (dropIntent === "after" ? 1 : 0);
+
+    if (
+      contentFileNode.kind === "object" &&
+      ((activeId === objectFileRootId && targetParentId !== null) ||
+        (activeId !== objectFileRootId && targetParentId === null))
+    ) {
+      return;
+    }
+
     const nextObjectTree = moveProjectObjectNode(objectTree, activeId, targetParentId, targetIndex);
 
     if (nextObjectTree === objectTree) {
@@ -447,6 +476,7 @@ export function ProjectObjectTreePanel({
             renamingObjectId={renamingObjectId}
             rootExpanded={rootExpanded}
             selectedObjectId={selectedObjectId}
+            showVirtualRoot={contentFileNode.kind === "tableSetup"}
             onCancelRename={handleCancelRenameObject}
             onCommitRename={handleCommitRenameObject}
             onContextMenu={handleContextMenu}
@@ -539,6 +569,7 @@ type ProjectObjectTreeListProps = {
   renamingObjectId: string | null;
   rootExpanded: boolean;
   selectedObjectId: string | null;
+  showVirtualRoot: boolean;
   onCancelRename: () => void;
   onCommitRename: (objectId: string) => void;
   onContextMenu: (event: MouseEvent, nodeId: string | null) => void;
@@ -560,6 +591,7 @@ function ProjectObjectTreeList({
   renamingObjectId,
   rootExpanded,
   selectedObjectId,
+  showVirtualRoot,
   onCancelRename,
   onCommitRename,
   onContextMenu,
@@ -569,15 +601,16 @@ function ProjectObjectTreeList({
   onToggleObjectExpanded,
   onToggleObjectVisibility
 }: ProjectObjectTreeListProps) {
+  const treeExpanded = showVirtualRoot ? rootExpanded : true;
   const visibleObjectTreeItems =
-    activeObjectId && rootExpanded
+    activeObjectId && treeExpanded
       ? flattenedObjectTree.filter((item) => !item.ancestorIds.includes(activeObjectId))
-      : rootExpanded
+      : treeExpanded
         ? flattenedObjectTree
         : [];
   const { isOver, setNodeRef } = useDroppable({
     id: rootDropTargetId,
-    disabled: !activeObjectId
+    disabled: !activeObjectId || !showVirtualRoot
   });
 
   return (
@@ -589,21 +622,23 @@ function ProjectObjectTreeList({
       )}
     >
       <div className="min-w-max">
-        <ProjectObjectTreeRootRow
-          contentFileNode={contentFileNode}
-          expanded={rootExpanded}
-          hasChildren={objectTree.length > 0}
-          selected={selectedObjectId === null}
-          onContextMenu={onContextMenu}
-          onExpandedChange={onRootExpandedChange}
-          onSelect={() => onSelectObject(null)}
-        />
+        {showVirtualRoot ? (
+          <ProjectObjectTreeRootRow
+            contentFileNode={contentFileNode}
+            expanded={rootExpanded}
+            hasChildren={objectTree.length > 0}
+            selected={selectedObjectId === null}
+            onContextMenu={onContextMenu}
+            onExpandedChange={onRootExpandedChange}
+            onSelect={() => onSelectObject(null)}
+          />
+        ) : null}
 
         {visibleObjectTreeItems.map((item) => (
           <ProjectObjectTreeNode
             key={item.id}
             activeObjectId={activeObjectId}
-            depth={item.depth}
+            depth={showVirtualRoot ? item.depth : item.depth - 1}
             dropIndicatorIntent={
               dropIndicator?.targetObjectId === item.id ? dropIndicator.intent : null
             }
@@ -909,6 +944,7 @@ function ObjectInsertionLine({ depth, position }: { depth: number; position: "af
 
 function createObjectTreeContextMenuActions({
   disabled,
+  canCreate,
   canDelete,
   canRename,
   nodeId,
@@ -918,6 +954,7 @@ function createObjectTreeContextMenuActions({
   onRename
 }: {
   disabled: boolean;
+  canCreate: boolean;
   canDelete: boolean;
   canRename: boolean;
   nodeId: string | null;
@@ -931,7 +968,7 @@ function createObjectTreeContextMenuActions({
       id: "create",
       label: "Create",
       icon: <Plus size={14} />,
-      disabled,
+      disabled: disabled || !canCreate,
       children: projectObjectCreateKinds.map((kind) => ({
         id: `create-${kind}`,
         label: getProjectObjectKindLabel(kind),
@@ -942,7 +979,7 @@ function createObjectTreeContextMenuActions({
             size={14}
           />
         ),
-        disabled,
+        disabled: disabled || !canCreate,
         onSelect: () => onCreate(kind, parentId)
       }))
     },

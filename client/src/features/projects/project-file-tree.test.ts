@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendProjectFileNode,
   countProjectFileTreeNodes,
+  createProjectFileNode,
   deleteProjectFileNode,
   findProjectFileNode,
   findProjectFileNodeLocation,
@@ -113,6 +114,26 @@ describe("project file tree helpers", () => {
       "nested-doc"
     ]);
     expect(findProjectFileNode(fileTree, "new-doc")).toBeUndefined();
+  });
+
+  it("creates object files with a visible root object node", () => {
+    const objectFile = createProjectFileNode("object", "Title label", {
+      objectRootKind: "label"
+    });
+
+    expect(objectFile.objectTree).toHaveLength(1);
+    expect(objectFile.objectTree?.[0]).toMatchObject({
+      children: [],
+      kind: "label",
+      name: "Title label",
+      visible: true,
+      components: {
+        rectTransform: {
+          height: 32,
+          width: 160
+        }
+      }
+    });
   });
 
   it("renames and deletes nested nodes without mutating the original tree", () => {
