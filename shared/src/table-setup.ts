@@ -1,8 +1,14 @@
-import type { ComponentCollection, GameComponent } from "./components.js";
+import type { ComponentCollection, ComponentType, GameComponent } from "./components.js";
 
-export const zoneChildTypes = ["zone", "card", "piece", "tile"] as const;
+export const zoneChildTypes = ["zone", "card", "piece", "tile", "mixed"] as const;
 
 export type ZoneChildType = (typeof zoneChildTypes)[number];
+
+export const zoneSourceChildTypes = ["card", "piece", "tile"] as const;
+
+export type ZoneSourceChildType = (typeof zoneSourceChildTypes)[number];
+
+export type ZoneItemChildType = Exclude<ZoneChildType, "zone">;
 
 export const zoneLayouts = ["free", "stack", "row", "grid"] as const;
 
@@ -91,12 +97,28 @@ export type ZoneContainer = ZoneBase & {
 
 export type ZoneSource = ZoneBase & {
   autofill: boolean;
-  childrenType: Exclude<ZoneChildType, "zone">;
+  childrenType: ZoneSourceChildType;
   face: ZoneSourceFace;
   source?: TableSource;
 };
 
-export type TableZone = ZoneContainer | ZoneSource;
+export type ZoneMixed = ZoneBase & {
+  children: ZoneMixedChild[];
+  childrenType: "mixed";
+};
+
+export type ZoneMixedChild = {
+  face: TablePlacementFace;
+  id: string;
+  rotationDeg: number;
+  source: TableSource;
+  x: number;
+  y: number;
+};
+
+export type ZoneItemContainer = ZoneMixed | ZoneSource;
+
+export type TableZone = ZoneContainer | ZoneItemContainer;
 
 export type TablePlacement = {
   id: string;
@@ -131,26 +153,50 @@ export const defaultTableSetupSize = {
 
 export function collectionMatchesZoneChildType(
   collection: ComponentCollection,
-  childrenType: Exclude<ZoneChildType, "zone">,
+  childrenType: ZoneSourceChildType,
   componentsById: Map<string, GameComponent>
 ) {
-  return collection.items.every(
-    (item) => componentsById.get(item.componentId)?.type === childrenType
-  );
+  return collection.items.every((item) => {
+    const component = componentsById.get(item.componentId);
+    return component ? componentMatchesZoneChildType(component, childrenType) : false;
+  });
+}
+
+export function componentMatchesZoneChildType(
+  component: GameComponent,
+  childrenType: ZoneItemChildType
+) {
+  return componentTypeMatchesZoneChildType(component.type, childrenType);
+}
+
+export function componentTypeMatchesZoneChildType(
+  componentType: ComponentType,
+  childrenType: ZoneItemChildType
+) {
+  return childrenType === "mixed" || componentType === childrenType;
 }
 
 export function tableSourceMatchesZoneChildType(
   source: TableSource,
-  childrenType: Exclude<ZoneChildType, "zone">,
+  childrenType: ZoneSourceChildType,
   componentsById: Map<string, GameComponent>,
   collectionsById: Map<string, ComponentCollection>
 ) {
   if (source.kind === "component") {
-    return componentsById.get(source.componentId)?.type === childrenType;
+    const component = componentsById.get(source.componentId);
+    return component ? componentMatchesZoneChildType(component, childrenType) : false;
   }
 
   const collection = collectionsById.get(source.collectionId);
   return collection
     ? collectionMatchesZoneChildType(collection, childrenType, componentsById)
     : false;
+}
+
+export function zoneAcceptsItems(zone: TableZone): zone is ZoneItemContainer {
+  return zone.childrenType !== "zone";
+}
+
+export function zoneSupportsSource(zone: TableZone): zone is ZoneSource {
+  return zoneSourceChildTypes.includes(zone.childrenType as ZoneSourceChildType);
 }

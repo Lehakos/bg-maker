@@ -10,6 +10,7 @@ import {
   type DragEndEvent,
   type DragMoveEvent,
   type DragStartEvent,
+  type Modifier,
   type UniqueIdentifier
 } from "@dnd-kit/core";
 import {
@@ -70,6 +71,7 @@ import {
   type SyntheticEvent
 } from "react";
 import {
+  componentMatchesZoneChildType,
   componentTypes,
   collectionMatchesZoneChildType,
   normalizeDegrees,
@@ -83,6 +85,7 @@ import {
   zoneSizeModes,
   zoneSourceFaces,
   zoneVisibilityModes,
+  zoneSupportsSource,
   type ComponentCollection,
   type ComponentType,
   type GameComponent,
@@ -96,6 +99,7 @@ import {
   type ZoneBackgroundImageFit,
   type ZoneChildType,
   type ZoneLayout,
+  type ZoneMixedChild,
   type ZoneOverflowMode,
   type ZoneSizeMode,
   type ZoneSource,
@@ -103,7 +107,7 @@ import {
   type ZoneVisibility
 } from "@bg-maker/shared";
 import { getApiErrorMessage, getTableSetup, updateTableSetup } from "../api/client";
-import { collectionTypeLabels, componentTypeLabels } from "./component-labels";
+import { collectionTypeLabels, componentTypeLabels, zoneChildTypeLabels } from "./component-labels";
 import { CardPreview } from "./card-layout-editor";
 import { PiecePreview } from "./piece-preview";
 import { TilePreview } from "./tile-preview";
@@ -124,11 +128,12 @@ import {
   getSetupSaveValidationError,
   getSetupSignature,
   getSourceName,
+  getSourceTableSize,
   getZoneBackgroundStyle,
   getZoneBase,
-  getZoneItemPoint,
   getZoneLayoutPatch,
   itemMatchesQuery,
+  materializeMixedZoneChildren,
   materializeZoneItems,
   maxTableZoom,
   minZoneSizeMm,
@@ -163,7 +168,19 @@ type Selection =
       id: string;
       type: "zone";
     }
+  | {
+      id: string;
+      type: "mixed-child";
+      zoneId: string;
+    }
   | null;
+
+type SelectedMixedChild = {
+  child: ZoneMixedChild;
+  itemSize: { height: number; width: number };
+  label: string;
+  renderedZone: RenderedZone;
+};
 
 type DragMode = "move" | "resize";
 
@@ -180,6 +197,12 @@ type TableDragData =
       source: TableSource;
     }
   | {
+      childId: string;
+      kind: "mixed-child";
+      source: TableSource;
+      zoneId: string;
+    }
+  | {
       kind: "placement";
       placementId: string;
       source: TableSource;
@@ -192,12 +215,13 @@ type LibraryFilter = (typeof allLibraryFilters)[number];
 const noSourceOption = "__none__";
 const tablePlacementDragIdPrefix = "table-placement:";
 const tableLibraryDragIdPrefix = "table-library:";
+const tableMixedChildDragIdPrefix = "table-mixed-child:";
 const tableZoneDropIdPrefix = "table-zone:";
 const tableZoomStep = 0.1;
 const minSurfaceWidthPx = 640;
 
 const zoneTypeOptions = zoneChildTypes.map((type) => ({
-  label: type === "zone" ? "Container" : componentTypeLabels[type],
+  label: zoneChildTypeLabels[type],
   value: type
 }));
 
@@ -254,6 +278,10 @@ function getTablePlacementDragId(placementId: string) {
   return `${tablePlacementDragIdPrefix}${placementId}`;
 }
 
+function getTableMixedChildDragId(zoneId: string, childId: string) {
+  return `${tableMixedChildDragIdPrefix}${zoneId}:${childId}`;
+}
+
 function getTableZoneDropId(zoneId: string) {
   return `${tableZoneDropIdPrefix}${zoneId}`;
 }
@@ -296,6 +324,20 @@ function readTableDragData(value: unknown): TableDragData | null {
   }
 
   if (
+    data.kind === "mixed-child" &&
+    typeof data.childId === "string" &&
+    typeof data.zoneId === "string" &&
+    isTableSource(data.source)
+  ) {
+    return {
+      childId: data.childId,
+      kind: "mixed-child",
+      source: data.source,
+      zoneId: data.zoneId
+    };
+  }
+
+  if (
     data.kind === "placement" &&
     typeof data.placementId === "string" &&
     isTableSource(data.source)
@@ -323,6 +365,27 @@ function getClientPoint(event: Event) {
   return null;
 }
 
+const centerLibraryDragOverlay: Modifier = ({
+  active,
+  activeNodeRect,
+  activatorEvent,
+  overlayNodeRect,
+  transform
+}) => {
+  const data = readTableDragData(active?.data.current);
+  const activatorPoint = activatorEvent ? getClientPoint(activatorEvent) : null;
+
+  if (data?.kind !== "library-source" || !activeNodeRect || !overlayNodeRect || !activatorPoint) {
+    return transform;
+  }
+
+  return {
+    ...transform,
+    x: transform.x + activatorPoint.clientX - activeNodeRect.left - overlayNodeRect.width / 2,
+    y: transform.y + activatorPoint.clientY - activeNodeRect.top - overlayNodeRect.height / 2
+  };
+};
+
 const libraryFilterOptions = allLibraryFilters.map((filter) => ({
   label:
     filter === "all"
@@ -346,6 +409,10 @@ function isEditableKeyboardTarget(target: EventTarget | null) {
   );
 }
 
+function targetBlocksZoneDrag(target: EventTarget | null) {
+  return target instanceof HTMLElement && target.closest("[data-zone-drag-block='true']");
+}
+
 export function TableSetupEditor({
   collections,
   components,
@@ -355,10 +422,12 @@ export function TableSetupEditor({
   const queryClient = useQueryClient();
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const dragOverlayRef = useRef<HTMLDivElement | null>(null);
   // dnd-kit drag deltas can diverge from the real pointer in Playwright and scrolled layouts.
   const lastPointerClientPointRef = useRef<{ clientX: number; clientY: number } | null>(null);
   // dnd-kit intentionally suppresses the click after a drag; reopen the zone menu for fast follow-up clicks.
-  const tableDragClickSuppressedUntilRef = useRef(0);
+  const tableDragClickSuppressedRef = useRef(false);
+  const tableDragClickSuppressionTimerRef = useRef<number | null>(null);
   const {
     canRedo,
     canUndo,
@@ -378,6 +447,10 @@ export function TableSetupEditor({
   const [activePlacementDrag, setActivePlacementDrag] = useState<{
     source: TableSource;
   } | null>(null);
+  const [activeMixedChildDrag, setActiveMixedChildDrag] = useState<{
+    source: TableSource;
+  } | null>(null);
+  const [isTableDragClickSuppressed, setIsTableDragClickSuppressed] = useState(false);
   const [dragHoverZoneId, setDragHoverZoneId] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [zoneDrafts, setZoneDrafts] = useState<ZoneDrafts>({});
@@ -398,6 +471,7 @@ export function TableSetupEditor({
         zones: setup.zones
       }),
     onSuccess: async (setup) => {
+      queryClient.setQueryData(["table-setup", projectId], setup);
       commitSetup(setup);
       await queryClient.invalidateQueries({ queryKey: ["table-setup", projectId] });
       await queryClient.invalidateQueries({ queryKey: ["project", projectId] });
@@ -437,7 +511,33 @@ export function TableSetupEditor({
     selection?.type === "zone"
       ? renderedZones.find((entry) => entry.zone.id === selection.id)
       : undefined;
-  const activeDropSource = activeDragSource ?? activePlacementDrag?.source ?? null;
+  const selectedMixedChild = useMemo<SelectedMixedChild | undefined>(() => {
+    if (selection?.type !== "mixed-child") {
+      return undefined;
+    }
+
+    const renderedZone = renderedZones.find((entry) => entry.zone.id === selection.zoneId);
+
+    if (!renderedZone || renderedZone.zone.childrenType !== "mixed") {
+      return undefined;
+    }
+
+    const child = renderedZone.zone.children.find((item) => item.id === selection.id);
+    const itemSize = child
+      ? getSourceTableSize(child.source, componentsById, collectionsById)
+      : null;
+
+    return child && itemSize
+      ? {
+          child,
+          itemSize,
+          label: getSourceName(child.source, componentsById, collectionsById),
+          renderedZone
+        }
+      : undefined;
+  }, [collectionsById, componentsById, renderedZones, selection]);
+  const activeDropSource =
+    activeDragSource ?? activePlacementDrag?.source ?? activeMixedChildDrag?.source ?? null;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   useEffect(() => {
@@ -456,6 +556,16 @@ export function TableSetupEditor({
       window.removeEventListener("pointerup", rememberPointerPoint, { capture: true });
     };
   }, []);
+
+  useEffect(
+    () => () => {
+      if (tableDragClickSuppressionTimerRef.current !== null) {
+        window.clearTimeout(tableDragClickSuppressionTimerRef.current);
+      }
+      tableDragClickSuppressedRef.current = false;
+    },
+    []
+  );
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -512,11 +622,22 @@ export function TableSetupEditor({
   }
 
   function markTableDragClickSuppressionWindow() {
-    tableDragClickSuppressedUntilRef.current = Date.now() + 90;
+    tableDragClickSuppressedRef.current = true;
+    setIsTableDragClickSuppressed(true);
+
+    if (tableDragClickSuppressionTimerRef.current !== null) {
+      window.clearTimeout(tableDragClickSuppressionTimerRef.current);
+    }
+
+    tableDragClickSuppressionTimerRef.current = window.setTimeout(() => {
+      tableDragClickSuppressedRef.current = false;
+      setIsTableDragClickSuppressed(false);
+      tableDragClickSuppressionTimerRef.current = null;
+    }, 150);
   }
 
   function openZoneMenuDuringSuppressedClick(event: SyntheticEvent) {
-    if (Date.now() > tableDragClickSuppressedUntilRef.current) {
+    if (!tableDragClickSuppressedRef.current) {
       return;
     }
 
@@ -738,19 +859,61 @@ export function TableSetupEditor({
     );
   }
 
-  function canDropSourceOnZone(source: TableSource, zone: TableZone) {
+  function getMixedZoneAvailableSlots(zone: TableZone) {
+    if (zone.childrenType !== "mixed") {
+      return 0;
+    }
+
+    return zone.capacity === null
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, zone.capacity - zone.children.length);
+  }
+
+  function getMixedZoneSources(source: TableSource, zone: TableZone) {
+    const availableSlots = getMixedZoneAvailableSlots(zone);
+
+    if (availableSlots <= 0) {
+      return [];
+    }
+
+    const itemSize = getSourceTableSize(source, componentsById, collectionsById);
+
+    if (!itemSize) {
+      return [];
+    }
+
+    return [{ ...source }];
+  }
+
+  function canDropSourceOnZone(
+    source: TableSource,
+    zone: TableZone,
+    options: { movingMixedChildFromZoneId?: string } = {}
+  ) {
+    if (zone.childrenType === "mixed") {
+      if (options.movingMixedChildFromZoneId === zone.id) {
+        return true;
+      }
+
+      return getMixedZoneSources(source, zone).length > 0;
+    }
+
     return (
-      zone.childrenType !== "zone" &&
+      zoneSupportsSource(zone) &&
       tableSourceMatchesZoneChildType(source, zone.childrenType, componentsById, collectionsById)
     );
   }
 
-  function getDropZoneAtPoint(point: TablePoint, source: TableSource) {
+  function getDropZoneAtPoint(
+    point: TablePoint,
+    source: TableSource,
+    options: { movingMixedChildFromZoneId?: string } = {}
+  ) {
     return [...renderedZones].reverse().find((renderedZone) => {
       const zone = renderedZone.zone;
 
       return (
-        canDropSourceOnZone(source, zone) &&
+        canDropSourceOnZone(source, zone, options) &&
         point.x >= renderedZone.absoluteX &&
         point.x <= renderedZone.absoluteX + zone.width &&
         point.y >= renderedZone.absoluteY &&
@@ -772,8 +935,85 @@ export function TableSetupEditor({
     });
   }
 
-  function dropSourceIntoZone(zone: TableZone, source: TableSource) {
-    if (!canDropSourceOnZone(source, zone) || zone.childrenType === "zone") {
+  function createMixedZoneChild(
+    source: TableSource,
+    renderedZone: RenderedZone,
+    point: TablePoint
+  ) {
+    return {
+      id: createClientId("mixed-child"),
+      source: { ...source },
+      x: Math.round(clamp(point.x - renderedZone.absoluteX, 0, renderedZone.zone.width)),
+      y: Math.round(clamp(point.y - renderedZone.absoluteY, 0, renderedZone.zone.height)),
+      rotationDeg: 0,
+      face: "front" as TablePlacementFace
+    };
+  }
+
+  function createMixedZoneChildren(
+    renderedZone: RenderedZone,
+    source: TableSource,
+    point: TablePoint
+  ) {
+    return getMixedZoneSources(source, renderedZone.zone).map((childSource) =>
+      createMixedZoneChild(childSource, renderedZone, point)
+    );
+  }
+
+  function addMixedChildrenFromSource(
+    renderedZone: RenderedZone,
+    source: TableSource,
+    point: TablePoint
+  ) {
+    const children = createMixedZoneChildren(renderedZone, source, point);
+
+    if (children.length === 0) {
+      return;
+    }
+
+    updateDraft({
+      execute: (setup) => {
+        const zones = updateZoneInTree(setup.zones, renderedZone.zone.id, (zone) => {
+          if (zone.childrenType !== "mixed") {
+            return zone;
+          }
+
+          return { ...zone, children: [...zone.children, ...children] };
+        });
+
+        return {
+          ...setup,
+          zones: clampZonesToBounds(
+            zones,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: children.length === 1 ? "Add mixed zone child" : "Add mixed zone children"
+    });
+    setSelection({
+      id: children[children.length - 1].id,
+      type: "mixed-child",
+      zoneId: renderedZone.zone.id
+    });
+  }
+
+  function dropSourceIntoZone(renderedZone: RenderedZone, source: TableSource, point: TablePoint) {
+    const zone = renderedZone.zone;
+
+    if (!canDropSourceOnZone(source, zone)) {
+      return;
+    }
+
+    if (zone.childrenType === "mixed") {
+      addMixedChildrenFromSource(renderedZone, source, point);
+      return;
+    }
+
+    if (!zoneSupportsSource(zone)) {
       return;
     }
 
@@ -791,11 +1031,52 @@ export function TableSetupEditor({
   function movePlacementIntoZone(
     placement: TablePlacement,
     renderedZone: RenderedZone,
+    point: TablePoint,
     options: DraftCommandOptions = {}
   ) {
     const zone = renderedZone.zone;
 
-    if (zone.childrenType === "zone") {
+    if (zone.childrenType === "mixed") {
+      const children = createMixedZoneChildren(renderedZone, placement.source, point);
+
+      if (children.length === 0) {
+        return;
+      }
+
+      updateDraft({
+        execute: (setup) => {
+          const zones = updateZoneInTree(setup.zones, zone.id, (currentZone) => {
+            if (currentZone.childrenType !== "mixed") {
+              return currentZone;
+            }
+
+            return { ...currentZone, children: [...currentZone.children, ...children] };
+          });
+
+          return {
+            ...setup,
+            placements: setup.placements.filter((item) => item.id !== placement.id),
+            zones: clampZonesToBounds(
+              zones,
+              setup.width,
+              setup.height,
+              componentsById,
+              collectionsById
+            )
+          };
+        },
+        label:
+          options.label ??
+          (children.length === 1
+            ? "Move placement into mixed zone"
+            : "Move placement collection into mixed zone"),
+        mergeKey: options.mergeKey
+      });
+      setSelection({ id: children[children.length - 1].id, type: "mixed-child", zoneId: zone.id });
+      return;
+    }
+
+    if (!zoneSupportsSource(zone)) {
       return;
     }
 
@@ -810,7 +1091,7 @@ export function TableSetupEditor({
     updateDraft({
       execute: (setup) => {
         const zones = updateZoneInTree(setup.zones, zone.id, (currentZone) => {
-          if (currentZone.childrenType === "zone") {
+          if (!zoneSupportsSource(currentZone)) {
             return currentZone;
           }
 
@@ -833,6 +1114,194 @@ export function TableSetupEditor({
       mergeKey: options.mergeKey
     });
     setSelection({ id: zone.id, type: "zone" });
+  }
+
+  function getRenderedMixedChild(zoneId: string, childId: string) {
+    const renderedZone = renderedZones.find((entry) => entry.zone.id === zoneId);
+
+    if (!renderedZone || renderedZone.zone.childrenType !== "mixed") {
+      return null;
+    }
+
+    const child = renderedZone.zone.children.find((item) => item.id === childId);
+
+    return child ? { child, renderedZone } : null;
+  }
+
+  function moveMixedChildWithinZone(zoneId: string, child: ZoneMixedChild, event: DragEndEvent) {
+    const delta = getTableDeltaFromDragEvent(event);
+
+    if (!delta) {
+      return;
+    }
+
+    updateMixedChild(
+      zoneId,
+      child.id,
+      {
+        x: Math.round(child.x + delta.x),
+        y: Math.round(child.y + delta.y)
+      },
+      { label: "Move mixed zone child" }
+    );
+    setSelection({ id: child.id, type: "mixed-child", zoneId });
+  }
+
+  function moveMixedChildToMixedZone(
+    sourceZoneId: string,
+    child: ZoneMixedChild,
+    targetRenderedZone: RenderedZone,
+    point: TablePoint
+  ) {
+    const targetZone = targetRenderedZone.zone;
+
+    if (targetZone.childrenType !== "mixed") {
+      return;
+    }
+
+    const movedChild: ZoneMixedChild = {
+      ...child,
+      x: Math.round(clamp(point.x - targetRenderedZone.absoluteX, 0, targetZone.width)),
+      y: Math.round(clamp(point.y - targetRenderedZone.absoluteY, 0, targetZone.height))
+    };
+
+    updateDraft({
+      execute: (setup) => {
+        const zonesWithoutChild = updateZoneInTree(setup.zones, sourceZoneId, (zone) => {
+          if (zone.childrenType !== "mixed") {
+            return zone;
+          }
+
+          return {
+            ...zone,
+            children: zone.children.filter((item) => item.id !== child.id)
+          };
+        });
+        const zonesWithChild = updateZoneInTree(zonesWithoutChild, targetZone.id, (zone) => {
+          if (zone.childrenType !== "mixed") {
+            return zone;
+          }
+
+          return {
+            ...zone,
+            children: [...zone.children, movedChild]
+          };
+        });
+
+        return {
+          ...setup,
+          zones: clampZonesToBounds(
+            zonesWithChild,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: "Move mixed zone child"
+    });
+    setSelection({ id: child.id, type: "mixed-child", zoneId: targetZone.id });
+  }
+
+  function moveMixedChildToSourceZone(
+    sourceZoneId: string,
+    child: ZoneMixedChild,
+    targetZone: ZoneSource
+  ) {
+    if (targetZone.source && !sourcesAreEqual(targetZone.source, child.source)) {
+      const replace = window.confirm(`Replace source for "${targetZone.name}"?`);
+
+      if (!replace) {
+        return;
+      }
+    }
+
+    updateDraft({
+      execute: (setup) => {
+        const zonesWithoutChild = updateZoneInTree(setup.zones, sourceZoneId, (zone) => {
+          if (zone.childrenType !== "mixed") {
+            return zone;
+          }
+
+          return {
+            ...zone,
+            children: zone.children.filter((item) => item.id !== child.id)
+          };
+        });
+        const zonesWithSource = updateZoneInTree(zonesWithoutChild, targetZone.id, (zone) => {
+          if (!zoneSupportsSource(zone)) {
+            return zone;
+          }
+
+          return { ...zone, source: { ...child.source } } as TableZone;
+        });
+
+        return {
+          ...setup,
+          zones: clampZonesToBounds(
+            zonesWithSource,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: "Move mixed zone child into zone"
+    });
+    setSelection({ id: targetZone.id, type: "zone" });
+  }
+
+  function moveMixedChildToPlacement(
+    sourceZoneId: string,
+    child: ZoneMixedChild,
+    point: TablePoint
+  ) {
+    if (!draft) {
+      return;
+    }
+
+    const placementId = createClientId("placement");
+
+    updateDraft({
+      execute: (setup) => {
+        const zones = updateZoneInTree(setup.zones, sourceZoneId, (zone) => {
+          if (zone.childrenType !== "mixed") {
+            return zone;
+          }
+
+          return {
+            ...zone,
+            children: zone.children.filter((item) => item.id !== child.id)
+          };
+        });
+
+        return {
+          ...setup,
+          placements: [
+            ...setup.placements,
+            {
+              face: child.face,
+              id: placementId,
+              rotationDeg: child.rotationDeg,
+              source: { ...child.source },
+              x: Math.round(clamp(point.x, 0, setup.width)),
+              y: Math.round(clamp(point.y, 0, setup.height))
+            }
+          ],
+          zones: clampZonesToBounds(
+            zones,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: "Move mixed zone child to table"
+    });
+    setSelection({ id: placementId, type: "placement" });
   }
 
   function updateZoneBackgroundImage(zone: TableZone, file: File | null) {
@@ -880,6 +1349,77 @@ export function TableSetupEditor({
     );
   }
 
+  function updateMixedChild(
+    zoneId: string,
+    childId: string,
+    patch: Partial<ZoneMixedChild>,
+    options: DraftCommandOptions = {}
+  ) {
+    updateDraft({
+      execute: (setup) => {
+        const zones = updateZoneInTree(setup.zones, zoneId, (zone) => {
+          if (zone.childrenType !== "mixed") {
+            return zone;
+          }
+
+          return {
+            ...zone,
+            children: zone.children.map((child) =>
+              child.id === childId ? { ...child, ...patch } : child
+            )
+          };
+        });
+
+        return {
+          ...setup,
+          zones: clampZonesToBounds(
+            zones,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: options.label ?? "Update mixed zone child",
+      mergeKey: options.mergeKey
+    });
+  }
+
+  function removeMixedChild(zoneId: string, childId: string) {
+    updateDraft({
+      execute: (setup) => {
+        const zones = updateZoneInTree(setup.zones, zoneId, (zone) => {
+          if (zone.childrenType !== "mixed") {
+            return zone;
+          }
+
+          return {
+            ...zone,
+            children: zone.children.filter((child) => child.id !== childId)
+          };
+        });
+
+        return {
+          ...setup,
+          zones: clampZonesToBounds(
+            zones,
+            setup.width,
+            setup.height,
+            componentsById,
+            collectionsById
+          )
+        };
+      },
+      label: "Delete mixed zone child"
+    });
+    setSelection((current) =>
+      current?.type === "mixed-child" && current.id === childId && current.zoneId === zoneId
+        ? null
+        : current
+    );
+  }
+
   function removeZone(id: string) {
     updateDraft({
       execute: (setup) => {
@@ -898,7 +1438,12 @@ export function TableSetupEditor({
       },
       label: "Delete zone"
     });
-    setSelection((current) => (current?.type === "zone" && current.id === id ? null : current));
+    setSelection((current) =>
+      (current?.type === "zone" && current.id === id) ||
+      (current?.type === "mixed-child" && current.zoneId === id)
+        ? null
+        : current
+    );
   }
 
   function updateTableSize(patch: Partial<Pick<TableSetup, "height" | "width">>) {
@@ -947,14 +1492,12 @@ export function TableSetupEditor({
     return getTablePointFromClient(event.clientX, event.clientY);
   }
 
-  function getTablePointFromTrackedPointer() {
-    const point = lastPointerClientPointRef.current;
-
-    return point ? getTablePointFromClient(point.clientX, point.clientY) : null;
+  function getClientPointFromTrackedPointer() {
+    return lastPointerClientPointRef.current;
   }
 
-  function getTablePointFromDragEvent(event: DragMoveEvent | DragEndEvent) {
-    const trackedPoint = getTablePointFromTrackedPointer();
+  function getClientPointFromDragEvent(event: DragMoveEvent | DragEndEvent) {
+    const trackedPoint = getClientPointFromTrackedPointer();
 
     if (trackedPoint) {
       return trackedPoint;
@@ -963,10 +1506,10 @@ export function TableSetupEditor({
     const initialPoint = getClientPoint(event.activatorEvent);
 
     if (initialPoint) {
-      return getTablePointFromClient(
-        initialPoint.clientX + event.delta.x,
-        initialPoint.clientY + event.delta.y
-      );
+      return {
+        clientX: initialPoint.clientX + event.delta.x,
+        clientY: initialPoint.clientY + event.delta.y
+      };
     }
 
     const initialRect = event.active.rect.current.initial;
@@ -975,13 +1518,22 @@ export function TableSetupEditor({
       return null;
     }
 
-    return getTablePointFromClient(
-      initialRect.left + initialRect.width / 2 + event.delta.x,
-      initialRect.top + initialRect.height / 2 + event.delta.y
-    );
+    return {
+      clientX: initialRect.left + initialRect.width / 2 + event.delta.x,
+      clientY: initialRect.top + initialRect.height / 2 + event.delta.y
+    };
   }
 
-  function getTablePointFromDragRect(event: DragMoveEvent | DragEndEvent) {
+  function getTablePointFromDragEvent(event: DragMoveEvent | DragEndEvent) {
+    const point = getClientPointFromDragEvent(event);
+
+    return point ? getTablePointFromClient(point.clientX, point.clientY) : null;
+  }
+
+  function getTablePointFromDragRect(
+    event: DragMoveEvent | DragEndEvent,
+    anchor: "center" | "top-left" = "center"
+  ) {
     const translatedRect = event.active.rect.current.translated;
     const initialRect = event.active.rect.current.initial;
     const rect = translatedRect
@@ -998,7 +1550,9 @@ export function TableSetupEditor({
       return null;
     }
 
-    return getTablePointFromClient(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return anchor === "top-left"
+      ? getTablePointFromClient(rect.left, rect.top)
+      : getTablePointFromClient(rect.left + rect.width / 2, rect.top + rect.height / 2);
   }
 
   function getTableDeltaFromDragEvent(event: DragEndEvent) {
@@ -1032,6 +1586,24 @@ export function TableSetupEditor({
     }
 
     return getTablePointFromDragRect(event);
+  }
+
+  function getLibraryPreviewDropPoint(event: DragMoveEvent | DragEndEvent) {
+    const overlayRect = dragOverlayRef.current?.getBoundingClientRect();
+
+    if (overlayRect && overlayRect.width > 0 && overlayRect.height > 0) {
+      const overlayPoint = getTablePointFromClient(overlayRect.left, overlayRect.top);
+
+      if (overlayPoint) {
+        return overlayPoint;
+      }
+    }
+
+    return getLibraryDropPoint(event);
+  }
+
+  function getDraggedItemDropPoint(event: DragMoveEvent | DragEndEvent) {
+    return getTablePointFromDragRect(event, "top-left") ?? getTablePointFromDragEvent(event);
   }
 
   function startZoneDrag(
@@ -1147,6 +1719,12 @@ export function TableSetupEditor({
       return;
     }
 
+    if (data.kind === "mixed-child") {
+      setSelection({ id: data.childId, type: "mixed-child", zoneId: data.zoneId });
+      setActiveMixedChildDrag({ source: data.source });
+      return;
+    }
+
     setSelection({ id: data.placementId, type: "placement" });
     setActivePlacementDrag({ source: data.source });
   }
@@ -1158,7 +1736,12 @@ export function TableSetupEditor({
         ? getLibraryDropPoint(event)
         : getTablePointFromDragEvent(event)
       : null;
-    const dropZone = data && point ? getDropZoneAtPoint(point, data.source) : undefined;
+    const dropZone =
+      data && point
+        ? getDropZoneAtPoint(point, data.source, {
+            movingMixedChildFromZoneId: data.kind === "mixed-child" ? data.zoneId : undefined
+          })
+        : undefined;
     const overZoneId = getTableZoneIdFromDropId(event.over?.id);
 
     setDragHoverZoneId(dropZone?.zone.id ?? overZoneId);
@@ -1175,6 +1758,7 @@ export function TableSetupEditor({
     markTableDragClickSuppressionWindow();
     setActiveDragSource(null);
     setActivePlacementDrag(null);
+    setActiveMixedChildDrag(null);
     setDragHoverZoneId(null);
 
     if (!data || !draft) {
@@ -1186,17 +1770,53 @@ export function TableSetupEditor({
         return;
       }
 
+      const previewPoint = getLibraryPreviewDropPoint(event) ?? point;
       const renderedZone = getRenderedZoneAtPoint(point);
 
-      if (renderedZone && renderedZone.zone.childrenType !== "zone") {
-        dropSourceIntoZone(renderedZone.zone, data.source);
+      if (renderedZone && canDropSourceOnZone(data.source, renderedZone.zone)) {
+        dropSourceIntoZone(renderedZone, data.source, previewPoint);
         return;
       }
 
       addPlacementFromSource(data.source, {
-        x: Math.round(clamp(point.x, 0, draft.width)),
-        y: Math.round(clamp(point.y, 0, draft.height))
+        x: Math.round(clamp(previewPoint.x, 0, draft.width)),
+        y: Math.round(clamp(previewPoint.y, 0, draft.height))
       });
+      return;
+    }
+
+    if (data.kind === "mixed-child") {
+      if (!point || !tablePointIsInsideSurface(point)) {
+        return;
+      }
+
+      const current = getRenderedMixedChild(data.zoneId, data.childId);
+
+      if (!current) {
+        return;
+      }
+
+      const dropZone = getDropZoneAtPoint(point, data.source, {
+        movingMixedChildFromZoneId: data.zoneId
+      });
+      const draggedItemPoint = getDraggedItemDropPoint(event) ?? point;
+
+      if (dropZone?.zone.childrenType === "mixed") {
+        if (dropZone.zone.id === data.zoneId) {
+          moveMixedChildWithinZone(data.zoneId, current.child, event);
+          return;
+        }
+
+        moveMixedChildToMixedZone(data.zoneId, current.child, dropZone, draggedItemPoint);
+        return;
+      }
+
+      if (dropZone && zoneSupportsSource(dropZone.zone)) {
+        moveMixedChildToSourceZone(data.zoneId, current.child, dropZone.zone);
+        return;
+      }
+
+      moveMixedChildToPlacement(data.zoneId, current.child, draggedItemPoint);
       return;
     }
 
@@ -1208,8 +1828,9 @@ export function TableSetupEditor({
 
     const dropZone = point ? getDropZoneAtPoint(point, data.source) : undefined;
 
-    if (dropZone) {
-      movePlacementIntoZone(placement, dropZone);
+    if (dropZone && point) {
+      const draggedItemPoint = getDraggedItemDropPoint(event) ?? point;
+      movePlacementIntoZone(placement, dropZone, draggedItemPoint);
       return;
     }
 
@@ -1233,6 +1854,7 @@ export function TableSetupEditor({
     markTableDragClickSuppressionWindow();
     setActiveDragSource(null);
     setActivePlacementDrag(null);
+    setActiveMixedChildDrag(null);
     setDragHoverZoneId(null);
   }
 
@@ -1452,7 +2074,7 @@ export function TableSetupEditor({
                 </Menu.Dropdown>
               </Menu>
               <Button
-                disabled={!hasChanges}
+                disabled={!hasChanges || isTableDragClickSuppressed}
                 leftSection={<Save size={16} />}
                 loading={saveMutation.isPending}
                 radius={8}
@@ -1502,10 +2124,22 @@ export function TableSetupEditor({
                     projectParameters={projectParameters}
                     renderedZone={renderedZone}
                     selected={selection?.type === "zone" && selection.id === renderedZone.zone.id}
+                    selectedMixedChildId={
+                      selection?.type === "mixed-child" && selection.zoneId === renderedZone.zone.id
+                        ? selection.id
+                        : null
+                    }
                     setup={draft}
                     onPointerDown={(event, mode) => startZoneDrag(event, renderedZone, mode)}
                     onRemove={() => removeZone(renderedZone.zone.id)}
                     onSelect={() => setSelection({ id: renderedZone.zone.id, type: "zone" })}
+                    onSelectMixedChild={(childId) =>
+                      setSelection({
+                        id: childId,
+                        type: "mixed-child",
+                        zoneId: renderedZone.zone.id
+                      })
+                    }
                   />
                 ))}
 
@@ -1537,13 +2171,16 @@ export function TableSetupEditor({
               collectionsById={collectionsById}
               components={components}
               componentsById={componentsById}
+              mixedChildSelection={selectedMixedChild}
               placement={selectedPlacement}
               setup={draft}
               zone={selectedRenderedZone}
               onAddChildZone={addChildZone}
               onChangeZoneType={changeZoneType}
+              onRemoveMixedChild={removeMixedChild}
               onRemovePlacement={removePlacement}
               onRemoveZone={removeZone}
+              onUpdateMixedChild={updateMixedChild}
               onUpdatePlacement={updatePlacement}
               onUpdateZone={updateZone}
               onUpdateZoneBackgroundImage={updateZoneBackgroundImage}
@@ -1551,14 +2188,14 @@ export function TableSetupEditor({
             />
           </Box>
         </Box>
-        <DragOverlay dropAnimation={null}>
-          {activeDragSource ? (
-            <Box className="table-setup-drag-overlay">
+        <DragOverlay dropAnimation={null} modifiers={[centerLibraryDragOverlay]}>
+          {activeDragSource || activeMixedChildDrag ? (
+            <Box ref={dragOverlayRef} className="table-setup-drag-overlay">
               <SourceVisual
                 collectionsById={collectionsById}
                 componentsById={componentsById}
                 projectParameters={projectParameters}
-                source={activeDragSource}
+                source={activeDragSource ?? activeMixedChildDrag!.source}
               />
             </Box>
           ) : null}
@@ -1738,9 +2375,11 @@ function TableZoneView({
   onPointerDown,
   onRemove,
   onSelect,
+  onSelectMixedChild,
   projectParameters,
   renderedZone,
   selected,
+  selectedMixedChildId,
   setup
 }: {
   collectionsById: Map<string, ComponentCollection>;
@@ -1750,24 +2389,26 @@ function TableZoneView({
   onPointerDown: (event: ReactPointerEvent<HTMLElement>, mode: DragMode) => void;
   onRemove: () => void;
   onSelect: () => void;
+  onSelectMixedChild: (childId: string) => void;
   projectParameters: ProjectParameter[];
   renderedZone: RenderedZone;
   selected: boolean;
+  selectedMixedChildId: string | null;
   setup: TableSetup;
 }) {
   const zone = renderedZone.zone;
+  const sourceZone = zoneSupportsSource(zone) ? zone : null;
+  const mixedZone = zone.childrenType === "mixed" ? zone : null;
   const { isOver, setNodeRef } = useDroppable({
     id: getTableZoneDropId(zone.id),
     data: { kind: "zone", zoneId: zone.id },
     disabled: !dropEligible
   });
   const zoneItems =
-    zone.childrenType === "zone"
-      ? []
-      : materializeZoneItems(zone, componentsById, collectionsById).map((component, index) => ({
-          component,
-          point: getZoneItemPoint(zone, component, index)
-        }));
+    sourceZone === null ? [] : materializeZoneItems(sourceZone, componentsById, collectionsById);
+  const mixedChildren = mixedZone
+    ? materializeMixedZoneChildren(mixedZone, componentsById, collectionsById)
+    : [];
 
   return (
     <Box
@@ -1796,7 +2437,13 @@ function TableZoneView({
         event.stopPropagation();
         onSelect();
       }}
-      onPointerDown={(event) => onPointerDown(event, "move")}
+      onPointerDown={(event) => {
+        if (targetBlocksZoneDrag(event.target)) {
+          return;
+        }
+
+        onPointerDown(event, "move");
+      }}
     >
       <Group className="table-setup-zone-label" gap={6}>
         <GripVertical size={14} />
@@ -1809,7 +2456,7 @@ function TableZoneView({
           size="xs"
           variant="light"
         >
-          {zone.childrenType === "zone" ? zone.layout : zone.childrenType}
+          {zoneChildTypeLabels[zone.childrenType]}
         </Badge>
       </Group>
       <Tooltip label="Delete zone" withArrow>
@@ -1830,28 +2477,51 @@ function TableZoneView({
         </ActionIcon>
       </Tooltip>
 
-      {zone.childrenType !== "zone" ? (
+      {sourceZone || mixedZone ? (
         <Box className="table-setup-zone-source-content">
-          {zoneItems.length > 0 ? (
-            zoneItems.map(({ component, point }, index) => (
-              <Box
-                key={`${component.id}-${index}`}
-                className="table-setup-zone-item"
-                style={{
-                  left: `${(point.x / zone.width) * 100}%`,
-                  top: `${(point.y / zone.height) * 100}%`
-                }}
-              >
-                <ComponentVisual
-                  component={component}
-                  face={zone.face === "up" ? "front" : "back"}
-                  projectParameters={projectParameters}
-                />
-              </Box>
+          {sourceZone && zoneItems.length > 0 ? (
+            zoneItems.map(({ point, source }, index) => {
+              const label = getSourceName(source, componentsById, collectionsById);
+
+              return (
+                <Box
+                  key={`${source.kind === "component" ? source.componentId : source.collectionId}-${index}`}
+                  className="table-setup-zone-item"
+                  style={{
+                    left: `${(point.x / zone.width) * 100}%`,
+                    top: `${(point.y / zone.height) * 100}%`
+                  }}
+                >
+                  <TableSurfaceItemContent label={label}>
+                    <SourceVisual
+                      collectionsById={collectionsById}
+                      componentsById={componentsById}
+                      face={sourceZone.face === "up" ? "front" : "back"}
+                      projectParameters={projectParameters}
+                      source={source}
+                    />
+                  </TableSurfaceItemContent>
+                </Box>
+              );
+            })
+          ) : mixedZone && mixedChildren.length > 0 ? (
+            mixedChildren.map(({ child, point, source }) => (
+              <MixedZoneItem
+                key={child.id}
+                child={child}
+                collectionsById={collectionsById}
+                componentsById={componentsById}
+                point={point}
+                projectParameters={projectParameters}
+                selected={child.id === selectedMixedChildId}
+                source={source}
+                zone={mixedZone}
+                onSelect={() => onSelectMixedChild(child.id)}
+              />
             ))
           ) : (
             <Text className="table-setup-zone-empty-source" c="dimmed" size="xs">
-              {zone.source ? "Autofill off" : "Drop source"}
+              {sourceZone ? (sourceZone.source ? "Autofill off" : "Drop source") : "Drop source"}
             </Text>
           )}
         </Box>
@@ -1867,6 +2537,103 @@ function TableZoneView({
           }}
         />
       ) : null}
+    </Box>
+  );
+}
+
+function MixedZoneItem({
+  child,
+  collectionsById,
+  componentsById,
+  onSelect,
+  point,
+  projectParameters,
+  selected,
+  source,
+  zone
+}: {
+  child: ZoneMixedChild;
+  collectionsById: Map<string, ComponentCollection>;
+  componentsById: Map<string, GameComponent>;
+  onSelect: () => void;
+  point: TablePoint;
+  projectParameters: ProjectParameter[];
+  selected: boolean;
+  source: TableSource;
+  zone: Extract<TableZone, { childrenType: "mixed" }>;
+}) {
+  const label = getSourceName(source, componentsById, collectionsById);
+  const { attributes, isDragging, listeners, setNodeRef, transform } = useDraggable({
+    id: getTableMixedChildDragId(zone.id, child.id),
+    data: {
+      childId: child.id,
+      kind: "mixed-child",
+      source: child.source,
+      zoneId: zone.id
+    } satisfies TableDragData
+  });
+  const dragTransform = transform
+    ? `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0) `
+    : "";
+
+  return (
+    <UnstyledButton
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      aria-label={`Mixed zone item ${label}`}
+      className="table-setup-zone-item"
+      data-dragging={isDragging ? "true" : undefined}
+      data-selectable="true"
+      data-selected={selected ? "true" : undefined}
+      data-zone-drag-block="true"
+      style={{
+        left: `${(point.x / zone.width) * 100}%`,
+        top: `${(point.y / zone.height) * 100}%`,
+        transform: dragTransform || undefined,
+        zIndex: isDragging ? 4 : undefined
+      }}
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect();
+      }}
+    >
+      <TableSurfaceItemContent label={label} rotationDeg={child.rotationDeg}>
+        <SourceVisual
+          collectionsById={collectionsById}
+          componentsById={componentsById}
+          face={child.face}
+          projectParameters={projectParameters}
+          source={source}
+        />
+      </TableSurfaceItemContent>
+    </UnstyledButton>
+  );
+}
+
+function TableSurfaceItemContent({
+  children,
+  label,
+  rotationDeg = 0
+}: {
+  children: ReactNode;
+  label: string;
+  rotationDeg?: number;
+}) {
+  return (
+    <Box className="table-setup-surface-item-content">
+      <Box
+        className="table-setup-surface-item-body"
+        style={{
+          transform: rotationDeg === 0 ? undefined : `rotate(${rotationDeg}deg)`
+        }}
+      >
+        {children}
+      </Box>
+      <Text className="table-setup-surface-item-label" size="xs">
+        {label}
+      </Text>
     </Box>
   );
 }
@@ -1929,25 +2696,15 @@ function TablePlacementView({
         onSelect();
       }}
     >
-      <Box className="table-setup-placement-content">
-        <Box
-          className="table-setup-placement-body"
-          style={{
-            transform: `rotate(${placement.rotationDeg}deg)`
-          }}
-        >
-          <SourceVisual
-            collectionsById={collectionsById}
-            componentsById={componentsById}
-            face={placement.face}
-            projectParameters={projectParameters}
-            source={placement.source}
-          />
-        </Box>
-        <Text className="table-setup-placement-label" size="xs">
-          {label}
-        </Text>
-      </Box>
+      <TableSurfaceItemContent label={label} rotationDeg={placement.rotationDeg}>
+        <SourceVisual
+          collectionsById={collectionsById}
+          componentsById={componentsById}
+          face={placement.face}
+          projectParameters={projectParameters}
+          source={placement.source}
+        />
+      </TableSurfaceItemContent>
       <Group className="table-setup-placement-actions" gap={4}>
         <Tooltip label="Rotate" withArrow>
           <ActionIcon
@@ -1990,10 +2747,13 @@ function TableSetupInspector({
   collectionsById,
   components,
   componentsById,
+  mixedChildSelection,
   onAddChildZone,
   onChangeZoneType,
+  onRemoveMixedChild,
   onRemovePlacement,
   onRemoveZone,
+  onUpdateMixedChild,
   onUpdatePlacement,
   onUpdateZone,
   onUpdateZoneBackgroundImage,
@@ -2006,10 +2766,13 @@ function TableSetupInspector({
   collectionsById: Map<string, ComponentCollection>;
   components: GameComponent[];
   componentsById: Map<string, GameComponent>;
+  mixedChildSelection?: SelectedMixedChild;
   onAddChildZone: (parentId: string, childrenType: ZoneChildType) => void;
   onChangeZoneType: (zone: TableZone, childrenType: ZoneChildType) => void;
+  onRemoveMixedChild: (zoneId: string, childId: string) => void;
   onRemovePlacement: (id: string) => void;
   onRemoveZone: (id: string) => void;
+  onUpdateMixedChild: (zoneId: string, childId: string, patch: Partial<ZoneMixedChild>) => void;
   onUpdatePlacement: (id: string, patch: Partial<TablePlacement>) => void;
   onUpdateZone: (id: string, patch: Partial<TableZone>) => void;
   onUpdateZoneBackgroundImage: (zone: TableZone, file: File | null) => void;
@@ -2018,6 +2781,113 @@ function TableSetupInspector({
   setup: TableSetup;
   zone?: RenderedZone;
 }) {
+  if (mixedChildSelection) {
+    const { child, itemSize, label, renderedZone } = mixedChildSelection;
+    const mixedZone = renderedZone.zone;
+    const maxX = Math.max(0, mixedZone.width - itemSize.width);
+    const maxY = Math.max(0, mixedZone.height - itemSize.height);
+    const showPositionFields = mixedZone.layout === "free";
+
+    return (
+      <Stack gap="md">
+        <Box>
+          <Title order={3} size="h4">
+            Mixed item
+          </Title>
+          <Text c="dimmed" size="sm">
+            {label} in {mixedZone.name}
+          </Text>
+        </Box>
+        <Box>
+          <Text fw={600} mb={6} size="sm">
+            Face
+          </Text>
+          <SegmentedControl
+            data={placementFaceOptions}
+            fullWidth
+            value={child.face}
+            onChange={(value) =>
+              onUpdateMixedChild(mixedZone.id, child.id, { face: value as TablePlacementFace })
+            }
+          />
+        </Box>
+        {showPositionFields ? (
+          <SimpleGrid cols={2}>
+            <NumberInput
+              aria-label="Mixed item X"
+              allowDecimal={false}
+              label="X (mm)"
+              min={0}
+              value={child.x}
+              onChange={(value) =>
+                onUpdateMixedChild(mixedZone.id, child.id, {
+                  x: clamp(toNumberInputValue(value, child.x), 0, maxX)
+                })
+              }
+            />
+            <NumberInput
+              aria-label="Mixed item Y"
+              allowDecimal={false}
+              label="Y (mm)"
+              min={0}
+              value={child.y}
+              onChange={(value) =>
+                onUpdateMixedChild(mixedZone.id, child.id, {
+                  y: clamp(toNumberInputValue(value, child.y), 0, maxY)
+                })
+              }
+            />
+          </SimpleGrid>
+        ) : null}
+        <NumberInput
+          allowDecimal={false}
+          label="Rotation"
+          value={child.rotationDeg}
+          onChange={(value) =>
+            onUpdateMixedChild(mixedZone.id, child.id, {
+              rotationDeg: normalizeDegrees(toNumberInputValue(value, child.rotationDeg))
+            })
+          }
+        />
+        <Group gap="xs">
+          <Button
+            leftSection={<RotateCcw size={14} />}
+            radius={8}
+            variant="light"
+            onClick={() =>
+              onUpdateMixedChild(mixedZone.id, child.id, {
+                rotationDeg: normalizeDegrees(child.rotationDeg - 15)
+              })
+            }
+          >
+            -15
+          </Button>
+          <Button
+            leftSection={<RotateCw size={14} />}
+            radius={8}
+            variant="light"
+            onClick={() =>
+              onUpdateMixedChild(mixedZone.id, child.id, {
+                rotationDeg: normalizeDegrees(child.rotationDeg + 15)
+              })
+            }
+          >
+            +15
+          </Button>
+        </Group>
+        <Button
+          color="red"
+          leftSection={<Trash2 size={16} />}
+          radius={8}
+          variant="light"
+          onClick={() => onRemoveMixedChild(mixedZone.id, child.id)}
+        >
+          Delete mixed item
+        </Button>
+      </Stack>
+    );
+  }
+
   if (placement) {
     const label = getSourceName(placement.source, componentsById, collectionsById);
 
@@ -2121,12 +2991,14 @@ function TableSetupInspector({
 
   if (zone) {
     const item = zone.zone;
-    const sourceZone = item.childrenType === "zone" ? null : item;
+    const sourceZone = zoneSupportsSource(item) ? item : null;
     const sourceOptions = sourceZone
       ? [
           { label: "No source", value: noSourceOption },
           ...components
-            .filter((component) => component.type === sourceZone.childrenType)
+            .filter((component) =>
+              componentMatchesZoneChildType(component, sourceZone.childrenType)
+            )
             .map((component) => ({
               label: `${component.name} (${componentTypeLabels[component.type]})`,
               value: sourceToSelectValue({ kind: "component", componentId: component.id })
@@ -2144,7 +3016,7 @@ function TableSetupInspector({
     const backgroundType = item.background.type;
     const showPositionFields = zone.parentLayout === "free";
     const showSizeFields = item.size === "fixed";
-    const showCapacityFields = sourceZone !== null;
+    const showCapacityFields = item.childrenType !== "zone";
 
     return (
       <Stack gap="md">
@@ -2155,7 +3027,9 @@ function TableSetupInspector({
           <Text c="dimmed" size="sm">
             {item.childrenType === "zone"
               ? "Container"
-              : `${componentTypeLabels[item.childrenType]} source`}
+              : item.childrenType === "mixed"
+                ? "Mixed zone"
+                : `${zoneChildTypeLabels[item.childrenType]} source`}
           </Text>
         </Box>
         <Select
@@ -2405,7 +3279,7 @@ function TableSetupInspector({
               }
             />
           </>
-        ) : (
+        ) : item.childrenType === "zone" ? (
           <Menu position="bottom-start" shadow="md" width={190}>
             <Menu.Target>
               <Button
@@ -2425,7 +3299,7 @@ function TableSetupInspector({
               ))}
             </Menu.Dropdown>
           </Menu>
-        )}
+        ) : null}
 
         <SimpleGrid cols={2}>
           <NumberInput
@@ -2570,12 +3444,7 @@ function SourceVisual({
     const card = getLargestCollectionComponent(collection, componentsById, "card");
 
     return card ? (
-      <ComponentVisual
-        compact={compact}
-        component={card}
-        face={face}
-        projectParameters={projectParameters}
-      />
+      <DeckMarker card={card} compact={compact} face={face} projectParameters={projectParameters} />
     ) : (
       <CollectionMarker collection={collection} />
     );
@@ -2590,6 +3459,29 @@ function SourceVisual({
   }
 
   return <CollectionMarker collection={collection} />;
+}
+
+function DeckMarker({
+  card,
+  compact,
+  face,
+  projectParameters
+}: {
+  card: GameComponent;
+  compact: boolean;
+  face: TablePlacementFace;
+  projectParameters: ProjectParameter[];
+}) {
+  return (
+    <Box className="table-setup-deck-visual">
+      <ComponentVisual
+        compact={compact}
+        component={card}
+        face={face}
+        projectParameters={projectParameters}
+      />
+    </Box>
+  );
 }
 
 export function ComponentVisual({

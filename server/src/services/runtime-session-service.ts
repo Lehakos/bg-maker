@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   clampRuntimeFreeZonePoint,
+  componentTypeMatchesZoneChildType,
   normalizeDegrees,
   snapRuntimeFreeZonePoint,
   type ComponentCollection,
@@ -17,7 +18,8 @@ import {
   type TableSetup,
   type TableSource,
   type TableZone,
-  type ZoneSource
+  type ZoneItemContainer,
+  zoneSupportsSource
 } from "@bg-maker/shared";
 import {
   getProjectCollections,
@@ -39,7 +41,7 @@ type StackIdentity =
     }
   | {
       kind: "zone";
-      zone: ZoneSource;
+      zone: ZoneItemContainer;
     };
 
 export function listRuntimeSessions(projectId: string): ServiceResult<RuntimeSessionSummary[]> {
@@ -190,7 +192,10 @@ export function runtimeSessionsUseComponent(projectId: string, componentId: stri
         tableSourceUsesComponent(placement.source, componentId)
       ) ||
       flattenZones(session.setupSnapshot.zones).some(
-        (zone) => zone.childrenType !== "zone" && tableSourceUsesComponent(zone.source, componentId)
+        (zone) =>
+          (zoneSupportsSource(zone) && tableSourceUsesComponent(zone.source, componentId)) ||
+          (zone.childrenType === "mixed" &&
+            zone.children.some((child) => tableSourceUsesComponent(child.source, componentId)))
       )
   );
 }
@@ -203,7 +208,9 @@ export function runtimeSessionsUseCollection(projectId: string, collectionId: st
       ) ||
       flattenZones(session.setupSnapshot.zones).some(
         (zone) =>
-          zone.childrenType !== "zone" && tableSourceUsesCollection(zone.source, collectionId)
+          (zoneSupportsSource(zone) && tableSourceUsesCollection(zone.source, collectionId)) ||
+          (zone.childrenType === "mixed" &&
+            zone.children.some((child) => tableSourceUsesCollection(child.source, collectionId)))
       )
   );
 }
@@ -236,7 +243,38 @@ function materializeRuntimeInstances(projectId: string, setup: TableSetup): Runt
   const instances: RuntimeInstance[] = [];
 
   for (const zone of flattenZones(setup.zones)) {
-    if (zone.childrenType === "zone" || !zone.autofill) {
+    if (zone.childrenType === "mixed") {
+      let zoneInstanceIndex = 0;
+
+      zone.children.forEach((child) => {
+        const components = materializeSourceComponents(
+          child.source,
+          componentsById,
+          collectionsById
+        );
+
+        components.forEach((component) => {
+          instances.push(
+            createRuntimeInstance(component, {
+              faceUp: child.face === "front",
+              location: {
+                kind: "zone",
+                zoneId: zone.id,
+                index: zoneInstanceIndex,
+                x: child.x,
+                y: child.y
+              },
+              origin: { kind: "zone", zoneId: zone.id },
+              rotationDeg: child.rotationDeg
+            })
+          );
+          zoneInstanceIndex += 1;
+        });
+      });
+      continue;
+    }
+
+    if (!zoneSupportsSource(zone) || !zone.autofill) {
       continue;
     }
 
@@ -443,7 +481,7 @@ function moveRuntimeInstance(
 function resolveRuntimeMoveTarget(
   projectId: string,
   session: RuntimeSession,
-  zone: ZoneSource,
+  zone: ZoneItemContainer,
   instance: RuntimeInstance,
   target: RuntimeLocation
 ): RuntimeLocation {
@@ -478,11 +516,11 @@ function resolveRuntimeMoveTarget(
 
 function validateZoneAcceptsInstance(
   projectId: string,
-  zone: ZoneSource,
+  zone: ZoneItemContainer,
   instance: RuntimeInstance,
   session: RuntimeSession
 ): ParseResult<undefined> {
-  if (instance.componentType !== zone.childrenType) {
+  if (!componentTypeMatchesZoneChildType(instance.componentType, zone.childrenType)) {
     return { ok: false, error: "Runtime target zone type does not match instance type" };
   }
 
@@ -495,7 +533,7 @@ function validateZoneAcceptsInstance(
     return { ok: false, error: "Runtime target zone is full" };
   }
 
-  if (!zone.source) {
+  if (!zoneSupportsSource(zone) || !zone.source) {
     return { ok: true, value: undefined };
   }
 
@@ -885,7 +923,7 @@ function getRuntimeComponentTableSize(component: GameComponent) {
 function getRuntimeFreeZoneSnapRects(
   projectId: string,
   session: RuntimeSession,
-  zone: ZoneSource,
+  zone: ZoneItemContainer,
   activeInstanceId: string
 ): RuntimeFreeZoneSnapRect[] {
   const componentsById = new Map(
@@ -915,7 +953,7 @@ function getRuntimeFreeZoneSnapRects(
 }
 
 function getRuntimeFreeZoneInstancePoint(
-  zone: ZoneSource,
+  zone: ZoneItemContainer,
   instance: RuntimeInstance,
   itemSize: { height: number; width: number }
 ) {
@@ -976,10 +1014,11 @@ function validateDeckSource(projectId: string, source: TableSource | undefined) 
 }
 
 function stackIsDeck(projectId: string, identity: StackIdentity) {
-  return validateDeckSource(
-    projectId,
-    identity.kind === "zone" ? identity.zone.source : identity.placement.source
-  );
+  if (identity.kind === "placement") {
+    return validateDeckSource(projectId, identity.placement.source);
+  }
+
+  return zoneSupportsSource(identity.zone) && validateDeckSource(projectId, identity.zone.source);
 }
 
 function getStackIdentity(setup: TableSetup, location: RuntimeLocation): StackIdentity | null {

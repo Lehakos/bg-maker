@@ -1266,7 +1266,7 @@ function createSourceZone(input: {
   background?: TableSetup["zones"][number]["background"];
   border?: Partial<TableSetup["zones"][number]["border"]>;
   capacity?: TableSetup["zones"][number]["capacity"];
-  childrenType: Exclude<TableSetup["zones"][number]["childrenType"], "zone">;
+  childrenType: Extract<TableSetup["zones"][number], { autofill: boolean }>["childrenType"];
   columns?: number;
   description?: string;
   face?: Extract<TableSetup["zones"][number], { autofill: boolean }>["face"];

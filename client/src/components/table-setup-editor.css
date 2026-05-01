@@ -170,11 +170,18 @@
 }
 
 .table-setup-library-preview .table-setup-collection-visual,
+.table-setup-library-preview .table-setup-deck-visual,
 .table-setup-library-preview .table-setup-bag-visual,
 .table-setup-library-preview .table-setup-die-visual,
 .table-setup-library-preview .table-setup-missing-visual {
   width: 54px;
   height: 54px;
+}
+
+.table-setup-library-preview .table-setup-deck-visual::before,
+.table-setup-library-preview .table-setup-deck-visual::after {
+  width: 42px;
+  border-radius: 7px;
 }
 
 .table-setup-library-item-text {
@@ -413,14 +420,15 @@
   max-width: 68px;
 }
 
-.table-setup-placement-content {
+.table-setup-surface-item-content {
   display: grid;
   gap: 6px;
   justify-items: center;
   width: 100%;
+  pointer-events: none;
 }
 
-.table-setup-placement-body {
+.table-setup-surface-item-body {
   display: grid;
   min-height: 76px;
   place-items: center;
@@ -428,9 +436,9 @@
   transform-origin: 50% 50%;
 }
 
-.table-setup-placement-body .card-preview-shell,
-.table-setup-placement-body .tile-preview-shell,
-.table-setup-placement-body .piece-preview-shell {
+.table-setup-surface-item-body .card-preview-shell,
+.table-setup-surface-item-body .tile-preview-shell,
+.table-setup-surface-item-body .piece-preview-shell {
   min-height: 0;
   padding: 0;
   overflow: visible;
@@ -438,22 +446,22 @@
   background: transparent;
 }
 
-.table-setup-placement-body .card-preview,
-.table-setup-placement-body .tile-preview,
-.table-setup-placement-body .piece-preview {
+.table-setup-surface-item-body .card-preview,
+.table-setup-surface-item-body .tile-preview,
+.table-setup-surface-item-body .piece-preview {
   width: 72px;
   min-width: 0;
   max-width: 72px;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
 }
 
-.table-setup-placement-body .tile-preview,
-.table-setup-placement-body .piece-preview {
+.table-setup-surface-item-body .tile-preview,
+.table-setup-surface-item-body .piece-preview {
   width: 68px;
   max-width: 68px;
 }
 
-.table-setup-placement-label {
+.table-setup-surface-item-label {
   display: block;
   width: 100%;
   margin-top: 6px;
@@ -480,6 +488,7 @@
 }
 
 .table-setup-collection-visual,
+.table-setup-deck-visual,
 .table-setup-bag-visual,
 .table-setup-die-visual,
 .table-setup-missing-visual {
@@ -491,6 +500,42 @@
   border: 1px solid rgba(15, 118, 110, 0.24);
   border-radius: 8px;
   background: #ffffff;
+}
+
+.table-setup-deck-visual {
+  position: relative;
+  width: max-content;
+  height: auto;
+  border: 0;
+  background: transparent;
+  isolation: isolate;
+}
+
+.table-setup-deck-visual::before,
+.table-setup-deck-visual::after {
+  position: absolute;
+  z-index: 0;
+  box-sizing: border-box;
+  width: 72px;
+  height: 100%;
+  content: "";
+  border: 2px solid #111827;
+  border-radius: 10px;
+  background: #fffdf7;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.1);
+}
+
+.table-setup-deck-visual::before {
+  transform: translate(-8px, -8px);
+}
+
+.table-setup-deck-visual::after {
+  transform: translate(-4px, -4px);
+}
+
+.table-setup-deck-visual > * {
+  position: relative;
+  z-index: 1;
 }
 
 .table-setup-bag-visual[data-shape="circle"] {
@@ -515,28 +560,30 @@
 .table-setup-zone-item {
   position: absolute;
   display: grid;
-  width: 76px;
-  min-height: 76px;
+  box-sizing: border-box;
+  width: 96px;
+  min-height: 124px;
   place-items: center;
+  padding: 4px;
+  color: #1f2937;
+  border-radius: 8px;
+  transform-origin: 50% 50%;
 }
 
-.table-setup-zone-item .card-preview-shell,
-.table-setup-zone-item .tile-preview-shell,
-.table-setup-zone-item .piece-preview-shell {
-  min-height: 0;
-  padding: 0;
-  overflow: visible;
-  border: 0;
-  background: transparent;
+.table-setup-zone-item[data-selectable="true"] {
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
 }
 
-.table-setup-zone-item .card-preview,
-.table-setup-zone-item .tile-preview,
-.table-setup-zone-item .piece-preview {
-  width: 58px;
-  min-width: 0;
-  max-width: 58px;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
+.table-setup-zone-item[data-dragging="true"] {
+  opacity: 0.34;
+}
+
+.table-setup-zone-item[data-selected="true"] {
+  z-index: 2;
+  outline: 2px solid rgba(15, 118, 110, 0.82);
+  outline-offset: 4px;
 }
 
 .table-setup-zone-empty-source {

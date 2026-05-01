@@ -9,11 +9,15 @@ import {
   type ZoneBackground,
   type ZoneBackgroundImageFit,
   type ZoneChildType,
+  type ZoneItemContainer,
   type ZoneLayout,
+  type ZoneMixed,
+  type ZoneMixedChild,
   type ZoneOverflowMode,
   type ZoneSizeMode,
   type ZoneSource,
-  type ZoneVisibility
+  type ZoneVisibility,
+  zoneSupportsSource
 } from "@bg-maker/shared";
 
 export type TablePoint = {
@@ -95,6 +99,14 @@ export function createZoneForType(
     return {
       ...base,
       childrenType: "zone",
+      children: []
+    };
+  }
+
+  if (childrenType === "mixed") {
+    return {
+      ...base,
+      childrenType: "mixed",
       children: []
     };
   }
@@ -196,6 +208,24 @@ export function clampZonesToBounds(
       };
     }
 
+    if (bounded.childrenType === "mixed") {
+      bounded = {
+        ...bounded,
+        children: bounded.children.map((child) => {
+          const itemSize = getSourceTableSize(child.source, componentsById, collectionsById) ?? {
+            height: 0,
+            width: 0
+          };
+
+          return {
+            ...child,
+            x: clamp(child.x, 0, Math.max(0, bounded.width - itemSize.width)),
+            y: clamp(child.y, 0, Math.max(0, bounded.height - itemSize.height))
+          };
+        })
+      };
+    }
+
     const resized = applyAutoZoneSize(bounded, componentsById, collectionsById);
     const finalZone = {
       ...resized,
@@ -227,38 +257,77 @@ export function materializeZoneItems(
     return [];
   }
 
-  const components: GameComponent[] = [];
+  const itemSize = getSourceTableSize(zone.source, componentsById, collectionsById);
 
-  if (zone.source.kind === "component") {
-    const component = componentsById.get(zone.source.componentId);
-    if (component && component.type === zone.childrenType) {
-      components.push(component);
-    }
-  } else {
-    const collection = collectionsById.get(zone.source.collectionId);
-
-    for (const item of collection?.items ?? []) {
-      const component = componentsById.get(item.componentId);
-
-      if (!component || component.type !== zone.childrenType) {
-        continue;
-      }
-
-      for (let index = 0; index < item.quantity; index += 1) {
-        components.push(component);
-      }
-    }
+  if (!itemSize) {
+    return [];
   }
 
-  return components.slice(0, zone.capacity ?? components.length);
+  return [
+    {
+      point: getZoneItemPointForSize(zone, itemSize, 0),
+      source: zone.source
+    }
+  ];
+}
+
+export function materializeMixedZoneChildren(
+  zone: ZoneMixed,
+  componentsById: Map<string, GameComponent>,
+  collectionsById: Map<string, ComponentCollection>
+) {
+  return zone.children
+    .map((child, index) => {
+      const itemSize = getSourceTableSize(child.source, componentsById, collectionsById);
+
+      return itemSize
+        ? {
+            child,
+            point: getMixedZoneChildPoint(zone, child, itemSize, index),
+            source: child.source
+          }
+        : null;
+    })
+    .filter(
+      (
+        item
+      ): item is {
+        child: ZoneMixedChild;
+        point: TablePoint;
+        source: TableSource;
+      } => item !== null
+    );
+}
+
+export function getMixedZoneChildPoint(
+  zone: ZoneMixed,
+  child: ZoneMixedChild,
+  itemSize: TableSize,
+  index: number
+): TablePoint {
+  if (zone.layout !== "free") {
+    return getZoneItemPointForSize(zone, itemSize, index);
+  }
+
+  return {
+    x: Math.round(clamp(child.x, 0, Math.max(0, zone.width - itemSize.width))),
+    y: Math.round(clamp(child.y, 0, Math.max(0, zone.height - itemSize.height)))
+  };
 }
 
 export function getZoneItemPoint(
-  zone: ZoneSource,
+  zone: ZoneItemContainer,
   component: GameComponent,
   index: number
 ): TablePoint {
-  const itemSize = getComponentTableSize(component);
+  return getZoneItemPointForSize(zone, getComponentTableSize(component), index);
+}
+
+export function getZoneItemPointForSize(
+  zone: ZoneItemContainer,
+  itemSize: TableSize,
+  index: number
+): TablePoint {
   const padding = zone.padding;
   const gap = zone.gap ?? 0;
 
@@ -612,7 +681,13 @@ function getAutoZoneSize(
     return getAutoContainerZoneSize(zone);
   }
 
-  return getAutoSourceZoneSize(zone, componentsById, collectionsById);
+  if (zone.childrenType === "mixed") {
+    return getAutoMixedZoneSize(zone, componentsById, collectionsById);
+  }
+
+  return zoneSupportsSource(zone)
+    ? getAutoSourceZoneSize(zone, componentsById, collectionsById)
+    : null;
 }
 
 function getAutoContainerZoneSize(zone: Extract<TableZone, { childrenType: "zone" }>): TableSize {
@@ -699,26 +774,46 @@ function getAutoSourceZoneSize(
   };
 }
 
+function getAutoMixedZoneSize(
+  zone: ZoneMixed,
+  componentsById: Map<string, GameComponent>,
+  collectionsById: Map<string, ComponentCollection>
+): TableSize | null {
+  const children = zone.children
+    .map((child, index) => {
+      const itemSize = getSourceTableSize(child.source, componentsById, collectionsById);
+      return itemSize ? { child, index, itemSize } : null;
+    })
+    .filter(
+      (item): item is { child: ZoneMixedChild; index: number; itemSize: TableSize } => item !== null
+    );
+
+  if (children.length === 0) {
+    return {
+      height: zone.padding * 2,
+      width: zone.padding * 2
+    };
+  }
+
+  return children.reduce(
+    (size, { child, index, itemSize }) => {
+      const point = getMixedZoneChildPoint(zone, child, itemSize, index);
+
+      return {
+        height: Math.max(size.height, point.y + itemSize.height + zone.padding),
+        width: Math.max(size.width, point.x + itemSize.width + zone.padding)
+      };
+    },
+    { height: minZoneSizeMm, width: minZoneSizeMm }
+  );
+}
+
 function getZoneSourceItemSize(
   zone: ZoneSource,
   componentsById: Map<string, GameComponent>,
   collectionsById: Map<string, ComponentCollection>
 ): TableSize | null {
-  const component =
-    zone.source?.kind === "component" ? componentsById.get(zone.source.componentId) : undefined;
-
-  if (component) {
-    return getComponentTableSize(component);
-  }
-
-  const collection =
-    zone.source?.kind === "collection" ? collectionsById.get(zone.source.collectionId) : undefined;
-
-  if (!collection) {
-    return null;
-  }
-
-  return getCollectionTableSize(collection, componentsById);
+  return zone.source ? getSourceTableSize(zone.source, componentsById, collectionsById) : null;
 }
 
 function getAutoZoneSlotCount(
@@ -726,10 +821,6 @@ function getAutoZoneSlotCount(
   componentsById: Map<string, GameComponent>,
   collectionsById: Map<string, ComponentCollection>
 ) {
-  if (zone.capacity !== null) {
-    return zone.capacity;
-  }
-
   return Math.max(1, getZoneRenderQuantity(zone, componentsById, collectionsById));
 }
 
@@ -843,7 +934,21 @@ export function getComponentTableSize(component: GameComponent): TableSize {
   };
 }
 
-function getCollectionTableSize(
+export function getSourceTableSize(
+  source: TableSource,
+  componentsById: Map<string, GameComponent>,
+  collectionsById: Map<string, ComponentCollection>
+): TableSize | null {
+  if (source.kind === "component") {
+    const component = componentsById.get(source.componentId);
+    return component ? getComponentTableSize(component) : null;
+  }
+
+  const collection = collectionsById.get(source.collectionId);
+  return collection ? getCollectionTableSize(collection, componentsById) : null;
+}
+
+export function getCollectionTableSize(
   collection: ComponentCollection,
   componentsById: Map<string, GameComponent>
 ): TableSize | null {
@@ -908,12 +1013,22 @@ function cloneZones(zones: TableZone[]): TableZone[] {
           border: { ...zone.border },
           children: cloneZones(zone.children)
         }
-      : {
-          ...zone,
-          background: { ...zone.background },
-          border: { ...zone.border },
-          source: zone.source ? { ...zone.source } : undefined
-        }
+      : zoneSupportsSource(zone)
+        ? {
+            ...zone,
+            background: { ...zone.background },
+            border: { ...zone.border },
+            source: zone.source ? { ...zone.source } : undefined
+          }
+        : {
+            ...zone,
+            background: { ...zone.background },
+            border: { ...zone.border },
+            children: zone.children.map((child) => ({
+              ...child,
+              source: { ...child.source }
+            }))
+          }
   );
 }
 

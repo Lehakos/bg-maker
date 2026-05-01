@@ -1,7 +1,7 @@
 # Zone
 
 ```typescript
-type ZoneChildType = "zone" | "card" | "piece" | "tile";
+type ZoneChildType = "zone" | "card" | "piece" | "tile" | "mixed";
 type ZoneCapacity = number | null; // null = unlimited
 
 type TableSource =
@@ -56,7 +56,21 @@ type ZoneSource = ZoneBase & {
   autofill: boolean;
 };
 
-type Zone = ZoneContainer | ZoneSource;
+type ZoneMixed = ZoneBase & {
+  childrenType: "mixed";
+  children: ZoneMixedChild[];
+};
+
+type ZoneMixedChild = {
+  id: string;
+  source: TableSource;
+  x: number;
+  y: number;
+  rotationDeg: number;
+  face: "front" | "back";
+};
+
+type Zone = ZoneContainer | ZoneSource | ZoneMixed;
 
 type TablePlacement = {
   id: string;
@@ -81,17 +95,9 @@ type ComponentCollectionItem = {
 };
 ```
 
-Autofill normalizes source quantity this way:
-
-```typescript
-const sourceQuantity =
-  source.kind === "component"
-    ? 1
-    : collection.items.reduce((total, item) => total + item.quantity, 0);
-
-const amount =
-  zone.capacity === null ? sourceQuantity : Math.min(zone.capacity, sourceQuantity);
-```
+Table layout treats every `TableSource` as one physical table object. A collection source renders as
+one deck, bag, or custom pack; it is not expanded into individual cards, pieces, or tiles in layout
+editing.
 
 If `autofill` is disabled, the zone keeps its source but renders no starting items.
 
@@ -115,6 +121,13 @@ Compatibility rules:
 - Collection sources must contain only components matching `childrenType`.
 - Dice cannot be used as zone sources.
 
+## Mixed zones
+
+`childrenType: "mixed"` zones accept any table source as a child, including collections and dice.
+They do not have zone-level `source`, `face`, or `autofill`. Their `children` are independent
+`TableSource` references with coordinates relative to the mixed zone, similar to how a container
+zone owns child zones.
+
 ## Table placements without zones
 
 Users can build a quick table layout without creating zones.
@@ -123,9 +136,9 @@ Components and collections can be dropped directly on the table:
 
 - Components are added as one object.
 - Collections are added as a pack.
-- Dice are supported only as direct table placements.
+- Dice are supported as direct table placements and mixed-zone children.
 - Cards, pieces, and tiles render with the same previews used elsewhere.
-- Deck collections preview with the largest card in the deck.
+- Deck collections preview as one deck stack using the largest card in the deck.
 - Bag collections render as a bag marker: square when the bag includes tiles, circular otherwise.
 
 ## Dragging into zones
@@ -135,6 +148,8 @@ When dragging a component or collection over the table:
 - Compatible source zones highlight when the dragged item matches `childrenType`.
 - Dropping onto a compatible source zone sets `zone.source`.
 - If the zone already has a different source, the UI asks before replacing it.
+- Dropping a component onto a mixed zone adds it to `children`.
+- Dropping a collection onto a mixed zone adds that collection as one child.
 - Container zones do not accept component or collection sources.
 
 ## Component library
@@ -144,9 +159,9 @@ The component list is visual, not just textual.
 Library items include compact previews:
 
 - Card, piece, and tile components use the same visual preview as table placements.
-- Card collections use the largest card in the collection as their preview.
+- Deck collections render as one deck stack.
 - Bag collections use the square/circle bag marker.
-- Dice appear in the library for direct placement only.
+- Dice appear in the library for direct placement and mixed zones.
 
 The library includes:
 

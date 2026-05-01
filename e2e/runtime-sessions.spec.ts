@@ -31,6 +31,7 @@ test.describe("runtime sessions", () => {
     expect(stackComponentIds(session, { kind: "zone", zoneId: "source-locked-zone" })).toEqual([]);
     expect(stackComponentIds(session, { kind: "zone", zoneId: "piece-zone" })).toEqual([]);
     expect(stackComponentIds(session, { kind: "zone", zoneId: "free-zone" })).toEqual([]);
+    expect(stackComponentIds(session, { kind: "zone", zoneId: "mixed-zone" })).toEqual([]);
 
     const shuffleResponse = await request.post(
       `/api/projects/${project.id}/sessions/${session.id}/actions`,
@@ -182,6 +183,26 @@ test.describe("runtime sessions", () => {
     });
 
     const dieInstance = moved.instances.find((instance) => instance.componentId === die.id);
+    expect(dieInstance).toBeTruthy();
+    const mixedZoneResponse = await request.post(
+      `/api/projects/${project.id}/sessions/${session.id}/actions`,
+      {
+        data: {
+          type: "MOVE_INSTANCE",
+          instanceId: dieInstance?.id,
+          target: { kind: "zone", zoneId: "mixed-zone", index: 0 }
+        }
+      }
+    );
+    expect(mixedZoneResponse.status()).toBe(200);
+    const mixedMoved = (await mixedZoneResponse.json()) as RuntimeSessionResponse;
+    expect(
+      mixedMoved.instances.find((instance) => instance.id === dieInstance?.id)?.location
+    ).toMatchObject({
+      kind: "zone",
+      zoneId: "mixed-zone"
+    });
+
     const rollResponse = await request.post(
       `/api/projects/${project.id}/sessions/${session.id}/actions`,
       {
@@ -225,7 +246,7 @@ test.describe("runtime sessions", () => {
     const sessionsResponse = await request.get(`/api/projects/${project.id}/sessions`);
     expect(sessionsResponse.status()).toBe(200);
     await expect(sessionsResponse.json()).resolves.toMatchObject([
-      { id: session.id, actionCount: 7, instanceCount: 3, name: "API playtest" }
+      { id: session.id, actionCount: 8, instanceCount: 3, name: "API playtest" }
     ]);
 
     const emptySetupResponse = await request.put(`/api/projects/${project.id}/table-setup`, {
@@ -270,6 +291,7 @@ test.describe("runtime sessions", () => {
     await sessions.expectContainerZoneRenderedWithoutChrome("Container shelf");
     await sessions.expectZoneLabelOutsideFrame("Deck");
     await sessions.expectZoneCollectionCount("Deck", 2);
+    await sessions.expectRuntimeItemRenderedDownRightOf("Scout", "Guard");
     await sessions.expectRuntimeItemSize(
       "Scout",
       { heightMm: 88, widthMm: 63 },
@@ -473,6 +495,15 @@ async function createRuntimeFixture(request: APIRequestContext, projectId: strin
           width: 280,
           height: 240
         }),
+        validRuntimeMixedZone({
+          childrenType: "mixed",
+          id: "mixed-zone",
+          name: "Mixed tray",
+          x: 660,
+          y: 360,
+          width: 280,
+          height: 180
+        }),
         validRuntimeContainerZone({
           id: "container-zone",
           name: "Container shelf",
@@ -529,6 +560,29 @@ function validRuntimeZone(overrides: Record<string, unknown> = {}) {
     autofill: true,
     childrenType: "card",
     face: "up",
+    ...overrides
+  };
+}
+
+function validRuntimeMixedZone(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "runtime-mixed-zone",
+    name: "Runtime mixed zone",
+    description: "",
+    x: 80,
+    y: 80,
+    width: 220,
+    height: 180,
+    padding: 8,
+    size: "fixed",
+    overflow: "hidden",
+    capacity: null,
+    layout: "stack",
+    visibility: "all",
+    background: { type: "none" },
+    border: { width: 1, color: "#0e7490" },
+    children: [],
+    childrenType: "mixed",
     ...overrides
   };
 }

@@ -334,6 +334,21 @@ class RuntimeSessionsObject {
       .toBeLessThan(tolerancePx);
   }
 
+  async expectRuntimeItemRenderedDownRightOf(name: string, referenceName: string) {
+    await expect
+      .poll(async () => {
+        const itemPoint = await runtimeItemStylePoint(this.runtimeItem(name));
+        const referencePoint = await runtimeItemStylePoint(this.runtimeItem(referenceName));
+
+        if (!itemPoint || !referencePoint) {
+          return false;
+        }
+
+        return itemPoint.left > referencePoint.left && itemPoint.top > referencePoint.top;
+      })
+      .toBe(true);
+  }
+
   async expectRuntimeVisualFillsItem(
     name: string,
     visualSelector: string,
@@ -475,6 +490,21 @@ class RuntimeSessionsObject {
 
   async shuffleStack(name: string) {
     await this.page.getByRole("button", { name: `Shuffle ${name}` }).click();
+  }
+}
+
+async function runtimeItemStylePoint(locator: Locator) {
+  try {
+    return await locator.evaluate((element) => {
+      const htmlElement = element as HTMLElement;
+
+      return {
+        left: Number.parseFloat(htmlElement.style.left),
+        top: Number.parseFloat(htmlElement.style.top)
+      };
+    });
+  } catch {
+    return null;
   }
 }
 

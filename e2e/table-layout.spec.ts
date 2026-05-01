@@ -39,6 +39,12 @@ test.describe("table layout", () => {
     expect(directTokenResponse.status()).toBe(201);
     const directToken = (await directTokenResponse.json()) as { id: string };
 
+    const dieResponse = await request.post(`/api/projects/${project.id}/components`, {
+      data: { type: "die", name: "Fate die", sides: 6 }
+    });
+    expect(dieResponse.status()).toBe(201);
+    const die = (await dieResponse.json()) as { id: string };
+
     const foreignCardResponse = await request.post(`/api/projects/${otherProject.id}/components`, {
       data: { type: "card", name: "Foreign scout", frontText: "Nope" }
     });
@@ -96,6 +102,30 @@ test.describe("table layout", () => {
             layout: "row",
             padding: 8,
             source: { kind: "collection", collectionId: collection.id }
+          }),
+          validMixedTableZone({
+            children: [
+              {
+                id: "mixed-die",
+                source: { kind: "component", componentId: die.id },
+                x: 20,
+                y: 24,
+                rotationDeg: 0,
+                face: "front"
+              },
+              {
+                id: "mixed-deck",
+                source: { kind: "collection", collectionId: collection.id },
+                x: 72,
+                y: 24,
+                rotationDeg: 0,
+                face: "front"
+              }
+            ],
+            childrenType: "mixed",
+            id: "mixed-kit",
+            name: "Mixed kit",
+            x: 560
           })
         ],
         placements: [
@@ -135,6 +165,14 @@ test.describe("table layout", () => {
           name: "Market",
           overflow: "hidden",
           source: { kind: "collection", collectionId: collection.id }
+        },
+        {
+          children: [
+            { id: "mixed-die", source: { kind: "component", componentId: die.id } },
+            { id: "mixed-deck", source: { kind: "collection", collectionId: collection.id } }
+          ],
+          childrenType: "mixed",
+          id: "mixed-kit"
         }
       ]
     });
@@ -186,6 +224,16 @@ test.describe("table layout", () => {
           ]
         },
         error: "Table source component type does not match zone child type"
+      },
+      {
+        body: {
+          zones: [
+            validMixedTableZone({
+              source: { kind: "collection", collectionId: collection.id }
+            })
+          ]
+        },
+        error: "Mixed zones cannot include sources"
       }
     ];
 
@@ -212,6 +260,14 @@ test.describe("table layout", () => {
     );
     expect(deleteUsedComponent.status()).toBe(400);
     await expect(deleteUsedComponent.json()).resolves.toEqual({
+      error: "Component is used by table setup"
+    });
+
+    const deleteMixedChildComponent = await request.delete(
+      `/api/projects/${project.id}/components/${die.id}`
+    );
+    expect(deleteMixedChildComponent.status()).toBe(400);
+    await expect(deleteMixedChildComponent.json()).resolves.toEqual({
       error: "Component is used by table setup"
     });
 
@@ -305,6 +361,232 @@ test.describe("table layout", () => {
         }
       ]
     });
+  });
+
+  test("places library drag preview at the drop cursor", async ({ page, projectsApi, request }) => {
+    const project = await projectsApi.create({
+      name: "Library Drag Anchor UI Project",
+      players: "2",
+      status: "draft"
+    });
+    const detailPage = new ProjectDetailPage(page);
+
+    const cardResponse = await request.post(`/api/projects/${project.id}/components`, {
+      data: { type: "card", name: "Scout", frontText: "Move 1" }
+    });
+    expect(cardResponse.status()).toBe(201);
+
+    await detailPage.goto(project.id);
+    await detailPage.openLayout();
+
+    const scoutLibraryItem = page.getByRole("button", { name: "Library item Scout" });
+    const surface = page.getByLabel("Table setup surface");
+    const surfaceBox = await surface.boundingBox();
+
+    expect(surfaceBox).toBeTruthy();
+
+    const targetPosition = { x: 420, y: 260 };
+    await dragLocatorTo(page, scoutLibraryItem, surface, { targetPosition });
+
+    const placement = page.getByLabel("Placement Scout", { exact: true });
+    await expect(placement).toBeVisible();
+
+    const placementBox = await placement.boundingBox();
+    expect(placementBox).toBeTruthy();
+
+    const targetX = surfaceBox!.x + targetPosition.x;
+    const targetY = surfaceBox!.y + targetPosition.y;
+    const placementCenterX = placementBox!.x + placementBox!.width / 2;
+    const placementCenterY = placementBox!.y + placementBox!.height / 2;
+
+    expect(Math.abs(placementCenterX - targetX)).toBeLessThan(36);
+    expect(Math.abs(placementCenterY - targetY)).toBeLessThan(36);
+  });
+
+  test("preserves drag preview anchor when moving into and out of mixed zones", async ({
+    page,
+    projectsApi,
+    request
+  }) => {
+    const project = await projectsApi.create({
+      name: "Mixed Drag Anchor UI Project",
+      players: "2",
+      status: "draft"
+    });
+    const detailPage = new ProjectDetailPage(page);
+
+    const coinResponse = await request.post(`/api/projects/${project.id}/components`, {
+      data: { type: "piece", name: "Coin", labelText: "1" }
+    });
+    expect(coinResponse.status()).toBe(201);
+
+    const setupResponse = await request.put(`/api/projects/${project.id}/table-setup`, {
+      data: {
+        width: 1600,
+        height: 1000,
+        placements: [],
+        zones: [
+          validMixedTableZone({
+            id: "mixed-zone",
+            name: "Mixed zone",
+            width: 520,
+            height: 280,
+            x: 560,
+            y: 240
+          })
+        ]
+      }
+    });
+    expect(setupResponse.status()).toBe(200);
+
+    await detailPage.goto(project.id);
+    await detailPage.openLayout();
+
+    await page.getByRole("button", { name: "Library item Coin" }).click();
+
+    const mixedZone = page.getByLabel("Table zone Mixed zone", { exact: true });
+    const surface = page.getByLabel("Table setup surface");
+    const mixedZoneBox = await mixedZone.boundingBox();
+    const surfaceBox = await surface.boundingBox();
+    const placement = page.getByLabel("Placement Coin", { exact: true });
+
+    expect(mixedZoneBox).toBeTruthy();
+    expect(surfaceBox).toBeTruthy();
+    await expect(placement).toBeVisible();
+
+    const mixedTarget = { x: mixedZoneBox!.width / 2, y: mixedZoneBox!.height / 2 };
+    await dragLocatorTo(page, placement, mixedZone, { targetPosition: mixedTarget });
+
+    const mixedItem = mixedZone.getByRole("button", { name: "Mixed zone item Coin" });
+    await expect(mixedItem).toBeVisible();
+
+    const mixedItemBox = await mixedItem.boundingBox();
+    expect(mixedItemBox).toBeTruthy();
+    expect(
+      Math.abs(mixedItemBox!.x + mixedItemBox!.width / 2 - (mixedZoneBox!.x + mixedTarget.x))
+    ).toBeLessThan(36);
+    expect(
+      Math.abs(mixedItemBox!.y + mixedItemBox!.height / 2 - (mixedZoneBox!.y + mixedTarget.y))
+    ).toBeLessThan(36);
+
+    const tableTarget = { x: 120, y: 120 };
+    await dragLocatorTo(page, mixedItem, surface, { targetPosition: tableTarget });
+
+    const movedPlacement = page.getByLabel("Placement Coin", { exact: true });
+    await expect(movedPlacement).toBeVisible();
+
+    const movedPlacementBox = await movedPlacement.boundingBox();
+    expect(movedPlacementBox).toBeTruthy();
+    expect(
+      Math.abs(
+        movedPlacementBox!.x + movedPlacementBox!.width / 2 - (surfaceBox!.x + tableTarget.x)
+      )
+    ).toBeLessThan(36);
+    expect(
+      Math.abs(
+        movedPlacementBox!.y + movedPlacementBox!.height / 2 - (surfaceBox!.y + tableTarget.y)
+      )
+    ).toBeLessThan(36);
+  });
+
+  test("drops collections into mixed zones and selects mixed-zone children", async ({
+    page,
+    projectsApi,
+    request
+  }) => {
+    const project = await projectsApi.create({
+      name: "Mixed Zone Collection UI Project",
+      players: "2",
+      status: "draft"
+    });
+    const detailPage = new ProjectDetailPage(page);
+
+    const cardResponse = await request.post(`/api/projects/${project.id}/components`, {
+      data: { type: "card", name: "Scout", frontText: "Move 1" }
+    });
+    expect(cardResponse.status()).toBe(201);
+    const card = (await cardResponse.json()) as { id: string };
+
+    const collectionResponse = await request.post(`/api/projects/${project.id}/collections`, {
+      data: {
+        type: "deck",
+        name: "Scout deck",
+        items: [{ componentId: card.id, quantity: 2 }]
+      }
+    });
+    expect(collectionResponse.status()).toBe(201);
+    const collection = (await collectionResponse.json()) as { id: string };
+
+    const setupResponse = await request.put(`/api/projects/${project.id}/table-setup`, {
+      data: {
+        width: 1600,
+        height: 1000,
+        placements: [],
+        zones: [
+          validMixedTableZone({
+            id: "mixed-kit",
+            name: "Mixed kit",
+            width: 360,
+            height: 240,
+            x: 560,
+            y: 240
+          })
+        ]
+      }
+    });
+    expect(setupResponse.status()).toBe(200);
+
+    await detailPage.goto(project.id);
+    await detailPage.openLayout();
+
+    const deckLibraryItem = page.getByRole("button", { name: "Library item Scout deck" });
+    const mixedZone = page.getByLabel("Table zone Mixed kit", { exact: true });
+    const surface = page.getByLabel("Table setup surface");
+
+    await expect(deckLibraryItem).toBeVisible();
+    await expect(mixedZone).toBeVisible();
+    await dragLocatorTo(page, deckLibraryItem, mixedZone, {
+      beforeDrop: async () => {
+        await expect(mixedZone).toHaveAttribute("data-drop-eligible", "true");
+        await expect(mixedZone).toHaveAttribute("data-drop-target", "true");
+      },
+      targetPosition: { x: 48, y: 56 }
+    });
+
+    const mixedItems = mixedZone.getByRole("button", { name: "Mixed zone item Scout deck" });
+    await expect(mixedItems).toHaveCount(1);
+
+    await mixedZone.click({ position: { x: 8, y: 8 } });
+    await mixedItems.first().click();
+    await expect(mixedItems.first()).toHaveAttribute("data-selected", "true");
+    await expect(page.getByRole("heading", { exact: true, name: "Mixed item" })).toBeVisible();
+    const mixedItemXInput = page.getByLabel("Mixed item X", { exact: true });
+    const initialMixedItemX = await numberInputValue(mixedItemXInput);
+    await dragLocator(page, mixedItems.first(), 20, 10);
+    await expect.poll(() => numberInputValue(mixedItemXInput)).toBeGreaterThan(initialMixedItemX);
+
+    await dragLocatorTo(page, mixedItems.first(), surface, {
+      targetPosition: { x: 120, y: 120 }
+    });
+    await expect(mixedItems).toHaveCount(0);
+    await expect(page.getByLabel("Placement Scout deck", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Save layout" }).click();
+    await expect(page.getByRole("button", { name: "Save layout" })).toBeDisabled();
+
+    const savedSetupResponse = await request.get(`/api/projects/${project.id}/table-setup`);
+    expect(savedSetupResponse.status()).toBe(200);
+    const savedSetup = (await savedSetupResponse.json()) as {
+      placements: Array<{ source: { collectionId: string; kind: string } }>;
+      zones: Array<{ children?: Array<{ source: { collectionId: string; kind: string } }> }>;
+    };
+
+    expect(savedSetup.placements).toHaveLength(1);
+    expect(savedSetup.placements[0].source).toEqual({
+      kind: "collection",
+      collectionId: collection.id
+    });
+    expect(savedSetup.zones[0].children).toHaveLength(0);
   });
 
   test("creates, moves, edits, saves, and reloads a table layout", async ({
@@ -425,7 +707,7 @@ test.describe("table layout", () => {
           background: { fileName: "zone-bg.png", fit: "contain", type: "image" },
           height: 104,
           size: "auto",
-          width: 363
+          width: 79
         }
       ]
     });
@@ -448,6 +730,32 @@ test.describe("table layout", () => {
     await expect
       .poll(() => backgroundImage(page.getByLabel("Table zone Market")))
       .toContain("data:image/png");
+
+    await page.getByRole("button", { name: "Add zone" }).click();
+    await page.getByRole("menuitem", { name: "Mixed" }).click();
+    await expect(page.getByRole("combobox", { name: "Zone type" })).toHaveValue("Mixed");
+    await expect(page.getByRole("combobox", { name: "Source" })).toHaveCount(0);
+    await expect(page.getByLabel("Autofill from source")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Add child zone" })).toHaveCount(0);
+    await expect(page.getByLabel("Limit capacity")).toBeVisible();
+    const mixedZone = page.getByLabel("Table zone Mixed zone", { exact: true });
+    await dragLocatorTo(page, scoutLibraryItem, mixedZone, {
+      targetPosition: { x: 36, y: 42 }
+    });
+    await expect(mixedZone.locator(".table-setup-zone-item")).toHaveCount(1);
+    await page.getByRole("button", { name: "Save layout" }).click();
+    await expect(page.getByRole("button", { name: "Save layout" })).toBeDisabled();
+    const mixedSavedSetupResponse = await request.get(`/api/projects/${project.id}/table-setup`);
+    expect(mixedSavedSetupResponse.status()).toBe(200);
+    await expect(mixedSavedSetupResponse.json()).resolves.toMatchObject({
+      zones: [
+        {},
+        {
+          children: [{ source: { kind: "component" } }],
+          childrenType: "mixed"
+        }
+      ]
+    });
   });
 
   test("lays out child zones from the parent container layout", async ({
@@ -509,6 +817,7 @@ test.describe("table layout", () => {
     const rightChild = page.getByLabel("Table zone Right child", { exact: true });
 
     await expect(container).toBeVisible();
+    await expect(container.locator(".table-setup-zone-label")).toContainText("Container");
     await expect(leftChild).toBeVisible();
     await expect(rightChild).toBeVisible();
 
@@ -596,6 +905,29 @@ function validTableZone(overrides: Record<string, unknown> = {}) {
     autofill: true,
     childrenType: "card",
     face: "up",
+    ...overrides
+  };
+}
+
+function validMixedTableZone(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "mixed-zone",
+    name: "Mixed zone",
+    description: "",
+    x: 100,
+    y: 80,
+    width: 420,
+    height: 180,
+    padding: 8,
+    size: "fixed",
+    overflow: "hidden",
+    capacity: null,
+    layout: "free",
+    visibility: "all",
+    background: { type: "none" },
+    border: { width: 1, color: "#0e7490" },
+    children: [],
+    childrenType: "mixed",
     ...overrides
   };
 }

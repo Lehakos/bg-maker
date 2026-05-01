@@ -1,5 +1,6 @@
 import {
   collectionMatchesZoneChildType,
+  componentMatchesZoneChildType,
   defaultTableSetupSize,
   normalizeDegrees,
   tablePlacementFaces,
@@ -12,6 +13,7 @@ import {
   zoneVisibilityModes,
   type ComponentCollection,
   type TablePlacement,
+  type TablePlacementFace,
   type TableSetup,
   type TableSource,
   type TableZone,
@@ -20,7 +22,10 @@ import {
   type ZoneBase,
   type ZoneBorder,
   type ZoneChildType,
-  type ZoneSource
+  type ZoneMixedChild,
+  type ZoneSource,
+  type ZoneSourceChildType,
+  zoneSupportsSource
 } from "@bg-maker/shared";
 import {
   getProjectCollections,
@@ -97,7 +102,10 @@ export function tableSetupUsesComponent(projectId: string, componentId: string) 
   return (
     setup.placements.some((placement) => sourceUsesComponent(placement.source, componentId)) ||
     flattenZones(setup.zones).some(
-      (zone) => zone.childrenType !== "zone" && sourceUsesComponent(zone.source, componentId)
+      (zone) =>
+        (zoneSupportsSource(zone) && sourceUsesComponent(zone.source, componentId)) ||
+        (zone.childrenType === "mixed" &&
+          zone.children.some((child) => sourceUsesComponent(child.source, componentId)))
     )
   );
 }
@@ -112,7 +120,10 @@ export function tableSetupUsesCollection(projectId: string, collectionId: string
   return (
     setup.placements.some((placement) => sourceUsesCollection(placement.source, collectionId)) ||
     flattenZones(setup.zones).some(
-      (zone) => zone.childrenType !== "zone" && sourceUsesCollection(zone.source, collectionId)
+      (zone) =>
+        (zoneSupportsSource(zone) && sourceUsesCollection(zone.source, collectionId)) ||
+        (zone.childrenType === "mixed" &&
+          zone.children.some((child) => sourceUsesCollection(child.source, collectionId)))
     )
   );
 }
@@ -287,13 +298,51 @@ function readZone(
     };
   }
 
+  if (value.childrenType === "mixed") {
+    if ("source" in value) {
+      return { ok: false, error: "Mixed zones cannot include sources" };
+    }
+
+    if ("autofill" in value) {
+      return { ok: false, error: "Mixed zones cannot include autofill" };
+    }
+
+    if ("face" in value) {
+      return { ok: false, error: "Mixed zones cannot include source face" };
+    }
+
+    if (!Array.isArray(value.children)) {
+      return { ok: false, error: "Mixed zone children must be an array" };
+    }
+
+    const children = readMixedZoneChildren(
+      value.children,
+      context.projectId,
+      base.value.width,
+      base.value.height
+    );
+
+    if (!children.ok) {
+      return children;
+    }
+
+    return {
+      ok: true,
+      value: {
+        ...base.value,
+        children: children.value,
+        childrenType: "mixed"
+      }
+    };
+  }
+
   if ("children" in value) {
     return { ok: false, error: "Source zones cannot include child zones" };
   }
 
   const face = readRequiredEnum(value.face, zoneSourceFaces, "Table zone source face");
   const autofill = readRequiredBoolean(value.autofill, "Table zone autofill");
-  const sourceChildType = value.childrenType as Exclude<ZoneChildType, "zone">;
+  const sourceChildType = value.childrenType as ZoneSourceChildType;
   const source =
     value.source === undefined
       ? ({ ok: true, value: undefined } as ParseResult<TableSource | undefined>)
@@ -474,6 +523,80 @@ function readZoneBase(
   };
 }
 
+function readMixedZoneChildren(
+  value: unknown[],
+  projectId: string,
+  zoneWidth: number,
+  zoneHeight: number
+): ParseResult<ZoneMixedChild[]> {
+  if (value.length > 100) {
+    return { ok: false, error: "Mixed zones can include at most 100 children" };
+  }
+
+  const ids = new Set<string>();
+  const children: ZoneMixedChild[] = [];
+
+  for (const item of value) {
+    if (!isRecord(item)) {
+      return { ok: false, error: "Mixed zone child entries must be objects" };
+    }
+
+    const id = readRequiredString(item.id, "Mixed zone child id");
+    const source = readMixedZoneChildSource(item.source, projectId);
+    const x = readRequiredNumber(item.x, "Mixed zone child X mm", { min: 0, max: zoneWidth });
+    const y = readRequiredNumber(item.y, "Mixed zone child Y mm", { min: 0, max: zoneHeight });
+    const rotationDeg = readRequiredNumber(item.rotationDeg, "Mixed zone child rotation", {
+      min: -3600,
+      max: 3600
+    });
+    const face = readRequiredEnum(item.face, tablePlacementFaces, "Mixed zone child face");
+
+    if (!id.ok) {
+      return id;
+    }
+
+    if (!source.ok) {
+      return source;
+    }
+
+    if (!x.ok) {
+      return x;
+    }
+
+    if (!y.ok) {
+      return y;
+    }
+
+    if (!rotationDeg.ok) {
+      return rotationDeg;
+    }
+
+    if (!face.ok) {
+      return face;
+    }
+
+    if (ids.has(id.value)) {
+      return { ok: false, error: "Mixed zone child ids must be unique" };
+    }
+
+    ids.add(id.value);
+    children.push({
+      face: face.value as TablePlacementFace,
+      id: id.value,
+      rotationDeg: normalizeDegrees(rotationDeg.value),
+      source: source.value,
+      x: x.value,
+      y: y.value
+    });
+  }
+
+  return { ok: true, value: children };
+}
+
+function readMixedZoneChildSource(value: unknown, projectId: string): ParseResult<TableSource> {
+  return readTableSource(value, projectId);
+}
+
 function readOptionalPlacements(
   value: unknown,
   projectId: string,
@@ -561,7 +684,7 @@ function readOptionalPlacements(
 function readTableSource(
   value: unknown,
   projectId: string,
-  zoneChildType?: Exclude<ZoneChildType, "zone">
+  zoneChildType?: ZoneSourceChildType
 ): ParseResult<TableSource> {
   if (!isRecord(value)) {
     return { ok: false, error: "Table source must be an object" };
@@ -582,7 +705,7 @@ function readTableSource(
       return { ok: false, error: "Table source must reference a component in the same project" };
     }
 
-    if (zoneChildType && component.type !== zoneChildType) {
+    if (zoneChildType && !componentMatchesZoneChildType(component, zoneChildType)) {
       return { ok: false, error: "Table source component type does not match zone child type" };
     }
 
@@ -625,7 +748,7 @@ function readTableSource(
 function getCollectionZoneCompatibility(
   collection: ComponentCollection,
   projectId: string,
-  zoneChildType: Exclude<ZoneChildType, "zone">
+  zoneChildType: ZoneSourceChildType
 ): ParseResult<undefined> {
   const components = getProjectComponents(projectId);
   const componentsById = new Map(components.map((component) => [component.id, component]));

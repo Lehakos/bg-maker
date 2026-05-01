@@ -46,6 +46,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   clampRuntimeFreeZonePoint,
+  componentTypeMatchesZoneChildType,
   runtimeFreeZoneSnap,
   snapRuntimeFreeZonePoint,
   type ComponentCollection,
@@ -59,7 +60,8 @@ import {
   type RuntimeSessionSummary,
   type TablePlacement,
   type TableSource,
-  type ZoneSource
+  type ZoneItemContainer,
+  zoneSupportsSource
 } from "@bg-maker/shared";
 import {
   applyRuntimeAction,
@@ -69,7 +71,7 @@ import {
   getRuntimeSession,
   getRuntimeSessions
 } from "../api/client";
-import { componentTypeLabels } from "./component-labels";
+import { componentTypeLabels, zoneChildTypeLabels } from "./component-labels";
 import { ComponentVisual } from "./table-setup-editor";
 import {
   flattenRenderedZones,
@@ -750,8 +752,8 @@ function RuntimeZoneView({
     activeDragInstance && !isContainerZone
       ? zoneAcceptsInstance(session, zone, activeDragInstance, collectionsById)
       : false;
-  const isDeck = !isContainerZone && sourceIsDeck(zone.source, collectionsById);
-  const collectionCount = !isContainerZone
+  const isDeck = zoneSupportsSource(zone) && sourceIsDeck(zone.source, collectionsById);
+  const collectionCount = zoneSupportsSource(zone)
     ? getRuntimeCollectionCount(zone.source, instances, collectionsById)
     : null;
   const usesFreeSnap = !isContainerZone && zone.layout === "free";
@@ -800,7 +802,7 @@ function RuntimeZoneView({
             {zone.name}
           </Text>
           <Badge color="teal" radius={6} size="xs">
-            {componentTypeLabels[zone.childrenType]}
+            {zoneChildTypeLabels[zone.childrenType]}
           </Badge>
           {collectionCount !== null ? (
             <RuntimeCollectionCountBadge count={collectionCount} />
@@ -836,7 +838,8 @@ function RuntimeZoneView({
               return null;
             }
 
-            const point = getRuntimeZoneItemPoint(zone, component, instance, index);
+            const renderIndex = isDeck ? Math.max(0, instances.length - index - 1) : index;
+            const point = getRuntimeZoneItemPoint(zone, component, instance, renderIndex);
             const draggable = !isDeck || instance.location.index === 0;
 
             return (
@@ -1467,7 +1470,7 @@ function getRuntimeLocationKey(location: RuntimeLocation) {
 function getRuntimeMoveTarget(
   event: DragEndEvent,
   session: RuntimeSession,
-  zone: ZoneSource,
+  zone: ZoneItemContainer,
   instance: RuntimeInstance,
   component: GameComponent,
   componentsById: Map<string, GameComponent>
@@ -1497,7 +1500,7 @@ function getRuntimeMoveTarget(
 function getRuntimeFreeZoneDropPoint(
   event: DragEndEvent | DragMoveEvent | DragOverEvent,
   session: RuntimeSession,
-  zone: ZoneSource,
+  zone: ZoneItemContainer,
   instance: RuntimeInstance,
   component: GameComponent,
   componentsById: Map<string, GameComponent>
@@ -1546,7 +1549,7 @@ function translateClientRect(rect: ClientRect, deltaX: number, deltaY: number): 
 }
 
 function getRuntimeZoneItemPoint(
-  zone: ZoneSource,
+  zone: ZoneItemContainer,
   component: GameComponent,
   instance: RuntimeInstance,
   index: number
@@ -1599,7 +1602,7 @@ function getRuntimeTableInstanceSizeStyle(
 
 function getRuntimeFreeZoneSnapRects(
   session: RuntimeSession,
-  zone: ZoneSource,
+  zone: ZoneItemContainer,
   activeInstanceId: string,
   componentsById: Map<string, GameComponent>
 ): RuntimeFreeZoneSnapRect[] {
@@ -1651,11 +1654,11 @@ function getPlacementStacks(session: RuntimeSession) {
 
 function zoneAcceptsInstance(
   session: RuntimeSession,
-  zone: ZoneSource,
+  zone: ZoneItemContainer,
   instance: RuntimeInstance,
   collectionsById: Map<string, ComponentCollection>
 ) {
-  if (zone.childrenType !== instance.componentType) {
+  if (!componentTypeMatchesZoneChildType(instance.componentType, zone.childrenType)) {
     return false;
   }
 
@@ -1667,7 +1670,7 @@ function zoneAcceptsInstance(
     return false;
   }
 
-  if (!zone.source) {
+  if (!zoneSupportsSource(zone) || !zone.source) {
     return true;
   }
 
