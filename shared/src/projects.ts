@@ -13,17 +13,7 @@ export type ProjectFileNodeType = "folder" | "file";
 
 export type ProjectFileKind = "tableSetup" | "object" | "image" | "document";
 
-export const projectObjectKinds = [
-  "group",
-  "card",
-  "deck",
-  "token",
-  "zone",
-  "counter",
-  "die",
-  "label",
-  "image"
-] as const;
+export const projectObjectKinds = ["group", "label", "image", "shape"] as const;
 
 export type ProjectObjectKind = (typeof projectObjectKinds)[number];
 
@@ -96,27 +86,17 @@ export type ApiErrorResponse = {
 };
 
 const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; width: number }> = {
-  card: { height: 350, width: 250 },
-  counter: { height: 56, width: 120 },
-  deck: { height: 350, width: 250 },
-  die: { height: 72, width: 72 },
   group: { height: 240, width: 320 },
   image: { height: 180, width: 240 },
   label: { height: 32, width: 160 },
-  token: { height: 96, width: 96 },
-  zone: { height: 220, width: 320 }
+  shape: { height: 120, width: 120 }
 };
 
 const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
-  card: "New card",
-  counter: "New counter",
-  deck: "New deck",
-  die: "New die",
   group: "New group",
   image: "New image",
   label: "New label",
-  token: "New token",
-  zone: "New zone"
+  shape: "New shape"
 };
 
 export function getDefaultProjectObjectName(kind: ProjectObjectKind = "group") {

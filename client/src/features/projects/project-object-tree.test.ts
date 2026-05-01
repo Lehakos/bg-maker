@@ -61,10 +61,10 @@ function folderNode(id: string, children: ProjectFileNode[]): ProjectFileNode {
 
 function createObjectTree() {
   return [
-    objectNode("card-1", "Card", "card"),
+    objectNode("shape-1", "Shape", "shape"),
     objectNode("group-1", "Group", "group", [
-      objectNode("token-1", "Token", "token"),
-      objectNode("group-2", "Subgroup", "group", [objectNode("die-1", "Die", "die")])
+      objectNode("label-1", "Label", "label"),
+      objectNode("group-2", "Subgroup", "group", [objectNode("image-1", "Image", "image")])
     ])
   ];
 }
@@ -73,8 +73,8 @@ describe("project object tree helpers", () => {
   it("finds nested objects and reports their location", () => {
     const objectTree = createObjectTree();
 
-    expect(findProjectObjectNode(objectTree, "die-1")?.name).toBe("Die");
-    expect(findProjectObjectNodeLocation(objectTree, "die-1")).toMatchObject({
+    expect(findProjectObjectNode(objectTree, "image-1")?.name).toBe("Image");
+    expect(findProjectObjectNodeLocation(objectTree, "image-1")).toMatchObject({
       ancestors: ["group-1", "group-2"],
       index: 0,
       parentId: "group-2"
@@ -87,7 +87,7 @@ describe("project object tree helpers", () => {
 
     expect(getProjectObjectNodeChildren(objectTree, null)).toBe(objectTree);
     expect(getProjectObjectNodeChildren(objectTree, "group-1").map((node) => node.id)).toEqual([
-      "token-1",
+      "label-1",
       "group-2"
     ]);
     expect(getProjectObjectNodeChildren(objectTree, "missing-object")).toEqual([]);
@@ -96,32 +96,32 @@ describe("project object tree helpers", () => {
 
   it("appends, deletes, and renames objects without mutating the original tree", () => {
     const objectTree = createObjectTree();
-    const newObject = objectNode("counter-1", "Counter", "counter");
+    const newObject = objectNode("shape-2", "Shape", "shape");
     const appendedTree = appendProjectObjectNode(objectTree, "group-1", newObject);
-    const renamedTree = renameProjectObjectNode(objectTree, "token-1", "Renamed token");
+    const renamedTree = renameProjectObjectNode(objectTree, "label-1", "Renamed label");
     const deletedTree = deleteProjectObjectNode(objectTree, "group-2");
 
     expect(getProjectObjectNodeChildren(appendedTree, "group-1").map((node) => node.id)).toEqual([
-      "token-1",
+      "label-1",
       "group-2",
-      "counter-1"
+      "shape-2"
     ]);
     expect(renameProjectObjectNode(objectTree, "missing-object", "No change")).toBe(objectTree);
-    expect(findProjectObjectNode(renamedTree, "token-1")?.name).toBe("Renamed token");
-    expect(findProjectObjectNode(objectTree, "token-1")?.name).toBe("Token");
+    expect(findProjectObjectNode(renamedTree, "label-1")?.name).toBe("Renamed label");
+    expect(findProjectObjectNode(objectTree, "label-1")?.name).toBe("Label");
     expect(findProjectObjectNode(deletedTree, "group-2")).toBeUndefined();
     expect(deleteProjectObjectNode(objectTree, "missing-object")).toBe(objectTree);
   });
 
   it("moves objects to valid positions and rejects invalid moves", () => {
     const objectTree = createObjectTree();
-    const movedTree = moveProjectObjectNode(objectTree, "die-1", null, 1);
+    const movedTree = moveProjectObjectNode(objectTree, "image-1", null, 1);
 
-    expect(movedTree.map((node) => node.id)).toEqual(["card-1", "die-1", "group-1"]);
-    expect(findProjectObjectNodeLocation(movedTree, "die-1")?.parentId).toBeNull();
+    expect(movedTree.map((node) => node.id)).toEqual(["shape-1", "image-1", "group-1"]);
+    expect(findProjectObjectNodeLocation(movedTree, "image-1")?.parentId).toBeNull();
     expect(moveProjectObjectNode(objectTree, "missing-object", null, 0)).toBe(objectTree);
-    expect(moveProjectObjectNode(objectTree, "group-1", "die-1", 0)).toBe(objectTree);
-    expect(moveProjectObjectNode(objectTree, "card-1", null, 1)).toBe(objectTree);
+    expect(moveProjectObjectNode(objectTree, "group-1", "image-1", 0)).toBe(objectTree);
+    expect(moveProjectObjectNode(objectTree, "shape-1", null, 1)).toBe(objectTree);
   });
 
   it("updates visibility and transforms only when the target object exists", () => {
@@ -137,12 +137,12 @@ describe("project object tree helpers", () => {
       x: 10,
       y: 20
     };
-    const visibilityTree = setProjectObjectNodeVisibility(objectTree, "die-1", false);
-    const transformTree = setProjectObjectNodeRectTransform(objectTree, "die-1", rectTransform);
+    const visibilityTree = setProjectObjectNodeVisibility(objectTree, "image-1", false);
+    const transformTree = setProjectObjectNodeRectTransform(objectTree, "image-1", rectTransform);
 
-    expect(findProjectObjectNode(visibilityTree, "die-1")?.visible).toBe(false);
-    expect(findProjectObjectNode(objectTree, "die-1")?.visible).toBe(true);
-    expect(findProjectObjectNode(transformTree, "die-1")?.components?.rectTransform).toEqual(
+    expect(findProjectObjectNode(visibilityTree, "image-1")?.visible).toBe(false);
+    expect(findProjectObjectNode(objectTree, "image-1")?.visible).toBe(true);
+    expect(findProjectObjectNode(transformTree, "image-1")?.components?.rectTransform).toEqual(
       rectTransform
     );
     expect(setProjectObjectNodeVisibility(objectTree, "missing-object", false)).toBe(objectTree);
@@ -154,20 +154,20 @@ describe("project object tree helpers", () => {
   it("merges missing rect transform fields with defaults", () => {
     const object = {
       id: "partial-transform",
-      kind: "card",
+      kind: "shape",
       name: "Partial transform",
       components: { rectTransform: { x: 12 } },
       visible: true
     } as ProjectObjectNode;
 
     expect(getProjectObjectNodeRectTransform(object)).toEqual({
-      height: 350,
+      height: 120,
       pivotX: 0.5,
       pivotY: 0.5,
       rotation: 0,
       scaleX: 1,
       scaleY: 1,
-      width: 250,
+      width: 120,
       x: 12,
       y: 0
     });
@@ -175,7 +175,7 @@ describe("project object tree helpers", () => {
 
   it("updates object trees only for supported project file nodes", () => {
     const originalObjectTree = createObjectTree();
-    const replacementObjectTree = [objectNode("zone-1", "Zone", "zone")];
+    const replacementObjectTree = [objectNode("image-2", "Image", "image")];
     const fileTree = [
       folderNode("folder-1", [
         fileNode("table-setup-1", "tableSetup", originalObjectTree),

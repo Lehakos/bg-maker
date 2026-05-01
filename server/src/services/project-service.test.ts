@@ -120,9 +120,9 @@ describe("ProjectService", () => {
               {
                 children: [
                   {
-                    id: " card-1 ",
-                    kind: "card",
-                    name: " Card 1 ",
+                    id: " shape-1 ",
+                    kind: "shape",
+                    name: " Shape 1 ",
                     components: {
                       rectTransform: {
                         rotation: 5000,
@@ -178,18 +178,18 @@ describe("ProjectService", () => {
                 {
                   children: [
                     {
-                      id: "card-1",
-                      kind: "card",
-                      name: "Card 1",
+                      id: "shape-1",
+                      kind: "shape",
+                      name: "Shape 1",
                       components: {
                         rectTransform: {
-                          height: 350,
+                          height: 120,
                           pivotX: 0.5,
                           pivotY: 0.5,
                           rotation: 3600,
                           scaleX: 8,
                           scaleY: 8,
-                          width: 250,
+                          width: 120,
                           x: -10000,
                           y: 0
                         }

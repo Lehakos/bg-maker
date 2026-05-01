@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ProjectFileTreePanel } from "./ProjectFileTreePanel";
+import { ProjectObjectInspectorPanel } from "./ProjectObjectInspectorPanel";
 import { ProjectObjectTreePanel } from "./ProjectObjectTreePanel";
 import { ProjectWorkspaceArea } from "./ProjectWorkspaceArea";
 import { useEditorCommandHistory } from "./editor-command-history";
@@ -133,6 +134,15 @@ function LoadedProjectWorkspace({
       ? selectedObject.objectId
       : defaultSelectedObjectId;
   }, [defaultSelectedObjectId, selectedContentFileNode, selectedObject]);
+  const selectedProjectObject = useMemo(() => {
+    if (!selectedContentFileNode || !selectedObjectId) {
+      return null;
+    }
+
+    return (
+      findProjectObjectNode(selectedContentFileNode.objectTree ?? [], selectedObjectId) ?? null
+    );
+  }, [selectedContentFileNode, selectedObjectId]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -230,13 +240,20 @@ function LoadedProjectWorkspace({
         onSelectObject={selectObject}
         onUndo={undo}
       />
-      <ProjectObjectTreePanel
-        contentFileNode={selectedContentFileNode}
-        saving={saving}
-        selectedObjectId={selectedObjectId}
-        onObjectTreeChange={persistObjectTree}
-        onSelectObject={selectObject}
-      />
+      <div className="flex min-h-0 flex-col border-t border-slate-200 bg-white md:border-l md:border-t-0">
+        <ProjectObjectInspectorPanel
+          contentFileNode={selectedContentFileNode}
+          selectedObject={selectedProjectObject}
+          onObjectTreeChange={persistObjectTree}
+        />
+        <ProjectObjectTreePanel
+          contentFileNode={selectedContentFileNode}
+          saving={saving}
+          selectedObjectId={selectedObjectId}
+          onObjectTreeChange={persistObjectTree}
+          onSelectObject={selectObject}
+        />
+      </div>
     </section>
   );
 }

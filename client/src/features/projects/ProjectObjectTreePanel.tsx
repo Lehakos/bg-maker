@@ -17,7 +17,12 @@ import {
   useSensor,
   useSensors
 } from "@dnd-kit/core";
-import type { ProjectFileNode, ProjectObjectKind, ProjectObjectNode } from "@bg-maker/shared";
+import {
+  projectObjectKinds,
+  type ProjectFileNode,
+  type ProjectObjectKind,
+  type ProjectObjectNode
+} from "@bg-maker/shared";
 import { ChevronDown, ChevronRight, Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   type CSSProperties,
@@ -56,17 +61,7 @@ const indentationWidth = 18;
 const rootDropTargetId = "project-object-tree:root";
 const itemDropTargetPrefix = "project-object-tree:item:";
 const reorderDropZoneRatio = 0.3;
-const projectObjectCreateKinds: ProjectObjectKind[] = [
-  "group",
-  "card",
-  "deck",
-  "token",
-  "zone",
-  "counter",
-  "die",
-  "label",
-  "image"
-];
+const projectObjectCreateKinds: readonly ProjectObjectKind[] = projectObjectKinds;
 
 type FlattenedProjectObjectNode = {
   ancestorIds: string[];
@@ -441,7 +436,7 @@ export function ProjectObjectTreePanel({
 
   return (
     <aside
-      className="flex min-h-0 flex-col border-t border-slate-200 bg-white text-slate-700 md:border-l md:border-t-0"
+      className="flex min-h-0 flex-1 flex-col bg-white text-slate-700"
       onContextMenu={(event) => handleContextMenu(event)}
     >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">

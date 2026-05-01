@@ -1,18 +1,5 @@
 import type { ProjectFileNode, ProjectObjectKind, ProjectObjectNode } from "@bg-maker/shared";
-import {
-  Boxes,
-  Circle,
-  Component,
-  Dices,
-  Hash,
-  Image,
-  Layers3,
-  RectangleHorizontal,
-  Rows3,
-  SquareDashed,
-  Type,
-  type LucideProps
-} from "lucide-react";
+import { Boxes, Component, Image, Rows3, Square, Type, type LucideProps } from "lucide-react";
 
 type ProjectObjectKindIconProps = LucideProps & {
   kind: ProjectObjectKind;
@@ -27,36 +14,16 @@ type ProjectObjectTreeRootIconProps = LucideProps & {
 };
 
 export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindIconProps) {
-  if (kind === "card") {
-    return <RectangleHorizontal {...iconProps} />;
-  }
-
-  if (kind === "deck") {
-    return <Layers3 {...iconProps} />;
-  }
-
-  if (kind === "token") {
-    return <Circle {...iconProps} />;
-  }
-
-  if (kind === "zone") {
-    return <SquareDashed {...iconProps} />;
-  }
-
-  if (kind === "counter") {
-    return <Hash {...iconProps} />;
-  }
-
-  if (kind === "die") {
-    return <Dices {...iconProps} />;
-  }
-
   if (kind === "label") {
     return <Type {...iconProps} />;
   }
 
   if (kind === "image") {
     return <Image {...iconProps} />;
+  }
+
+  if (kind === "shape") {
+    return <Square {...iconProps} />;
   }
 
   return <Component {...iconProps} />;

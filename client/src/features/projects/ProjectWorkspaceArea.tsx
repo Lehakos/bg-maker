@@ -5,12 +5,10 @@ import type {
   ProjectObjectRectTransform
 } from "@bg-maker/shared";
 import {
-  EyeOff,
   Layers3,
   Maximize2,
   MousePointer2,
   Move,
-  RectangleHorizontal,
   Redo2,
   RotateCw,
   Rows3,
@@ -463,15 +461,6 @@ function ProjectWorkspacePlaceholder() {
   );
 }
 
-type CardVisualProps = {
-  activeTool: WorkspaceTool;
-  object: ProjectObjectNode;
-  rectTransform?: ProjectObjectRectTransform;
-  selected?: boolean;
-  showToolHandles?: boolean;
-  size: "large" | "medium" | "small";
-};
-
 type SceneObjectFrameProps = {
   activeTool: WorkspaceTool;
   fileNodeId: string;
@@ -624,12 +613,7 @@ function SceneObjectFrame({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
-      <ProjectObjectSurface
-        activeTool={activeTool}
-        object={object}
-        rectTransform={visibleRectTransform}
-        size={size}
-      />
+      <ProjectObjectSurface object={object} />
       {(object.children ?? []).map((child, index) => (
         <SceneObjectFrame
           key={child.id}
@@ -649,113 +633,19 @@ function SceneObjectFrame({
 }
 
 type ProjectObjectSurfaceProps = {
-  activeTool: WorkspaceTool;
   object: ProjectObjectNode;
-  rectTransform: ProjectObjectRectTransform;
-  size: "large" | "medium" | "small";
 };
 
-function ProjectObjectSurface({
-  activeTool,
-  object,
-  rectTransform,
-  size
-}: ProjectObjectSurfaceProps) {
-  if (object.kind === "card") {
-    return (
-      <CardVisual
-        activeTool={activeTool}
-        object={object}
-        rectTransform={rectTransform}
-        size={size}
-      />
-    );
-  }
-
+function ProjectObjectSurface({ object }: ProjectObjectSurfaceProps) {
   if (object.kind === "group") {
     return <GroupVisual object={object} />;
   }
 
+  if (object.kind === "shape") {
+    return <ShapeVisual object={object} />;
+  }
+
   return <GenericObjectVisual object={object} />;
-}
-
-function CardVisual({
-  activeTool,
-  object,
-  rectTransform,
-  selected = false,
-  showToolHandles = false,
-  size
-}: CardVisualProps) {
-  const hidden = !object.visible;
-
-  return (
-    <div
-      className={cx(
-        "relative flex aspect-[5/7] flex-col overflow-visible rounded-lg border bg-white text-slate-900 shadow-[0_18px_45px_rgba(15,23,42,0.2)]",
-        rectTransform ? "h-full w-full" : getCardSizeClassName(size),
-        hidden ? "border-slate-300 opacity-55" : "border-slate-200",
-        selected && "ring-2 ring-sky-500 ring-offset-4 ring-offset-[#e7ece6]"
-      )}
-      style={rectTransform ? getRectTransformSizeStyle(rectTransform) : undefined}
-    >
-      <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-lg">
-        <div className="absolute inset-x-3 top-3 h-10 rounded-md bg-[#f7d8c7]" />
-        <div className="absolute bottom-3 left-3 right-3 h-14 rounded-md bg-[#d8eadf]" />
-        <div className="absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#d3b86b]/50 bg-[#f6ebc9]" />
-      </div>
-
-      <div className="relative z-10 flex h-full flex-col p-3">
-        <div className="flex min-h-0 items-center gap-2 rounded-md border border-[#e6b29b]/70 bg-white/80 px-2 py-1">
-          <RectangleHorizontal
-            className="shrink-0 text-rose-600"
-            size={size === "small" ? 13 : 16}
-          />
-          <span
-            className={cx(
-              "truncate font-semibold leading-tight text-slate-950",
-              size === "large" ? "text-sm" : "text-xs"
-            )}
-          >
-            {object.name}
-          </span>
-        </div>
-
-        <div className="flex flex-1 items-center justify-center px-2 py-4">
-          <div
-            className={cx(
-              "flex items-center justify-center rounded-full border border-[#d3b86b]/70 bg-white/75 text-[#8b6d24]",
-              size === "large" ? "h-24 w-24" : size === "medium" ? "h-16 w-16" : "h-10 w-10"
-            )}
-          >
-            {hidden ? (
-              <EyeOff size={size === "small" ? 16 : 22} />
-            ) : (
-              <RectangleHorizontal size={size === "small" ? 16 : 24} />
-            )}
-          </div>
-        </div>
-
-        <div className="min-h-0 rounded-md border border-[#b8d6c3]/80 bg-white/80 px-2 py-1.5">
-          <p
-            className={cx(
-              "truncate font-medium text-slate-700",
-              size === "large" ? "text-xs" : "text-[11px]"
-            )}
-          >
-            {getProjectObjectKindLabel(object.kind)}
-          </p>
-          {size !== "small" ? (
-            <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-slate-500">
-              {object.children?.length ? `${object.children.length} nested items` : "Base card"}
-            </p>
-          ) : null}
-        </div>
-      </div>
-
-      {selected && showToolHandles ? <WorkspaceToolHandles activeTool={activeTool} /> : null}
-    </div>
-  );
 }
 
 type GroupVisualProps = {
@@ -769,6 +659,14 @@ function GroupVisual({ object }: GroupVisualProps) {
         <ProjectObjectKindIcon className="shrink-0" kind={object.kind} size={14} />
         <span className="truncate">{object.name}</span>
       </div>
+    </div>
+  );
+}
+
+function ShapeVisual({ object }: GenericObjectVisualProps) {
+  return (
+    <div className="relative flex h-full w-full items-center justify-center rounded-md border border-emerald-500/70 bg-emerald-100/60 p-3 text-center text-emerald-900 shadow-[0_12px_30px_rgba(15,23,42,0.12)]">
+      <span className="max-w-full truncate text-sm font-semibold">{object.name}</span>
     </div>
   );
 }
@@ -851,25 +749,6 @@ function WorkspaceStat({ label, value }: WorkspaceStatProps) {
       <p className="mt-1 break-words text-2xl font-semibold text-slate-950">{value}</p>
     </div>
   );
-}
-
-function getCardSizeClassName(size: "large" | "medium" | "small") {
-  if (size === "large") {
-    return "h-[min(58vh,420px)]";
-  }
-
-  if (size === "medium") {
-    return "h-52";
-  }
-
-  return "h-32";
-}
-
-function getRectTransformSizeStyle(rectTransform: ProjectObjectRectTransform): CSSProperties {
-  return {
-    height: `${rectTransform.height}px`,
-    width: `${rectTransform.width}px`
-  };
 }
 
 function getSceneObjectFrameStyle(
