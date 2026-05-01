@@ -343,9 +343,10 @@ describe("ProjectService", () => {
       data: uploadData,
       fileName: " token.png "
     });
+    const imageAssetPath = join(testDirectory, "image-assets", project.id, imageAsset!.id);
 
     expect(imageAsset).toMatchObject({
-      contentType: "image/png",
+      contentType: "image/webp",
       fileName: "token.png"
     });
     expect(imageAsset?.byteSize).toBeLessThan(uploadData.byteLength);
@@ -372,12 +373,14 @@ describe("ProjectService", () => {
 
     expect(loadedImageAsset?.data.byteLength).toBe(imageAsset?.byteSize);
     expect(loadedImageAsset?.imageAsset).toEqual(imageAsset);
+    expect((await sharp(loadedImageAsset!.data).metadata()).format).toBe("webp");
 
     await projectService.updateProjectFileTree(project.id, [
       { children: [], id: "assets", name: "Assets", type: "folder" }
     ]);
 
     expect(await projectService.getProjectImageAsset(project.id, imageAsset!.id)).toBeNull();
+    await expect(readFile(imageAssetPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("rejects invalid image asset uploads", async () => {

@@ -39,7 +39,7 @@ describe("projects controller image assets", () => {
 
     expect(uploadResponse.statusCode).toBe(201);
     expect(uploadPayload.imageAsset).toMatchObject({
-      contentType: "image/png",
+      contentType: "image/webp",
       fileName: "token.png"
     });
     expect(uploadPayload.imageAsset.byteSize).toBeLessThan(uploadData.byteLength);
@@ -71,6 +71,7 @@ describe("projects controller image assets", () => {
     expect(getResponse.statusCode).toBe(200);
     expect(getResponse.headers["content-type"]).toContain(uploadPayload.imageAsset.contentType);
     expect(getResponse.rawPayload.byteLength).toBe(uploadPayload.imageAsset.byteSize);
+    expect((await sharp(getResponse.rawPayload).metadata()).format).toBe("webp");
 
     await projectService.updateProjectFileTree(project.id, [
       { children: [], id: "assets", name: "Assets", type: "folder" }

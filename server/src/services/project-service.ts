@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
   CreateProjectRequest,
@@ -83,6 +83,7 @@ const minProjectTextLineHeight = 0.5;
 const minProjectObjectDimension = 1;
 const minProjectObjectOpacity = 0;
 const minProjectObjectScale = 0.1;
+const optimizedProjectImageAssetContentType = "image/webp";
 const projectImageAssetContentTypeSet = new Set<ProjectImageAssetContentType>(
   projectImageAssetContentTypes
 );
@@ -179,6 +180,10 @@ export class ProjectService {
     }
 
     const project = store.projects[projectIndex];
+    const removedImageAssetIds = getRemovedProjectImageAssetIds(
+      project.fileTree,
+      normalizedFileTree
+    );
     const updatedProject: Project = {
       ...project,
       fileTree: normalizedFileTree,
@@ -188,6 +193,11 @@ export class ProjectService {
     projects[projectIndex] = updatedProject;
 
     await this.writeStore({ projects });
+    await Promise.all(
+      removedImageAssetIds.map((assetId) =>
+        rm(this.getProjectImageAssetPath(project.id, assetId), { force: true })
+      )
+    );
 
     return updatedProject;
   }
@@ -872,8 +882,8 @@ async function optimizeProjectImageAsset(
   }
 
   return {
-    contentType: sourceContentType,
-    data: await encodeProjectImageAsset(request.data, sourceContentType)
+    contentType: optimizedProjectImageAssetContentType,
+    data: await encodeProjectImageAsset(request.data)
   };
 }
 
@@ -885,10 +895,7 @@ async function getProjectImageAssetMetadata(data: Buffer) {
   }
 }
 
-async function encodeProjectImageAsset(
-  data: Buffer,
-  contentType: ProjectImageAssetContentType
-): Promise<Buffer> {
+async function encodeProjectImageAsset(data: Buffer): Promise<Buffer> {
   try {
     const image = sharp(data)
       .rotate()
@@ -898,14 +905,6 @@ async function encodeProjectImageAsset(
         width: maxProjectImageAssetDimension,
         withoutEnlargement: true
       });
-
-    if (contentType === "image/jpeg") {
-      return await image.jpeg({ mozjpeg: true, quality: 82 }).toBuffer();
-    }
-
-    if (contentType === "image/png") {
-      return await image.png({ adaptiveFiltering: true, compressionLevel: 9 }).toBuffer();
-    }
 
     return await image.webp({ effort: 4, quality: 82 }).toBuffer();
   } catch {
@@ -996,6 +995,40 @@ function findProjectImageAsset(
   }
 
   return null;
+}
+
+function getRemovedProjectImageAssetIds(
+  previousFileTree: ProjectFileNode[],
+  nextFileTree: ProjectFileNode[]
+) {
+  const nextAssetIds = collectProjectImageAssetIds(nextFileTree);
+
+  return [...collectProjectImageAssetIds(previousFileTree)].filter(
+    (assetId) => !nextAssetIds.has(assetId)
+  );
+}
+
+function collectProjectImageAssetIds(fileTree: ProjectFileNode[]) {
+  const assetIds = new Set<string>();
+  collectProjectImageAssetIdsInNodes(fileTree, assetIds);
+
+  return assetIds;
+}
+
+function collectProjectImageAssetIdsInNodes(
+  fileTree: ProjectFileNode[],
+  assetIds: Set<string>
+) {
+  fileTree.forEach((node) => {
+    if (node.type === "folder") {
+      collectProjectImageAssetIdsInNodes(node.children ?? [], assetIds);
+      return;
+    }
+
+    if (node.kind === "image" && node.imageAsset) {
+      assetIds.add(node.imageAsset.id);
+    }
+  });
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
