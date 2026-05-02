@@ -47,12 +47,15 @@ export type ProjectObjectAppearance = {
 
 export type ProjectObjectTextAlign = "center" | "left" | "right";
 
+export type ProjectObjectTextFontStyle = "italic" | "normal";
+
 export type ProjectObjectTextVerticalAlign = "bottom" | "middle" | "top";
 
 export type ProjectObjectText = {
   color: string;
   content: string;
   fontSize: number;
+  fontStyle: ProjectObjectTextFontStyle;
   fontWeight: number;
   lineHeight: number;
   textAlign: ProjectObjectTextAlign;
@@ -66,6 +69,20 @@ export type ProjectObjectImage = {
   fit: ProjectObjectImageFit;
   positionX: number;
   positionY: number;
+};
+
+export type ProjectObjectLayoutMode = "free" | "grid" | "horizontal" | "vertical";
+
+export type ProjectObjectLayoutAlignment = "center" | "end" | "start";
+
+export type ProjectObjectLayoutJustification = "center" | "end" | "spaceBetween" | "start";
+
+export type ProjectObjectLayout = {
+  alignItems: ProjectObjectLayoutAlignment;
+  columns: number;
+  gap: number;
+  justifyContent: ProjectObjectLayoutJustification;
+  mode: ProjectObjectLayoutMode;
 };
 
 export type ProjectObjectShapeVariant = "diamond" | "ellipse" | "rectangle" | "triangle";
@@ -89,6 +106,7 @@ export type ProjectObjectRectTransform = {
 export type ProjectObjectComponents = {
   appearance?: ProjectObjectAppearance;
   image?: ProjectObjectImage;
+  layout?: ProjectObjectLayout;
   rectTransform?: ProjectObjectRectTransform;
   shape?: ProjectObjectShape;
   text?: ProjectObjectText;
@@ -246,6 +264,7 @@ export function getDefaultProjectObjectText(
     color: "#0f172a",
     content: kind === "label" ? content : "",
     fontSize: 16,
+    fontStyle: "normal",
     fontWeight: 600,
     lineHeight: 1.2,
     textAlign: "center",
@@ -259,6 +278,16 @@ export function getDefaultProjectObjectImage(): ProjectObjectImage {
     fit: "contain",
     positionX: 50,
     positionY: 50
+  };
+}
+
+export function getDefaultProjectObjectLayout(): ProjectObjectLayout {
+  return {
+    alignItems: "start",
+    columns: 3,
+    gap: 8,
+    justifyContent: "start",
+    mode: "free"
   };
 }
 
@@ -276,6 +305,10 @@ export function createDefaultProjectObjectComponents(
     appearance: getDefaultProjectObjectAppearance(kind),
     rectTransform: getDefaultProjectObjectRectTransform(kind)
   };
+
+  if (kind === "group") {
+    components.layout = getDefaultProjectObjectLayout();
+  }
 
   if (kind === "label") {
     components.text = getDefaultProjectObjectText(kind, name);

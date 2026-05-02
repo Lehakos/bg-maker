@@ -69,6 +69,7 @@ function LabelVisual({ object }: ObjectVisualProps) {
         justifyContent: getTextJustifyContent(text.textAlign),
         color: text.color,
         fontSize: `${text.fontSize}px`,
+        fontStyle: text.fontStyle,
         fontWeight: text.fontWeight,
         lineHeight: text.lineHeight,
         textAlign: text.textAlign

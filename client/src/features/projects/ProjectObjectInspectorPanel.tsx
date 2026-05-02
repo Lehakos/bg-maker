@@ -2,20 +2,43 @@ import type {
   ProjectFileNode,
   ProjectObjectAppearance,
   ProjectObjectImage,
+  ProjectObjectLayout,
+  ProjectObjectLayoutAlignment,
+  ProjectObjectLayoutJustification,
+  ProjectObjectLayoutMode,
   ProjectObjectNode,
   ProjectObjectText,
   ProjectObjectTextAlign,
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
 import {
+  AlignCenter,
+  AlignHorizontalJustifyCenter,
+  AlignHorizontalJustifyEnd,
+  AlignHorizontalJustifyStart,
+  AlignHorizontalSpaceBetween,
+  AlignLeft,
+  AlignRight,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
+  AlignVerticalJustifyStart,
+  AlignVerticalSpaceBetween,
   Box,
+  Bold,
+  Columns3,
   Eye,
   EyeOff,
+  Grid3x3,
   ImagePlus,
+  Italic,
+  LayoutPanelTop,
+  Move,
   Palette,
+  Rows3,
   Shapes,
   SlidersHorizontal,
-  Type
+  Type,
+  type LucideIcon
 } from "lucide-react";
 import {
   type ChangeEvent,
@@ -36,12 +59,14 @@ import {
 import {
   getProjectObjectNodeAppearance,
   getProjectObjectNodeImage,
+  getProjectObjectNodeLayout,
   getProjectObjectNodeRectTransform,
   getProjectObjectNodeShape,
   getProjectObjectNodeText,
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
   setProjectObjectNodeImage,
+  setProjectObjectNodeLayout,
   setProjectObjectNodeRectTransform,
   setProjectObjectNodeShape,
   setProjectObjectNodeText,
@@ -57,29 +82,39 @@ import {
   createRectTransformDraft,
   createAppearanceDraft,
   createImageDraft,
+  createLayoutDraft,
   createTextDraft,
   formatAppearanceNumberValue,
   formatImageNumberValue,
+  formatLayoutNumberValue,
   formatRectTransformValue,
   formatTextNumberValue,
   getAppearanceWithDraftField,
   getImageWithDraftField,
+  getLayoutWithDraftField,
   getRectTransformWithDraftField,
   getShapeWithVariant,
+  getTextFontStyleForItalic,
+  getTextFontWeightForBold,
   getTextWithDraftField,
   imageNumberFieldSettings,
+  isTextFontWeightBold,
   normalizeRectTransformValue,
   normalizeAppearanceNumberValue,
   normalizeImageNumberValue,
+  normalizeLayoutNumberValue,
   normalizeTextNumberValue,
   parseRectTransformDraftValue,
   appearanceNumberFieldSettings,
+  layoutNumberFieldSettings,
   rectTransformFieldSettings,
   textNumberFieldSettings,
   type AppearanceDraft,
   type AppearanceFieldKey,
   type ImageDraft,
   type ImageFieldKey,
+  type LayoutDraft,
+  type LayoutFieldKey,
   type RectTransformDraft,
   type RectTransformFieldKey,
   type TextDraft,
@@ -137,6 +172,11 @@ type ImageNumberFieldDefinition = {
   label: string;
 };
 
+type LayoutNumberFieldDefinition = {
+  key: keyof typeof layoutNumberFieldSettings;
+  label: string;
+};
+
 const appearanceNumberFields: readonly AppearanceNumberFieldDefinition[] = [
   { key: "borderRadius", label: "Radius" },
   { key: "padding", label: "Padding" },
@@ -155,7 +195,6 @@ const appearanceBorderWidthField = {
 
 const textNumberFields: readonly TextNumberFieldDefinition[] = [
   { key: "fontSize", label: "Size" },
-  { key: "fontWeight", label: "Weight" },
   { key: "lineHeight", label: "Line" }
 ];
 
@@ -163,6 +202,16 @@ const imageNumberFields: readonly ImageNumberFieldDefinition[] = [
   { key: "positionX", label: "Pos X" },
   { key: "positionY", label: "Pos Y" }
 ];
+
+const layoutColumnsField = {
+  key: "columns",
+  label: "Columns"
+} as const satisfies LayoutNumberFieldDefinition;
+
+const layoutGapField = {
+  key: "gap",
+  label: "Gap"
+} as const satisfies LayoutNumberFieldDefinition;
 
 const appearanceFillColorField = {
   key: "backgroundColor",
@@ -193,16 +242,77 @@ const borderStyleOptions = [
 ] as const;
 
 const textAlignOptions = [
-  { label: "Left", value: "left" },
-  { label: "Center", value: "center" },
-  { label: "Right", value: "right" }
-] as const satisfies readonly { label: string; value: ProjectObjectTextAlign }[];
+  { icon: AlignLeft, label: "Align left", value: "left" },
+  { icon: AlignCenter, label: "Align center", value: "center" },
+  { icon: AlignRight, label: "Align right", value: "right" }
+] as const satisfies readonly {
+  icon: LucideIcon;
+  label: string;
+  value: ProjectObjectTextAlign;
+}[];
 
 const textVerticalAlignOptions = [
-  { label: "Top", value: "top" },
-  { label: "Middle", value: "middle" },
-  { label: "Bottom", value: "bottom" }
-] as const satisfies readonly { label: string; value: ProjectObjectTextVerticalAlign }[];
+  { icon: AlignVerticalJustifyStart, label: "Align top", value: "top" },
+  { icon: AlignVerticalJustifyCenter, label: "Align middle", value: "middle" },
+  { icon: AlignVerticalJustifyEnd, label: "Align bottom", value: "bottom" }
+] as const satisfies readonly {
+  icon: LucideIcon;
+  label: string;
+  value: ProjectObjectTextVerticalAlign;
+}[];
+
+const layoutModeOptions = [
+  { icon: Move, label: "Manual layout", value: "free" },
+  { icon: Columns3, label: "Horizontal layout", value: "horizontal" },
+  { icon: Rows3, label: "Vertical layout", value: "vertical" },
+  { icon: Grid3x3, label: "Grid layout", value: "grid" }
+] as const satisfies readonly {
+  icon: LucideIcon;
+  label: string;
+  value: ProjectObjectLayoutMode;
+}[];
+
+const horizontalLayoutAlignOptions = [
+  { icon: AlignHorizontalJustifyStart, label: "Left", value: "start" },
+  { icon: AlignHorizontalJustifyCenter, label: "Center", value: "center" },
+  { icon: AlignHorizontalJustifyEnd, label: "Right", value: "end" }
+] as const satisfies readonly {
+  icon: LucideIcon;
+  label: string;
+  value: ProjectObjectLayoutAlignment;
+}[];
+
+const verticalLayoutAlignOptions = [
+  { icon: AlignVerticalJustifyStart, label: "Top", value: "start" },
+  { icon: AlignVerticalJustifyCenter, label: "Middle", value: "center" },
+  { icon: AlignVerticalJustifyEnd, label: "Bottom", value: "end" }
+] as const satisfies readonly {
+  icon: LucideIcon;
+  label: string;
+  value: ProjectObjectLayoutAlignment;
+}[];
+
+const horizontalLayoutJustifyOptions = [
+  { icon: AlignHorizontalJustifyStart, label: "Left", value: "start" },
+  { icon: AlignHorizontalJustifyCenter, label: "Center", value: "center" },
+  { icon: AlignHorizontalJustifyEnd, label: "Right", value: "end" },
+  { icon: AlignHorizontalSpaceBetween, label: "Space between", value: "spaceBetween" }
+] as const satisfies readonly {
+  icon: LucideIcon;
+  label: string;
+  value: ProjectObjectLayoutJustification;
+}[];
+
+const verticalLayoutJustifyOptions = [
+  { icon: AlignVerticalJustifyStart, label: "Top", value: "start" },
+  { icon: AlignVerticalJustifyCenter, label: "Middle", value: "center" },
+  { icon: AlignVerticalJustifyEnd, label: "Bottom", value: "end" },
+  { icon: AlignVerticalSpaceBetween, label: "Space between", value: "spaceBetween" }
+] as const satisfies readonly {
+  icon: LucideIcon;
+  label: string;
+  value: ProjectObjectLayoutJustification;
+}[];
 
 const imageFitOptions = [
   { label: "Contain", value: "contain" },
@@ -243,6 +353,10 @@ export function ProjectObjectInspectorPanel({
     () => (selectedObject ? getProjectObjectNodeAppearance(selectedObject) : null),
     [selectedObject]
   );
+  const layout = useMemo(
+    () => (selectedObject?.kind === "group" ? getProjectObjectNodeLayout(selectedObject) : null),
+    [selectedObject]
+  );
   const text = useMemo(
     () => (selectedObject?.kind === "label" ? getProjectObjectNodeText(selectedObject) : null),
     [selectedObject]
@@ -269,6 +383,9 @@ export function ProjectObjectInspectorPanel({
   );
   const [imageDraft, setImageDraft] = useState<ImageDraft>(() =>
     image ? createImageDraft(image) : createImageDraft(getFallbackImageDraftValue())
+  );
+  const [layoutDraft, setLayoutDraft] = useState<LayoutDraft>(() =>
+    layout ? createLayoutDraft(layout) : createLayoutDraft(getFallbackLayoutDraftValue())
   );
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
@@ -300,6 +417,12 @@ export function ProjectObjectInspectorPanel({
       setImageUploadError(null);
     }
   }, [image, selectedObject?.id]);
+
+  useEffect(() => {
+    if (layout) {
+      setLayoutDraft(createLayoutDraft(layout));
+    }
+  }, [layout, selectedObject?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   function commitName(value = nameDraft) {
@@ -496,6 +619,14 @@ export function ProjectObjectInspectorPanel({
     updateObjectTreeTextField(fieldKey, value);
   }
 
+  function updateTextBold(isBold: boolean) {
+    updateTextDraft("fontWeight", String(getTextFontWeightForBold(isBold)));
+  }
+
+  function updateTextItalic(isItalic: boolean) {
+    updateTextDraft("fontStyle", getTextFontStyleForItalic(isItalic));
+  }
+
   function resetTextDraft(fieldKey: TextFieldKey) {
     if (!text) {
       return;
@@ -606,6 +737,70 @@ export function ProjectObjectInspectorPanel({
     }));
   }
 
+  function updateLayoutDraft(fieldKey: LayoutFieldKey, value: string) {
+    setLayoutDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    updateObjectTreeLayoutField(fieldKey, value);
+  }
+
+  function resetLayoutDraft(fieldKey: LayoutFieldKey) {
+    if (!layout) {
+      return;
+    }
+
+    const nextDraft = createLayoutDraft(layout);
+
+    setLayoutDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: nextDraft[fieldKey]
+    }));
+  }
+
+  function updateObjectTreeLayoutField(fieldKey: LayoutFieldKey, value: string) {
+    if (!contentFileNode || !selectedObject || !layout) {
+      return;
+    }
+
+    const nextLayout = getLayoutWithDraftField(layout, fieldKey, value);
+
+    if (!nextLayout) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeLayout(objectTree, selectedObject.id, nextLayout);
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
+  function commitLayoutNumberField(
+    fieldKey: keyof typeof layoutNumberFieldSettings,
+    value = layoutDraft[fieldKey]
+  ) {
+    if (!layout) {
+      return;
+    }
+
+    const parsedValue = parseRectTransformDraftValue(value);
+
+    if (parsedValue === null) {
+      resetLayoutDraft(fieldKey);
+      return;
+    }
+
+    updateObjectTreeLayoutField(fieldKey, value);
+    setLayoutDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: formatLayoutNumberValue(
+        normalizeLayoutNumberValue(fieldKey, parsedValue),
+        fieldKey
+      )
+    }));
+  }
+
   function updateShapeVariant(value: string) {
     if (!contentFileNode || !selectedObject || !shape) {
       return;
@@ -664,6 +859,14 @@ export function ProjectObjectInspectorPanel({
   const selectedImageAsset = image?.assetId
     ? getProjectImageAssetOptionById(imageAssets, image.assetId)
     : undefined;
+  const textDraftBold = isTextFontWeightBold(textDraft.fontWeight);
+  const textDraftItalic = textDraft.fontStyle === "italic";
+  const layoutAuto = layoutDraft.mode !== "free";
+  const layoutMainAxisLabel = getLayoutMainAxisLabel(layoutDraft.mode);
+  const layoutCrossAxisLabel = getLayoutCrossAxisLabel(layoutDraft.mode);
+  const layoutJustifyOptions = getLayoutJustifyOptions(layoutDraft.mode);
+  const layoutAlignOptions = getLayoutAlignOptions(layoutDraft.mode);
+  const layoutNumberFields = getLayoutNumberFields(layoutDraft);
 
   return (
     <aside
@@ -771,6 +974,44 @@ export function ProjectObjectInspectorPanel({
             </InspectorSection>
           ) : null}
 
+          {layout ? (
+            <InspectorSection icon={<LayoutPanelTop size={15} />} title="Layout">
+              <InspectorIconSegmentedField
+                label="Mode"
+                value={layoutDraft.mode}
+                options={layoutModeOptions}
+                onChange={(value) => updateLayoutDraft("mode", value)}
+              />
+              {layoutAuto ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <InspectorIconSegmentedField
+                      label={layoutMainAxisLabel}
+                      value={layoutDraft.justifyContent}
+                      options={layoutJustifyOptions}
+                      onChange={(value) => updateLayoutDraft("justifyContent", value)}
+                    />
+                    <InspectorIconSegmentedField
+                      label={layoutCrossAxisLabel}
+                      value={layoutDraft.alignItems}
+                      options={layoutAlignOptions}
+                      onChange={(value) => updateLayoutDraft("alignItems", value)}
+                    />
+                  </div>
+                  {layoutNumberFields.length ? (
+                    <LayoutNumberGrid
+                      fields={layoutNumberFields}
+                      value={layoutDraft}
+                      onCommit={commitLayoutNumberField}
+                      onDraftChange={updateLayoutDraft}
+                      onReset={resetLayoutDraft}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+            </InspectorSection>
+          ) : null}
+
           <InspectorSection icon={<Box size={15} />} title="Frame">
             <InspectorNumberGrid
               fields={positionFields}
@@ -821,19 +1062,25 @@ export function ProjectObjectInspectorPanel({
                 onChange={updateTextDraft}
               />
               <div className="grid grid-cols-2 gap-2">
-                <InspectorSelectField
+                <TextStyleToggleField
+                  isBold={textDraftBold}
+                  isItalic={textDraftItalic}
+                  onBoldChange={updateTextBold}
+                  onItalicChange={updateTextItalic}
+                />
+                <InspectorIconSegmentedField
                   label="Align"
                   value={textDraft.textAlign}
                   options={textAlignOptions}
                   onChange={(value) => updateTextDraft("textAlign", value)}
                 />
-                <InspectorSelectField
-                  label="Vertical"
-                  value={textDraft.verticalAlign}
-                  options={textVerticalAlignOptions}
-                  onChange={(value) => updateTextDraft("verticalAlign", value)}
-                />
               </div>
+              <InspectorIconSegmentedField
+                label="Vertical"
+                value={textDraft.verticalAlign}
+                options={textVerticalAlignOptions}
+                onChange={(value) => updateTextDraft("verticalAlign", value)}
+              />
               <TextNumberGrid
                 fields={textNumberFields}
                 value={textDraft}
@@ -1071,6 +1318,125 @@ function InspectorColorField<TField extends string>({
   );
 }
 
+type InspectorIconOption<TValue extends string> = {
+  icon: LucideIcon;
+  label: string;
+  value: TValue;
+};
+
+type InspectorIconSegmentedFieldProps<TValue extends string> = {
+  label: string;
+  options: readonly InspectorIconOption<TValue>[];
+  value: TValue;
+  onChange: (value: TValue) => void;
+};
+
+function InspectorIconSegmentedField<TValue extends string>({
+  label,
+  options,
+  value,
+  onChange
+}: InspectorIconSegmentedFieldProps<TValue>) {
+  return (
+    <div className="block min-w-0 text-xs font-medium text-slate-500">
+      <span>{label}</span>
+      <div className="mt-1 flex h-8 overflow-hidden rounded-md border border-slate-200 bg-white">
+        {options.map((option, index) => {
+          const Icon = option.icon;
+          const active = value === option.value;
+
+          return (
+            <button
+              key={option.value}
+              aria-label={option.label}
+              className={cx(
+                "flex h-full min-w-0 flex-1 items-center justify-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-100",
+                index > 0 && "border-l border-slate-200",
+                active
+                  ? "bg-sky-50 text-sky-700"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+              )}
+              title={option.label}
+              type="button"
+              onClick={() => onChange(option.value)}
+            >
+              <Icon size={16} strokeWidth={2.2} />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+type TextStyleToggleFieldProps = {
+  isBold: boolean;
+  isItalic: boolean;
+  onBoldChange: (isBold: boolean) => void;
+  onItalicChange: (isItalic: boolean) => void;
+};
+
+function TextStyleToggleField({
+  isBold,
+  isItalic,
+  onBoldChange,
+  onItalicChange
+}: TextStyleToggleFieldProps) {
+  return (
+    <div className="block min-w-0 text-xs font-medium text-slate-500">
+      <span>Style</span>
+      <div className="mt-1 flex h-8 overflow-hidden rounded-md border border-slate-200 bg-white">
+        <InspectorIconToggleButton
+          active={isBold}
+          icon={Bold}
+          label="Bold"
+          onClick={() => onBoldChange(!isBold)}
+        />
+        <InspectorIconToggleButton
+          active={isItalic}
+          className="border-l border-slate-200"
+          icon={Italic}
+          label="Italic"
+          onClick={() => onItalicChange(!isItalic)}
+        />
+      </div>
+    </div>
+  );
+}
+
+type InspectorIconToggleButtonProps = {
+  active: boolean;
+  className?: string;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+};
+
+function InspectorIconToggleButton({
+  active,
+  className,
+  icon: Icon,
+  label,
+  onClick
+}: InspectorIconToggleButtonProps) {
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={active}
+      className={cx(
+        "flex h-full min-w-0 flex-1 items-center justify-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-100",
+        active ? "bg-sky-50 text-sky-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900",
+        className
+      )}
+      title={label}
+      type="button"
+      onClick={onClick}
+    >
+      <Icon size={16} strokeWidth={2.2} />
+    </button>
+  );
+}
+
 type InspectorSelectFieldProps<TValue extends string> = {
   label: string;
   options: readonly { label: string; value: TValue }[];
@@ -1182,6 +1548,38 @@ function ImageNumberGrid({
           key={field.key}
           field={field}
           settings={imageNumberFieldSettings[field.key]}
+          value={value[field.key]}
+          onCommit={onCommit}
+          onDraftChange={onDraftChange}
+          onReset={onReset}
+        />
+      ))}
+    </div>
+  );
+}
+
+type LayoutNumberGridProps = {
+  fields: readonly LayoutNumberFieldDefinition[];
+  value: LayoutDraft;
+  onCommit: (fieldKey: keyof typeof layoutNumberFieldSettings, value: string) => void;
+  onDraftChange: (fieldKey: LayoutFieldKey, value: string) => void;
+  onReset: (fieldKey: LayoutFieldKey) => void;
+};
+
+function LayoutNumberGrid({
+  fields,
+  value,
+  onCommit,
+  onDraftChange,
+  onReset
+}: LayoutNumberGridProps) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {fields.map((field) => (
+        <InspectorBehaviorNumberField
+          key={field.key}
+          field={field}
+          settings={layoutNumberFieldSettings[field.key]}
           value={value[field.key]}
           onCommit={onCommit}
           onDraftChange={onDraftChange}
@@ -1348,6 +1746,7 @@ function getFallbackTextDraftValue(): ProjectObjectText {
     color: "#0f172a",
     content: "",
     fontSize: 16,
+    fontStyle: "normal",
     fontWeight: 600,
     lineHeight: 1.2,
     textAlign: "center",
@@ -1362,6 +1761,48 @@ function getFallbackImageDraftValue(): ProjectObjectImage {
     positionX: 50,
     positionY: 50
   };
+}
+
+function getFallbackLayoutDraftValue(): ProjectObjectLayout {
+  return {
+    alignItems: "start",
+    columns: 3,
+    gap: 8,
+    justifyContent: "start",
+    mode: "free"
+  };
+}
+
+function getLayoutNumberFields(layoutDraft: LayoutDraft): readonly LayoutNumberFieldDefinition[] {
+  if (layoutDraft.mode === "free") {
+    return [];
+  }
+
+  if (layoutDraft.mode === "grid") {
+    return [layoutColumnsField, layoutGapField];
+  }
+
+  if (layoutDraft.justifyContent === "spaceBetween") {
+    return [];
+  }
+
+  return [layoutGapField];
+}
+
+function getLayoutJustifyOptions(mode: ProjectObjectLayoutMode) {
+  return mode === "vertical" ? verticalLayoutJustifyOptions : horizontalLayoutJustifyOptions;
+}
+
+function getLayoutAlignOptions(mode: ProjectObjectLayoutMode) {
+  return mode === "vertical" ? horizontalLayoutAlignOptions : verticalLayoutAlignOptions;
+}
+
+function getLayoutMainAxisLabel(mode: ProjectObjectLayoutMode) {
+  return mode === "vertical" ? "Vertical" : "Horizontal";
+}
+
+function getLayoutCrossAxisLabel(mode: ProjectObjectLayoutMode) {
+  return mode === "vertical" ? "Horizontal" : "Vertical";
 }
 
 function cx(...classes: Array<string | false | null | undefined>) {

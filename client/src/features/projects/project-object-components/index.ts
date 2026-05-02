@@ -10,6 +10,10 @@ export {
   getProjectObjectRectTransformComponent,
   withProjectObjectRectTransformComponent
 } from "./rect-transform-component";
+export {
+  getProjectObjectLayoutComponent,
+  withProjectObjectLayoutComponent
+} from "./layout-component";
 export { getProjectObjectShapeComponent, withProjectObjectShapeComponent } from "./shape-component";
 export { getProjectObjectTextComponent, withProjectObjectTextComponent } from "./text-component";
 

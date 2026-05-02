@@ -4,6 +4,7 @@ import type {
   ProjectFileKind,
   ProjectFileNode,
   ProjectObjectKind,
+  ProjectObjectLayout,
   ProjectObjectNode,
   ProjectObjectRectTransform,
   ProjectObjectShape,
@@ -175,6 +176,10 @@ export function getProjectObjectNodeImage(object: ProjectObjectNode): ProjectObj
   return projectObjectComponentEngine.getImage(object);
 }
 
+export function getProjectObjectNodeLayout(object: ProjectObjectNode): ProjectObjectLayout {
+  return projectObjectComponentEngine.getLayout(object);
+}
+
 export function getProjectObjectNodeShape(object: ProjectObjectNode): ProjectObjectShape {
   return projectObjectComponentEngine.getShape(object);
 }
@@ -222,6 +227,18 @@ export function setProjectObjectNodeImage(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withImage(node, image)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeLayout(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  layout: ProjectObjectLayout
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withLayout(node, layout)
   );
 
   return result.changed ? result.nodes : objectTree;

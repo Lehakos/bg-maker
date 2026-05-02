@@ -13,12 +13,17 @@ import type {
   ProjectObjectImage,
   ProjectObjectImageFit,
   ProjectObjectKind,
+  ProjectObjectLayout,
+  ProjectObjectLayoutAlignment,
+  ProjectObjectLayoutJustification,
+  ProjectObjectLayoutMode,
   ProjectObjectNode,
   ProjectObjectRectTransform,
   ProjectObjectShape,
   ProjectObjectShapeVariant,
   ProjectObjectText,
   ProjectObjectTextAlign,
+  ProjectObjectTextFontStyle,
   ProjectObjectTextVerticalAlign,
   ProjectSummary
 } from "@bg-maker/shared";
@@ -26,6 +31,7 @@ import {
   createDefaultProjectObjectNode,
   getDefaultProjectObjectAppearance,
   getDefaultProjectObjectImage,
+  getDefaultProjectObjectLayout,
   getDefaultProjectObjectRectTransform,
   getDefaultProjectObjectShape,
   getDefaultProjectObjectText,
@@ -70,6 +76,8 @@ const maxProjectObjectTreeNodes = 1000;
 const maxProjectObjectAppearanceSize = 1000;
 const maxProjectObjectCoordinate = 10000;
 const maxProjectObjectDimension = 10000;
+const maxProjectObjectLayoutColumns = 24;
+const maxProjectObjectLayoutGap = 10000;
 const maxProjectObjectOpacity = 1;
 const maxProjectObjectRotation = 3600;
 const maxProjectObjectScale = 8;
@@ -101,6 +109,23 @@ const projectObjectImageFits = new Set<ProjectObjectImageFit>([
 ]);
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
 const projectObjectKinds = new Set<ProjectObjectKind>(sharedProjectObjectKinds);
+const projectObjectLayoutAlignments = new Set<ProjectObjectLayoutAlignment>([
+  "center",
+  "end",
+  "start"
+]);
+const projectObjectLayoutJustifications = new Set<ProjectObjectLayoutJustification>([
+  "center",
+  "end",
+  "spaceBetween",
+  "start"
+]);
+const projectObjectLayoutModes = new Set<ProjectObjectLayoutMode>([
+  "free",
+  "grid",
+  "horizontal",
+  "vertical"
+]);
 const projectObjectShapeVariants = new Set<ProjectObjectShapeVariant>([
   "diamond",
   "ellipse",
@@ -108,6 +133,7 @@ const projectObjectShapeVariants = new Set<ProjectObjectShapeVariant>([
   "triangle"
 ]);
 const projectObjectTextAligns = new Set<ProjectObjectTextAlign>(["center", "left", "right"]);
+const projectObjectTextFontStyles = new Set<ProjectObjectTextFontStyle>(["italic", "normal"]);
 const projectObjectTextVerticalAligns = new Set<ProjectObjectTextVerticalAlign>([
   "bottom",
   "middle",
@@ -655,6 +681,13 @@ function normalizeProjectObjectComponents(value: unknown, kind: ProjectObjectKin
     rectTransform: normalizeProjectObjectRectTransform(record.rectTransform, kind)
   };
 
+  if (kind === "group") {
+    return {
+      ...components,
+      layout: normalizeProjectObjectLayout(record.layout)
+    };
+  }
+
   if (kind === "label") {
     return {
       ...components,
@@ -768,6 +801,35 @@ function normalizeProjectObjectAppearance(
   };
 }
 
+function normalizeProjectObjectLayout(value: unknown): ProjectObjectLayout {
+  const defaultLayout = getDefaultProjectObjectLayout();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    alignItems: projectObjectLayoutAlignments.has(
+      record.alignItems as ProjectObjectLayoutAlignment
+    )
+      ? (record.alignItems as ProjectObjectLayoutAlignment)
+      : defaultLayout.alignItems,
+    columns: normalizeFiniteNumber(record.columns, defaultLayout.columns, {
+      max: maxProjectObjectLayoutColumns,
+      min: 1
+    }),
+    gap: normalizeFiniteNumber(record.gap, defaultLayout.gap, {
+      max: maxProjectObjectLayoutGap,
+      min: 0
+    }),
+    justifyContent: projectObjectLayoutJustifications.has(
+      record.justifyContent as ProjectObjectLayoutJustification
+    )
+      ? (record.justifyContent as ProjectObjectLayoutJustification)
+      : defaultLayout.justifyContent,
+    mode: projectObjectLayoutModes.has(record.mode as ProjectObjectLayoutMode)
+      ? (record.mode as ProjectObjectLayoutMode)
+      : defaultLayout.mode
+  };
+}
+
 function normalizeProjectObjectText(
   value: unknown,
   kind: ProjectObjectKind,
@@ -784,6 +846,9 @@ function normalizeProjectObjectText(
       max: maxProjectTextFontSize,
       min: minProjectTextFontSize
     }),
+    fontStyle: projectObjectTextFontStyles.has(record.fontStyle as ProjectObjectTextFontStyle)
+      ? (record.fontStyle as ProjectObjectTextFontStyle)
+      : defaultText.fontStyle,
     fontWeight: normalizeFiniteNumber(record.fontWeight, defaultText.fontWeight, {
       max: maxProjectTextFontWeight,
       min: minProjectTextFontWeight

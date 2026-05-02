@@ -3,11 +3,16 @@ import type {
   ProjectObjectBorderStyle,
   ProjectObjectImage,
   ProjectObjectImageFit,
+  ProjectObjectLayout,
+  ProjectObjectLayoutAlignment,
+  ProjectObjectLayoutJustification,
+  ProjectObjectLayoutMode,
   ProjectObjectRectTransform,
   ProjectObjectShape,
   ProjectObjectShapeVariant,
   ProjectObjectText,
   ProjectObjectTextAlign,
+  ProjectObjectTextFontStyle,
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
 
@@ -32,6 +37,7 @@ export type TextDraft = {
   color: string;
   content: string;
   fontSize: string;
+  fontStyle: ProjectObjectTextFontStyle;
   fontWeight: string;
   lineHeight: string;
   textAlign: ProjectObjectTextAlign;
@@ -44,6 +50,15 @@ export type ImageDraft = {
   fit: ProjectObjectImageFit;
   positionX: string;
   positionY: string;
+};
+
+export type LayoutFieldKey = keyof ProjectObjectLayout;
+export type LayoutDraft = {
+  alignItems: ProjectObjectLayoutAlignment;
+  columns: string;
+  gap: string;
+  justifyContent: ProjectObjectLayoutJustification;
+  mode: ProjectObjectLayoutMode;
 };
 
 export const rectTransformFieldSettings: Record<
@@ -92,8 +107,24 @@ export const imageNumberFieldSettings = {
   { decimals: number; max: number; min: number; step: number }
 >;
 
+export const layoutNumberFieldSettings = {
+  columns: { decimals: 0, max: 24, min: 1, step: 1 },
+  gap: { decimals: 0, max: 10000, min: 0, step: 1 }
+} as const satisfies Record<
+  Extract<LayoutFieldKey, "columns" | "gap">,
+  { decimals: number; max: number; min: number; step: number }
+>;
+
 const borderStyles = new Set<ProjectObjectBorderStyle>(["none", "solid", "dashed", "dotted"]);
 const imageFits = new Set<ProjectObjectImageFit>(["contain", "cover", "fill", "scaleDown"]);
+const layoutAlignments = new Set<ProjectObjectLayoutAlignment>(["center", "end", "start"]);
+const layoutJustifications = new Set<ProjectObjectLayoutJustification>([
+  "center",
+  "end",
+  "spaceBetween",
+  "start"
+]);
+const layoutModes = new Set<ProjectObjectLayoutMode>(["free", "grid", "horizontal", "vertical"]);
 const shapeVariants = new Set<ProjectObjectShapeVariant>([
   "diamond",
   "ellipse",
@@ -101,7 +132,11 @@ const shapeVariants = new Set<ProjectObjectShapeVariant>([
   "triangle"
 ]);
 const textAligns = new Set<ProjectObjectTextAlign>(["center", "left", "right"]);
+const textFontStyles = new Set<ProjectObjectTextFontStyle>(["italic", "normal"]);
 const textVerticalAligns = new Set<ProjectObjectTextVerticalAlign>(["bottom", "middle", "top"]);
+const boldTextFontWeight = 700;
+const normalTextFontWeight = 400;
+const boldTextFontWeightThreshold = 600;
 
 export function createRectTransformDraft(
   rectTransform: ProjectObjectRectTransform | null
@@ -212,6 +247,7 @@ export function createTextDraft(text: ProjectObjectText): TextDraft {
     color: text.color,
     content: text.content,
     fontSize: formatTextNumberValue(text.fontSize, "fontSize"),
+    fontStyle: text.fontStyle,
     fontWeight: formatTextNumberValue(text.fontWeight, "fontWeight"),
     lineHeight: formatTextNumberValue(text.lineHeight, "lineHeight"),
     textAlign: text.textAlign,
@@ -225,6 +261,16 @@ export function createImageDraft(image: ProjectObjectImage): ImageDraft {
     fit: image.fit,
     positionX: formatImageNumberValue(image.positionX, "positionX"),
     positionY: formatImageNumberValue(image.positionY, "positionY")
+  };
+}
+
+export function createLayoutDraft(layout: ProjectObjectLayout): LayoutDraft {
+  return {
+    alignItems: layout.alignItems,
+    columns: formatLayoutNumberValue(layout.columns, "columns"),
+    gap: formatLayoutNumberValue(layout.gap, "gap"),
+    justifyContent: layout.justifyContent,
+    mode: layout.mode
   };
 }
 
@@ -270,6 +316,20 @@ export function getImageWithDraftField(
   return areImagesEqual(image, nextImage) ? null : nextImage;
 }
 
+export function getLayoutWithDraftField(
+  layout: ProjectObjectLayout,
+  fieldKey: LayoutFieldKey,
+  value: string
+) {
+  const nextLayout = createNextLayout(layout, fieldKey, value);
+
+  if (!nextLayout) {
+    return null;
+  }
+
+  return areLayoutsEqual(layout, nextLayout) ? null : nextLayout;
+}
+
 export function getShapeWithVariant(shape: ProjectObjectShape, variant: string) {
   if (!shapeVariants.has(variant as ProjectObjectShapeVariant)) {
     return null;
@@ -310,6 +370,15 @@ export function normalizeImageNumberValue(
   return roundTo(clamp(value, min, max), decimals);
 }
 
+export function normalizeLayoutNumberValue(
+  fieldKey: keyof typeof layoutNumberFieldSettings,
+  value: number
+) {
+  const { decimals, max, min } = layoutNumberFieldSettings[fieldKey];
+
+  return roundTo(clamp(value, min, max), decimals);
+}
+
 export function formatAppearanceNumberValue(
   value: number,
   fieldKey: keyof typeof appearanceNumberFieldSettings
@@ -328,11 +397,34 @@ export function formatTextNumberValue(
   return String(roundTo(value, decimals));
 }
 
+export function getTextFontWeightForBold(isBold: boolean) {
+  return isBold ? boldTextFontWeight : normalTextFontWeight;
+}
+
+export function getTextFontStyleForItalic(isItalic: boolean): ProjectObjectTextFontStyle {
+  return isItalic ? "italic" : "normal";
+}
+
+export function isTextFontWeightBold(value: number | string) {
+  const parsedValue = typeof value === "number" ? value : parseRectTransformDraftValue(value);
+
+  return parsedValue !== null && parsedValue >= boldTextFontWeightThreshold;
+}
+
 export function formatImageNumberValue(
   value: number,
   fieldKey: keyof typeof imageNumberFieldSettings
 ) {
   const { decimals } = imageNumberFieldSettings[fieldKey];
+
+  return String(roundTo(value, decimals));
+}
+
+export function formatLayoutNumberValue(
+  value: number,
+  fieldKey: keyof typeof layoutNumberFieldSettings
+) {
+  const { decimals } = layoutNumberFieldSettings[fieldKey];
 
   return String(roundTo(value, decimals));
 }
@@ -386,6 +478,12 @@ function createNextText(
       : null;
   }
 
+  if (fieldKey === "fontStyle") {
+    return textFontStyles.has(value as ProjectObjectTextFontStyle)
+      ? { ...text, fontStyle: value as ProjectObjectTextFontStyle }
+      : null;
+  }
+
   if (fieldKey === "verticalAlign") {
     return textVerticalAligns.has(value as ProjectObjectTextVerticalAlign)
       ? { ...text, verticalAlign: value as ProjectObjectTextVerticalAlign }
@@ -434,6 +532,41 @@ function createNextImage(
   };
 }
 
+function createNextLayout(
+  layout: ProjectObjectLayout,
+  fieldKey: LayoutFieldKey,
+  value: string
+): ProjectObjectLayout | null {
+  if (fieldKey === "alignItems") {
+    return layoutAlignments.has(value as ProjectObjectLayoutAlignment)
+      ? { ...layout, alignItems: value as ProjectObjectLayoutAlignment }
+      : null;
+  }
+
+  if (fieldKey === "justifyContent") {
+    return layoutJustifications.has(value as ProjectObjectLayoutJustification)
+      ? { ...layout, justifyContent: value as ProjectObjectLayoutJustification }
+      : null;
+  }
+
+  if (fieldKey === "mode") {
+    return layoutModes.has(value as ProjectObjectLayoutMode)
+      ? { ...layout, mode: value as ProjectObjectLayoutMode }
+      : null;
+  }
+
+  const parsedValue = parseRectTransformDraftValue(value);
+
+  if (parsedValue === null) {
+    return null;
+  }
+
+  return {
+    ...layout,
+    [fieldKey]: normalizeLayoutNumberValue(fieldKey, parsedValue)
+  };
+}
+
 function areAppearancesEqual(left: ProjectObjectAppearance, right: ProjectObjectAppearance) {
   return (
     left.backgroundColor === right.backgroundColor &&
@@ -452,6 +585,7 @@ function areTextsEqual(left: ProjectObjectText, right: ProjectObjectText) {
     left.color === right.color &&
     left.content === right.content &&
     left.fontSize === right.fontSize &&
+    left.fontStyle === right.fontStyle &&
     left.fontWeight === right.fontWeight &&
     left.lineHeight === right.lineHeight &&
     left.textAlign === right.textAlign &&
@@ -465,6 +599,16 @@ function areImagesEqual(left: ProjectObjectImage, right: ProjectObjectImage) {
     left.fit === right.fit &&
     left.positionX === right.positionX &&
     left.positionY === right.positionY
+  );
+}
+
+function areLayoutsEqual(left: ProjectObjectLayout, right: ProjectObjectLayout) {
+  return (
+    left.alignItems === right.alignItems &&
+    left.columns === right.columns &&
+    left.gap === right.gap &&
+    left.justifyContent === right.justifyContent &&
+    left.mode === right.mode
   );
 }
 

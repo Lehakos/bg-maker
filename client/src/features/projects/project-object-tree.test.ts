@@ -4,6 +4,7 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectImage,
   ProjectObjectKind,
+  ProjectObjectLayout,
   ProjectObjectNode,
   ProjectObjectRectTransform,
   ProjectObjectShape,
@@ -19,6 +20,7 @@ import {
   getProjectObjectNodeAppearance,
   getProjectObjectNodeChildren,
   getProjectObjectNodeImage,
+  getProjectObjectNodeLayout,
   getProjectObjectNodeRectTransform,
   getProjectObjectNodeShape,
   getProjectObjectNodeText,
@@ -26,6 +28,7 @@ import {
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
   setProjectObjectNodeImage,
+  setProjectObjectNodeLayout,
   setProjectObjectNodeRectTransform,
   setProjectObjectNodeShape,
   setProjectObjectNodeText,
@@ -201,6 +204,7 @@ describe("project object tree helpers", () => {
       color: "#111111",
       content: "Updated label",
       fontSize: 18,
+      fontStyle: "italic",
       fontWeight: 700,
       lineHeight: 1.3,
       textAlign: "left",
@@ -212,6 +216,13 @@ describe("project object tree helpers", () => {
       positionX: 40,
       positionY: 60
     };
+    const layout: ProjectObjectLayout = {
+      alignItems: "center",
+      columns: 3,
+      gap: 16,
+      justifyContent: "spaceBetween",
+      mode: "horizontal"
+    };
     const shape: ProjectObjectShape = {
       variant: "triangle"
     };
@@ -219,6 +230,7 @@ describe("project object tree helpers", () => {
     const appearanceTree = setProjectObjectNodeAppearance(objectTree, "shape-1", appearance);
     const textTree = setProjectObjectNodeText(objectTree, "label-1", text);
     const imageTree = setProjectObjectNodeImage(objectTree, "image-1", image);
+    const layoutTree = setProjectObjectNodeLayout(objectTree, "group-1", layout);
     const shapeTree = setProjectObjectNodeShape(objectTree, "shape-1", shape);
 
     expect(
@@ -226,9 +238,13 @@ describe("project object tree helpers", () => {
     ).toEqual(appearance);
     expect(getProjectObjectNodeText(findProjectObjectNode(textTree, "label-1")!)).toEqual(text);
     expect(getProjectObjectNodeImage(findProjectObjectNode(imageTree, "image-1")!)).toEqual(image);
+    expect(getProjectObjectNodeLayout(findProjectObjectNode(layoutTree, "group-1")!)).toEqual(
+      layout
+    );
     expect(getProjectObjectNodeShape(findProjectObjectNode(shapeTree, "shape-1")!)).toEqual(shape);
     expect(findProjectObjectNode(objectTree, "image-1")?.components?.image).toBeUndefined();
     expect(setProjectObjectNodeImage(objectTree, "missing-object", image)).toBe(objectTree);
+    expect(setProjectObjectNodeLayout(objectTree, "missing-object", layout)).toBe(objectTree);
   });
 
   it("updates object trees only for supported project file nodes", () => {

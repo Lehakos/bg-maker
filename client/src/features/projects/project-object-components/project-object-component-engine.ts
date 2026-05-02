@@ -2,6 +2,7 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectImage,
   ProjectObjectKind,
+  ProjectObjectLayout,
   ProjectObjectNode,
   ProjectObjectRectTransform,
   ProjectObjectShape,
@@ -13,6 +14,10 @@ import {
   withProjectObjectAppearanceComponent
 } from "./appearance-component";
 import { getProjectObjectImageComponent, withProjectObjectImageComponent } from "./image-component";
+import {
+  getProjectObjectLayoutComponent,
+  withProjectObjectLayoutComponent
+} from "./layout-component";
 import {
   getProjectObjectRectTransformComponent,
   withProjectObjectRectTransformComponent
@@ -44,6 +49,10 @@ export class ProjectObjectComponentEngine {
     return getProjectObjectImageComponent(object);
   }
 
+  getLayout(object: ProjectObjectNode): ProjectObjectLayout {
+    return getProjectObjectLayoutComponent(object);
+  }
+
   getShape(object: ProjectObjectNode): ProjectObjectShape {
     return getProjectObjectShapeComponent(object);
   }
@@ -68,6 +77,10 @@ export class ProjectObjectComponentEngine {
 
   withImage(object: ProjectObjectNode, image: ProjectObjectImage): ProjectObjectNode {
     return withProjectObjectImageComponent(object, image);
+  }
+
+  withLayout(object: ProjectObjectNode, layout: ProjectObjectLayout): ProjectObjectNode {
+    return withProjectObjectLayoutComponent(object, layout);
   }
 
   withShape(object: ProjectObjectNode, shape: ProjectObjectShape): ProjectObjectNode {

@@ -1,6 +1,7 @@
 import type {
   ProjectObjectAppearance,
   ProjectObjectImage,
+  ProjectObjectLayout,
   ProjectObjectRectTransform,
   ProjectObjectShape,
   ProjectObjectText
@@ -9,15 +10,21 @@ import { describe, expect, it } from "vitest";
 import {
   createAppearanceDraft,
   createImageDraft,
+  createLayoutDraft,
   createRectTransformDraft,
   createTextDraft,
   getAppearanceWithDraftField,
   getImageWithDraftField,
+  getLayoutWithDraftField,
   getRectTransformWithDraftField,
   getShapeWithVariant,
+  getTextFontStyleForItalic,
+  getTextFontWeightForBold,
   getTextWithDraftField,
+  isTextFontWeightBold,
   normalizeAppearanceNumberValue,
   normalizeImageNumberValue,
+  normalizeLayoutNumberValue,
   normalizeRectTransformValue,
   normalizeTextNumberValue,
   parseRectTransformDraftValue
@@ -50,6 +57,7 @@ const text: ProjectObjectText = {
   color: "#0f172a",
   content: "Label",
   fontSize: 16.4,
+  fontStyle: "italic",
   fontWeight: 612,
   lineHeight: 1.236,
   textAlign: "center",
@@ -61,6 +69,14 @@ const image: ProjectObjectImage = {
   fit: "contain",
   positionX: 49.6,
   positionY: 20.2
+};
+
+const layout: ProjectObjectLayout = {
+  alignItems: "center",
+  columns: 3,
+  gap: 12.4,
+  justifyContent: "spaceBetween",
+  mode: "horizontal"
 };
 
 const shape: ProjectObjectShape = {
@@ -141,6 +157,7 @@ describe("project object inspector state", () => {
       color: "#0f172a",
       content: "Label",
       fontSize: "16",
+      fontStyle: "italic",
       fontWeight: "612",
       lineHeight: "1.24",
       textAlign: "center",
@@ -148,8 +165,18 @@ describe("project object inspector state", () => {
     });
     expect(normalizeTextNumberValue("fontSize", 0)).toBe(1);
     expect(normalizeTextNumberValue("lineHeight", 10)).toBe(4);
+    expect(getTextFontWeightForBold(true)).toBe(700);
+    expect(getTextFontWeightForBold(false)).toBe(400);
+    expect(isTextFontWeightBold("612")).toBe(true);
+    expect(isTextFontWeightBold(500)).toBe(false);
+    expect(getTextFontStyleForItalic(true)).toBe("italic");
+    expect(getTextFontStyleForItalic(false)).toBe("normal");
     expect(getTextWithDraftField(text, "content", "Next")).toMatchObject({ content: "Next" });
     expect(getTextWithDraftField(text, "textAlign", "left")).toMatchObject({ textAlign: "left" });
+    expect(getTextWithDraftField(text, "fontStyle", "normal")).toMatchObject({
+      fontStyle: "normal"
+    });
+    expect(getTextWithDraftField(text, "fontStyle", "oblique")).toBeNull();
     expect(getTextWithDraftField(text, "verticalAlign", "nope")).toBeNull();
   });
 
@@ -168,5 +195,31 @@ describe("project object inspector state", () => {
     expect(getImageWithDraftField(image, "fit", "stretch")).toBeNull();
     expect(getShapeWithVariant(shape, "triangle")).toEqual({ variant: "triangle" });
     expect(getShapeWithVariant(shape, "hexagon")).toBeNull();
+  });
+
+  it("creates and normalizes layout drafts", () => {
+    expect(createLayoutDraft(layout)).toEqual({
+      alignItems: "center",
+      columns: "3",
+      gap: "12",
+      justifyContent: "spaceBetween",
+      mode: "horizontal"
+    });
+    expect(normalizeLayoutNumberValue("gap", -1)).toBe(0);
+    expect(normalizeLayoutNumberValue("columns", 0)).toBe(1);
+    expect(getLayoutWithDraftField(layout, "mode", "vertical")).toMatchObject({
+      mode: "vertical"
+    });
+    expect(getLayoutWithDraftField(layout, "mode", "grid")).toMatchObject({ mode: "grid" });
+    expect(getLayoutWithDraftField(layout, "alignItems", "end")).toMatchObject({
+      alignItems: "end"
+    });
+    expect(getLayoutWithDraftField(layout, "justifyContent", "center")).toMatchObject({
+      justifyContent: "center"
+    });
+    expect(getLayoutWithDraftField(layout, "gap", "24")).toMatchObject({ gap: 24 });
+    expect(getLayoutWithDraftField(layout, "columns", "4")).toMatchObject({ columns: 4 });
+    expect(getLayoutWithDraftField(layout, "mode", "masonry")).toBeNull();
+    expect(getLayoutWithDraftField(layout, "gap", "nope")).toBeNull();
   });
 });

@@ -34,7 +34,12 @@ import {
   getProjectImageAssetOptions,
   type ProjectImageAssetOption
 } from "./project-image-assets";
-import { getProjectObjectNodeRectTransform } from "./project-object-tree";
+import {
+  getProjectObjectNodeAppearance,
+  getProjectObjectNodeLayout,
+  getProjectObjectNodeRectTransform
+} from "./project-object-tree";
+import { getProjectObjectLayoutRectTransformOverrides } from "./project-object-layout";
 import { ProjectObjectSurface } from "./ProjectObjectSurface";
 
 const workspaceTools = [
@@ -494,6 +499,7 @@ type SceneObjectFrameProps = {
   fileNodeId: string;
   imageAssetById: Map<string, ProjectImageAssetOption>;
   object: ProjectObjectNode;
+  rectTransformOverride?: ProjectObjectRectTransform;
   root?: boolean;
   selectedObjectId: string | null;
   siblingIndex: number;
@@ -515,6 +521,7 @@ function SceneObjectFrame({
   fileNodeId,
   imageAssetById,
   object,
+  rectTransformOverride,
   root = false,
   selectedObjectId,
   siblingIndex,
@@ -523,10 +530,22 @@ function SceneObjectFrame({
   size
 }: SceneObjectFrameProps) {
   const objectRectTransform = getProjectObjectNodeRectTransform(object);
+  const baseVisibleRectTransform = rectTransformOverride ?? objectRectTransform;
   const [dragState, setDragState] = useState<TransformDragState | null>(null);
-  const visibleRectTransform = dragState?.current ?? objectRectTransform;
+  const visibleRectTransform = dragState?.current ?? baseVisibleRectTransform;
   const selected = selectedObjectId === object.id;
-  const interactive = selected && activeTool !== "select" && Boolean(fileNodeId);
+  const layoutManaged = Boolean(rectTransformOverride);
+  const interactive = selected && activeTool !== "select" && Boolean(fileNodeId) && !layoutManaged;
+  const children = object.children ?? [];
+  const childRectTransformOverrides =
+    object.kind === "group"
+      ? getProjectObjectLayoutRectTransformOverrides(
+          visibleRectTransform,
+          children,
+          getProjectObjectNodeLayout(object),
+          getProjectObjectNodeAppearance(object).padding
+        )
+      : new Map<string, ProjectObjectRectTransform>();
 
   if (!object.visible) {
     return null;
@@ -644,13 +663,14 @@ function SceneObjectFrame({
       onPointerUp={handlePointerUp}
     >
       <ProjectObjectSurface imageAssetById={imageAssetById} object={object} />
-      {(object.children ?? []).map((child, index) => (
+      {children.map((child, index) => (
         <SceneObjectFrame
           key={child.id}
           activeTool={activeTool}
           fileNodeId={fileNodeId}
           imageAssetById={imageAssetById}
           object={child}
+          rectTransformOverride={childRectTransformOverrides.get(child.id)}
           selectedObjectId={selectedObjectId}
           siblingIndex={index}
           size={size}
@@ -658,7 +678,7 @@ function SceneObjectFrame({
           onSelectObject={onSelectObject}
         />
       ))}
-      {selected ? <ObjectSelectionOverlay activeTool={activeTool} /> : null}
+      {selected ? <ObjectSelectionOverlay activeTool={layoutManaged ? "select" : activeTool} /> : null}
     </div>
   );
 }

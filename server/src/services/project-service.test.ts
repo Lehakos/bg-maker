@@ -159,6 +159,16 @@ describe("ProjectService", () => {
                 id: " group-1 ",
                 kind: "unknown",
                 name: " Group 1 ",
+                components: {
+                  layout: {
+                    alignItems: "center",
+                    columns: 99,
+                    gap: -4,
+                    justifyContent: "spaceBetween",
+                    mode: "horizontal",
+                    padding: 2000
+                  }
+                },
                 visible: true
               }
             ],
@@ -241,6 +251,15 @@ describe("ProjectService", () => {
                   id: "group-1",
                   kind: "group",
                   name: "Group 1",
+                  components: {
+                    layout: {
+                      alignItems: "center",
+                      columns: 24,
+                      gap: 0,
+                      justifyContent: "spaceBetween",
+                      mode: "horizontal"
+                    }
+                  },
                   visible: true
                 }
               ],
