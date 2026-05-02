@@ -1,14 +1,16 @@
-import type {
-  ProjectFileKind,
-  ProjectFileNode,
-  ProjectObjectAppearance,
-  ProjectObjectImage,
-  ProjectObjectKind,
-  ProjectObjectLayout,
-  ProjectObjectNode,
-  ProjectObjectRectTransform,
-  ProjectObjectShape,
-  ProjectObjectText
+import {
+  doesProjectObjectClipChildren,
+  type ProjectFileKind,
+  type ProjectFileNode,
+  type ProjectObjectAppearance,
+  type ProjectObjectCard,
+  type ProjectObjectImage,
+  type ProjectObjectKind,
+  type ProjectObjectLayout,
+  type ProjectObjectNode,
+  type ProjectObjectRectTransform,
+  type ProjectObjectShape,
+  type ProjectObjectText
 } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
@@ -18,7 +20,10 @@ import {
   findProjectObjectNodeLocation,
   getExpandableProjectObjectNodeIds,
   getProjectObjectNodeAppearance,
+  getProjectObjectNodeCard,
   getProjectObjectNodeChildren,
+  getProjectObjectNodeDoubleSide,
+  getProjectObjectNodeVisibleChildren,
   getProjectObjectNodeImage,
   getProjectObjectNodeLayout,
   getProjectObjectNodeRectTransform,
@@ -27,6 +32,8 @@ import {
   moveProjectObjectNode,
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
+  setProjectObjectNodeCard,
+  setProjectObjectNodeDoubleSide,
   setProjectObjectNodeImage,
   setProjectObjectNodeLayout,
   setProjectObjectNodeRectTransform,
@@ -186,6 +193,150 @@ describe("project object tree helpers", () => {
       x: 12,
       y: 0
     });
+  });
+
+  it("locks card dimensions to the selected size preset", () => {
+    const objectTree = [objectNode("card-1", "Card", "card")];
+    const bridgeCard: ProjectObjectCard = {
+      activeSide: "front",
+      sizePreset: "bridge"
+    };
+    const customCard: ProjectObjectCard = {
+      activeSide: "front",
+      sizePreset: "custom"
+    };
+    const oversizedRectTransform: ProjectObjectRectTransform = {
+      height: 200,
+      pivotX: 0.5,
+      pivotY: 0.5,
+      rotation: 0,
+      scaleX: 2,
+      scaleY: 3,
+      width: 200,
+      x: 10,
+      y: 20
+    };
+
+    const bridgeTree = setProjectObjectNodeCard(objectTree, "card-1", bridgeCard);
+    const resizedBridgeTree = setProjectObjectNodeRectTransform(
+      bridgeTree,
+      "card-1",
+      oversizedRectTransform
+    );
+    const customTree = setProjectObjectNodeCard(resizedBridgeTree, "card-1", customCard);
+    const resizedCustomTree = setProjectObjectNodeRectTransform(
+      customTree,
+      "card-1",
+      oversizedRectTransform
+    );
+
+    expect(getProjectObjectNodeCard(findProjectObjectNode(bridgeTree, "card-1")!)).toEqual(
+      bridgeCard
+    );
+    expect(getProjectObjectNodeDoubleSide(findProjectObjectNode(bridgeTree, "card-1")!)).toEqual({
+      enabled: true
+    });
+    expect(
+      getProjectObjectNodeRectTransform(findProjectObjectNode(resizedBridgeTree, "card-1")!)
+    ).toMatchObject({
+      height: 89,
+      scaleX: 1,
+      scaleY: 1,
+      width: 57,
+      x: 10,
+      y: 20
+    });
+    expect(
+      getProjectObjectNodeRectTransform(findProjectObjectNode(resizedCustomTree, "card-1")!)
+    ).toMatchObject({
+      height: 200,
+      scaleX: 2,
+      scaleY: 3,
+      width: 200
+    });
+    expect(
+      setProjectObjectNodeDoubleSide(objectTree, "card-1", { enabled: false })[0]?.components
+        ?.doubleSide
+    ).toEqual({ enabled: false });
+  });
+
+  it("keeps card children on the active card side", () => {
+    const objectTree = [objectNode("card-1", "Card", "card")];
+    const frontChild = objectNode("front-label", "Front label", "label");
+    const backChild = objectNode("back-label", "Back label", "label");
+    const frontTree = appendProjectObjectNode(objectTree, "card-1", frontChild);
+    const backCardTree = setProjectObjectNodeCard(frontTree, "card-1", {
+      activeSide: "back",
+      sizePreset: "poker"
+    });
+    const backTree = appendProjectObjectNode(backCardTree, "card-1", backChild);
+    const card = findProjectObjectNode(backTree, "card-1")!;
+    const movedOutTree = moveProjectObjectNode(backTree, "back-label", null, 1);
+
+    expect(findProjectObjectNode(backTree, "front-label")?.cardSide).toBe("front");
+    expect(findProjectObjectNode(backTree, "back-label")?.cardSide).toBe("back");
+    expect(getProjectObjectNodeVisibleChildren(card).map((child) => child.id)).toEqual([
+      "back-label"
+    ]);
+    expect(findProjectObjectNode(movedOutTree, "back-label")?.cardSide).toBeUndefined();
+  });
+
+  it("clips card and shape children by object kind", () => {
+    expect(doesProjectObjectClipChildren("card")).toBe(true);
+    expect(doesProjectObjectClipChildren("shape")).toBe(true);
+    expect(doesProjectObjectClipChildren("group")).toBe(false);
+    expect(doesProjectObjectClipChildren("label")).toBe(false);
+    expect(doesProjectObjectClipChildren("image")).toBe(false);
+  });
+
+  it("stores double-sided card appearance on the active side", () => {
+    const objectTree = [objectNode("card-1", "Card", "card")];
+    const frontAppearance: ProjectObjectAppearance = {
+      backgroundColor: "#f8fafc",
+      backgroundOpacity: 1,
+      borderColor: "#94a3b8",
+      borderRadius: 10,
+      borderStyle: "solid",
+      borderWidth: 2,
+      opacity: 1,
+      padding: 6
+    };
+    const backAppearance: ProjectObjectAppearance = {
+      backgroundColor: "#34d399",
+      backgroundOpacity: 1,
+      borderColor: "#047857",
+      borderRadius: 14,
+      borderStyle: "dashed",
+      borderWidth: 3,
+      opacity: 0.9,
+      padding: 8
+    };
+    const frontTree = setProjectObjectNodeAppearance(objectTree, "card-1", frontAppearance);
+    const backCardTree = setProjectObjectNodeCard(frontTree, "card-1", {
+      activeSide: "back",
+      sizePreset: "poker"
+    });
+    const backTree = setProjectObjectNodeAppearance(backCardTree, "card-1", backAppearance);
+    const frontAgainTree = setProjectObjectNodeCard(backTree, "card-1", {
+      activeSide: "front",
+      sizePreset: "poker"
+    });
+
+    expect(getProjectObjectNodeAppearance(findProjectObjectNode(backTree, "card-1")!)).toEqual(
+      backAppearance
+    );
+    expect(
+      getProjectObjectNodeAppearance(findProjectObjectNode(frontAgainTree, "card-1")!)
+    ).toEqual(frontAppearance);
+    expect(
+      findProjectObjectNode(frontAgainTree, "card-1")?.components?.doubleSide?.sideComponents
+    ).toMatchObject({
+      back: { appearance: backAppearance },
+      front: { appearance: frontAppearance }
+    });
+    expect(
+      findProjectObjectNode(frontAgainTree, "card-1")?.components?.appearance
+    ).toBeUndefined();
   });
 
   it("merges and updates behavior components without mutating the original tree", () => {

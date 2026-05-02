@@ -21,6 +21,10 @@ type ProjectObjectSurfaceProps = {
 };
 
 export function ProjectObjectSurface({ imageAssetById, object }: ProjectObjectSurfaceProps) {
+  if (object.kind === "card") {
+    return <CardVisual object={object} />;
+  }
+
   if (object.kind === "group") {
     return <GroupVisual object={object} />;
   }
@@ -53,6 +57,17 @@ function GroupVisual({ object }: ObjectVisualProps) {
         <span className="truncate">{object.name}</span>
       </div>
     </div>
+  );
+}
+
+function CardVisual({ object }: ObjectVisualProps) {
+  const appearance = getProjectObjectNodeAppearance(object);
+
+  return (
+    <div
+      className="relative h-full w-full overflow-hidden shadow-[0_14px_30px_rgba(15,23,42,0.16)]"
+      style={getAppearanceStyle(appearance)}
+    />
   );
 }
 

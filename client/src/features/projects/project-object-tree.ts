@@ -3,6 +3,8 @@ import type {
   ProjectObjectImage,
   ProjectFileKind,
   ProjectFileNode,
+  ProjectObjectCard,
+  ProjectObjectDoubleSide,
   ProjectObjectKind,
   ProjectObjectLayout,
   ProjectObjectNode,
@@ -83,6 +85,18 @@ export function getProjectObjectNodeChildren(
   }
 
   return findProjectObjectNode(objectTree, parentId)?.children ?? [];
+}
+
+export function getProjectObjectNodeVisibleChildren(object: ProjectObjectNode) {
+  const children = object.children ?? [];
+
+  if (object.kind !== "card") {
+    return children;
+  }
+
+  const activeSide = getProjectObjectNodeCard(object).activeSide;
+
+  return children.filter((child) => child.cardSide === activeSide);
 }
 
 export function getExpandableProjectObjectNodeIds(objectTree: ProjectObjectNode[]) {
@@ -168,6 +182,14 @@ export function getProjectObjectNodeAppearance(object: ProjectObjectNode): Proje
   return projectObjectComponentEngine.getAppearance(object);
 }
 
+export function getProjectObjectNodeCard(object: ProjectObjectNode): ProjectObjectCard {
+  return projectObjectComponentEngine.getCard(object);
+}
+
+export function getProjectObjectNodeDoubleSide(object: ProjectObjectNode): ProjectObjectDoubleSide {
+  return projectObjectComponentEngine.getDoubleSide(object);
+}
+
 export function getProjectObjectNodeText(object: ProjectObjectNode): ProjectObjectText {
   return projectObjectComponentEngine.getText(object);
 }
@@ -203,6 +225,30 @@ export function setProjectObjectNodeAppearance(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withAppearance(node, appearance)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeCard(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  card: ProjectObjectCard
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withCard(node, card)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeDoubleSide(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  doubleSide: ProjectObjectDoubleSide
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withDoubleSide(node, doubleSide)
   );
 
   return result.changed ? result.nodes : objectTree;
@@ -278,7 +324,7 @@ function appendProjectObjectNodeInChildren(
 
       return {
         ...item,
-        children: [...(item.children ?? []), node]
+        children: [...(item.children ?? []), getProjectObjectNodeForParent(node, item)]
       };
     }
 
@@ -304,9 +350,11 @@ function collectExpandableProjectObjectNodeIds(
   expandableIds: Set<string>
 ) {
   objectTree.forEach((node) => {
-    if (node.children?.length) {
+    const children = getProjectObjectNodeVisibleChildren(node);
+
+    if (children.length) {
       expandableIds.add(node.id);
-      collectExpandableProjectObjectNodeIds(node.children, expandableIds);
+      collectExpandableProjectObjectNodeIds(children, expandableIds);
     }
   });
 }
@@ -357,7 +405,7 @@ function insertProjectObjectNode(
   if (parentId === null) {
     return {
       changed: true,
-      nodes: insertAt(objectTree, node, index)
+      nodes: insertAt(objectTree, clearProjectObjectNodeCardSide(node), index)
     };
   }
 
@@ -368,7 +416,7 @@ function insertProjectObjectNode(
 
       return {
         ...item,
-        children: insertAt(item.children ?? [], node, index)
+        children: insertAt(item.children ?? [], getProjectObjectNodeForParent(node, item), index)
       };
     }
 
@@ -387,6 +435,31 @@ function insertProjectObjectNode(
   });
 
   return { changed, nodes };
+}
+
+function clearProjectObjectNodeCardSide(node: ProjectObjectNode): ProjectObjectNode {
+  if (!node.cardSide) {
+    return node;
+  }
+
+  const nextNode = { ...node };
+  delete nextNode.cardSide;
+
+  return nextNode;
+}
+
+function getProjectObjectNodeForParent(
+  node: ProjectObjectNode,
+  parent: ProjectObjectNode
+): ProjectObjectNode {
+  if (parent.kind !== "card") {
+    return clearProjectObjectNodeCardSide(node);
+  }
+
+  return {
+    ...node,
+    cardSide: getProjectObjectNodeCard(parent).activeSide
+  };
 }
 
 function isProjectObjectNodeDescendant(

@@ -42,6 +42,7 @@ import {
   findProjectObjectNode,
   findProjectObjectNodeLocation,
   getExpandableProjectObjectNodeIds,
+  getProjectObjectNodeVisibleChildren,
   moveProjectObjectNode,
   renameProjectObjectNode,
   setProjectObjectNodeVisibility,
@@ -365,7 +366,7 @@ export function ProjectObjectTreePanel({
     const targetParentId = dropIntent === "inside" ? targetObjectId : targetLocation.parentId;
     const targetIndex =
       dropIntent === "inside"
-        ? (targetLocation.node.children?.length ?? 0)
+        ? getProjectObjectNodeVisibleChildren(targetLocation.node).length
         : targetLocation.index + (dropIntent === "after" ? 1 : 0);
 
     if (
@@ -791,7 +792,7 @@ function ProjectObjectTreeNode({
     transform: getDragTransformStyle(transform)
   };
   const { node } = item;
-  const hasChildren = Boolean(node.children?.length);
+  const hasChildren = getProjectObjectNodeVisibleChildren(node).length > 0;
   const canHighlightDrop = Boolean(
     activeObjectId && activeObjectId !== node.id && !item.ancestorIds.includes(activeObjectId)
   );
@@ -1018,13 +1019,15 @@ function flattenProjectObjectTree(
       parentId
     };
 
-    if (!expandedObjectIds.has(node.id) || !node.children?.length) {
+    const children = getProjectObjectNodeVisibleChildren(node);
+
+    if (!expandedObjectIds.has(node.id) || !children.length) {
       return [item];
     }
 
     return [
       item,
-      ...flattenProjectObjectTree(node.children, expandedObjectIds, node.id, depth + 1, [
+      ...flattenProjectObjectTree(children, expandedObjectIds, node.id, depth + 1, [
         ...ancestorIds,
         node.id
       ])

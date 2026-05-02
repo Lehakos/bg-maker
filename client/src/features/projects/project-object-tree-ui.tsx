@@ -1,5 +1,14 @@
 import type { ProjectFileNode, ProjectObjectKind, ProjectObjectNode } from "@bg-maker/shared";
-import { Boxes, Component, Image, Rows3, Square, Type, type LucideProps } from "lucide-react";
+import {
+  Boxes,
+  Component,
+  CreditCard,
+  Image,
+  Rows3,
+  Square,
+  Type,
+  type LucideProps
+} from "lucide-react";
 
 type ProjectObjectKindIconProps = LucideProps & {
   kind: ProjectObjectKind;
@@ -14,6 +23,10 @@ type ProjectObjectTreeRootIconProps = LucideProps & {
 };
 
 export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindIconProps) {
+  if (kind === "card") {
+    return <CreditCard {...iconProps} />;
+  }
+
   if (kind === "label") {
     return <Type {...iconProps} />;
   }

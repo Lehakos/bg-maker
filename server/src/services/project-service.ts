@@ -10,6 +10,9 @@ import type {
   ProjectImageAssetContentType,
   ProjectObjectAppearance,
   ProjectObjectBorderStyle,
+  ProjectObjectCard,
+  ProjectObjectCardSide,
+  ProjectObjectCardSizePresetValue,
   ProjectObjectImage,
   ProjectObjectImageFit,
   ProjectObjectKind,
@@ -18,9 +21,12 @@ import type {
   ProjectObjectLayoutJustification,
   ProjectObjectLayoutMode,
   ProjectObjectNode,
+  ProjectObjectComponents,
+  ProjectObjectDoubleSide,
   ProjectObjectRectTransform,
   ProjectObjectShape,
   ProjectObjectShapeVariant,
+  ProjectObjectSideComponents,
   ProjectObjectText,
   ProjectObjectTextAlign,
   ProjectObjectTextFontStyle,
@@ -30,13 +36,19 @@ import type {
 import {
   createDefaultProjectObjectNode,
   getDefaultProjectObjectAppearance,
+  getDefaultProjectObjectCard,
+  getDefaultProjectObjectDoubleSide,
   getDefaultProjectObjectImage,
   getDefaultProjectObjectLayout,
   getDefaultProjectObjectRectTransform,
   getDefaultProjectObjectShape,
   getDefaultProjectObjectText,
+  getProjectObjectCardSizePreset,
+  getProjectObjectRectTransformWithCardSizePreset,
   projectAssetsFolderId,
   projectAssetsFolderName,
+  projectObjectCardCustomSizePresetId,
+  projectObjectCardSides,
   projectImageAssetContentTypes,
   projectObjectKinds as sharedProjectObjectKinds
 } from "@bg-maker/shared";
@@ -109,6 +121,7 @@ const projectObjectImageFits = new Set<ProjectObjectImageFit>([
 ]);
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
 const projectObjectKinds = new Set<ProjectObjectKind>(sharedProjectObjectKinds);
+const projectObjectCardSideSet = new Set<ProjectObjectCardSide>(projectObjectCardSides);
 const projectObjectLayoutAlignments = new Set<ProjectObjectLayoutAlignment>([
   "center",
   "end",
@@ -659,8 +672,12 @@ function normalizeProjectObjectNode(
   const kind = projectObjectKinds.has(record.kind as ProjectObjectKind)
     ? (record.kind as ProjectObjectKind)
     : "group";
+  const cardSide = projectObjectCardSideSet.has(record.cardSide as ProjectObjectCardSide)
+    ? (record.cardSide as ProjectObjectCardSide)
+    : undefined;
 
   return {
+    ...(cardSide ? { cardSide } : {}),
     id,
     name,
     kind,
@@ -676,15 +693,31 @@ function normalizeProjectObjectNode(
 
 function normalizeProjectObjectComponents(value: unknown, kind: ProjectObjectKind, name: string) {
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-  const components = {
+  const rectTransform = normalizeProjectObjectRectTransform(record.rectTransform, kind);
+  const components: ProjectObjectComponents = {
     appearance: normalizeProjectObjectAppearance(record.appearance, kind),
-    rectTransform: normalizeProjectObjectRectTransform(record.rectTransform, kind)
+    rectTransform
   };
+
+  if (kind === "card" || hasOwnRecordKey(record, "doubleSide")) {
+    components.doubleSide = normalizeProjectObjectDoubleSide(record.doubleSide, kind, name);
+  }
 
   if (kind === "group") {
     return {
       ...components,
       layout: normalizeProjectObjectLayout(record.layout)
+    };
+  }
+
+  if (kind === "card") {
+    const card = normalizeProjectObjectCard(record.card);
+
+    return {
+      ...components,
+      card,
+      layout: normalizeProjectObjectLayout(record.layout),
+      rectTransform: getProjectObjectRectTransformWithCardSizePreset(rectTransform, card)
     };
   }
 
@@ -806,9 +839,7 @@ function normalizeProjectObjectLayout(value: unknown): ProjectObjectLayout {
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
   return {
-    alignItems: projectObjectLayoutAlignments.has(
-      record.alignItems as ProjectObjectLayoutAlignment
-    )
+    alignItems: projectObjectLayoutAlignments.has(record.alignItems as ProjectObjectLayoutAlignment)
       ? (record.alignItems as ProjectObjectLayoutAlignment)
       : defaultLayout.alignItems,
     columns: normalizeFiniteNumber(record.columns, defaultLayout.columns, {
@@ -828,6 +859,107 @@ function normalizeProjectObjectLayout(value: unknown): ProjectObjectLayout {
       ? (record.mode as ProjectObjectLayoutMode)
       : defaultLayout.mode
   };
+}
+
+function normalizeProjectObjectCard(value: unknown): ProjectObjectCard {
+  const defaultCard = getDefaultProjectObjectCard();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const sizePreset =
+    typeof record.sizePreset === "string" &&
+    (record.sizePreset === projectObjectCardCustomSizePresetId ||
+      getProjectObjectCardSizePreset(record.sizePreset))
+      ? (record.sizePreset as ProjectObjectCardSizePresetValue)
+      : defaultCard.sizePreset;
+  const activeSide = projectObjectCardSideSet.has(record.activeSide as ProjectObjectCardSide)
+    ? (record.activeSide as ProjectObjectCardSide)
+    : defaultCard.activeSide;
+
+  return {
+    activeSide,
+    sizePreset
+  };
+}
+
+function normalizeProjectObjectDoubleSide(
+  value: unknown,
+  kind: ProjectObjectKind,
+  name: string
+): ProjectObjectDoubleSide {
+  const defaultDoubleSide = getDefaultProjectObjectDoubleSide(kind);
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const sideComponents = normalizeProjectObjectSideComponentOverrides(
+    record.sideComponents,
+    kind,
+    name
+  );
+  const doubleSide: ProjectObjectDoubleSide = {
+    enabled: typeof record.enabled === "boolean" ? record.enabled : defaultDoubleSide.enabled
+  };
+
+  if (sideComponents) {
+    doubleSide.sideComponents = sideComponents;
+  }
+
+  return doubleSide;
+}
+
+function normalizeProjectObjectSideComponentOverrides(
+  value: unknown,
+  kind: ProjectObjectKind,
+  name: string
+): ProjectObjectDoubleSide["sideComponents"] {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const sideComponents: Partial<Record<ProjectObjectCardSide, ProjectObjectSideComponents>> = {};
+
+  for (const side of projectObjectCardSides) {
+    const sideRecord = record[side];
+
+    if (!sideRecord || typeof sideRecord !== "object") {
+      continue;
+    }
+
+    const normalizedSideComponents = normalizeProjectObjectSideComponents(
+      sideRecord as Record<string, unknown>,
+      kind,
+      name
+    );
+
+    if (Object.keys(normalizedSideComponents).length) {
+      sideComponents[side] = normalizedSideComponents;
+    }
+  }
+
+  return Object.keys(sideComponents).length ? sideComponents : undefined;
+}
+
+function normalizeProjectObjectSideComponents(
+  record: Record<string, unknown>,
+  kind: ProjectObjectKind,
+  name: string
+): ProjectObjectSideComponents {
+  const components: ProjectObjectSideComponents = {};
+
+  if (hasOwnRecordKey(record, "appearance")) {
+    components.appearance = normalizeProjectObjectAppearance(record.appearance, kind);
+  }
+
+  if ((kind === "group" || kind === "card") && hasOwnRecordKey(record, "layout")) {
+    components.layout = normalizeProjectObjectLayout(record.layout);
+  }
+
+  if (kind === "label" && hasOwnRecordKey(record, "text")) {
+    components.text = normalizeProjectObjectText(record.text, kind, name);
+  }
+
+  if (kind === "image" && hasOwnRecordKey(record, "image")) {
+    components.image = normalizeProjectObjectImage(record.image);
+  }
+
+  if (kind === "shape" && hasOwnRecordKey(record, "shape")) {
+    components.shape = normalizeProjectObjectShape(record.shape);
+  }
+
+  return components;
 }
 
 function normalizeProjectObjectText(
@@ -962,14 +1094,12 @@ async function getProjectImageAssetMetadata(data: Buffer) {
 
 async function encodeProjectImageAsset(data: Buffer): Promise<Buffer> {
   try {
-    const image = sharp(data)
-      .rotate()
-      .resize({
-        fit: "inside",
-        height: maxProjectImageAssetDimension,
-        width: maxProjectImageAssetDimension,
-        withoutEnlargement: true
-      });
+    const image = sharp(data).rotate().resize({
+      fit: "inside",
+      height: maxProjectImageAssetDimension,
+      width: maxProjectImageAssetDimension,
+      withoutEnlargement: true
+    });
 
     return await image.webp({ effort: 4, quality: 82 }).toBuffer();
   } catch {
@@ -1015,6 +1145,10 @@ function normalizeHexColor(value: unknown, fallback: string) {
   const trimmedValue = value.trim();
 
   return /^#[0-9a-fA-F]{6}$/.test(trimmedValue) ? trimmedValue.toLowerCase() : fallback;
+}
+
+function hasOwnRecordKey(record: Record<string, unknown>, key: string) {
+  return Object.prototype.hasOwnProperty.call(record, key);
 }
 
 function normalizeProjectImageAssetContentType(
@@ -1080,10 +1214,7 @@ function collectProjectImageAssetIds(fileTree: ProjectFileNode[]) {
   return assetIds;
 }
 
-function collectProjectImageAssetIdsInNodes(
-  fileTree: ProjectFileNode[],
-  assetIds: Set<string>
-) {
+function collectProjectImageAssetIdsInNodes(fileTree: ProjectFileNode[], assetIds: Set<string>) {
   fileTree.forEach((node) => {
     if (node.type === "folder") {
       collectProjectImageAssetIdsInNodes(node.children ?? [], assetIds);

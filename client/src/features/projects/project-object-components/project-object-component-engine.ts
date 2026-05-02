@@ -1,5 +1,7 @@
 import type {
   ProjectObjectAppearance,
+  ProjectObjectCard,
+  ProjectObjectDoubleSide,
   ProjectObjectImage,
   ProjectObjectKind,
   ProjectObjectLayout,
@@ -13,6 +15,11 @@ import {
   getProjectObjectAppearanceComponent,
   withProjectObjectAppearanceComponent
 } from "./appearance-component";
+import { getProjectObjectCardComponent, withProjectObjectCardComponent } from "./card-component";
+import {
+  getProjectObjectDoubleSideComponent,
+  withProjectObjectDoubleSideComponent
+} from "./double-side-component";
 import { getProjectObjectImageComponent, withProjectObjectImageComponent } from "./image-component";
 import {
   getProjectObjectLayoutComponent,
@@ -39,6 +46,14 @@ export class ProjectObjectComponentEngine {
 
   getAppearance(object: ProjectObjectNode): ProjectObjectAppearance {
     return getProjectObjectAppearanceComponent(object);
+  }
+
+  getCard(object: ProjectObjectNode): ProjectObjectCard {
+    return getProjectObjectCardComponent(object);
+  }
+
+  getDoubleSide(object: ProjectObjectNode): ProjectObjectDoubleSide {
+    return getProjectObjectDoubleSideComponent(object);
   }
 
   getText(object: ProjectObjectNode): ProjectObjectText {
@@ -69,6 +84,17 @@ export class ProjectObjectComponentEngine {
     appearance: ProjectObjectAppearance
   ): ProjectObjectNode {
     return withProjectObjectAppearanceComponent(object, appearance);
+  }
+
+  withCard(object: ProjectObjectNode, card: ProjectObjectCard): ProjectObjectNode {
+    return withProjectObjectCardComponent(object, card);
+  }
+
+  withDoubleSide(
+    object: ProjectObjectNode,
+    doubleSide: ProjectObjectDoubleSide
+  ): ProjectObjectNode {
+    return withProjectObjectDoubleSideComponent(object, doubleSide);
   }
 
   withText(object: ProjectObjectNode, text: ProjectObjectText): ProjectObjectNode {

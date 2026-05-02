@@ -324,6 +324,134 @@ describe("ProjectService", () => {
     await expect(readStoredProjects()).resolves.toEqual([updatedProject]);
   });
 
+  it("normalizes card components and locks preset dimensions", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "object-file",
+        kind: "object",
+        name: "Object file",
+        objectTree: [
+          {
+            id: "card-1",
+            kind: "card",
+            name: "Card 1",
+            children: [
+              {
+                cardSide: "back",
+                id: "back-label",
+                kind: "label",
+                name: "Back label",
+                visible: true
+              }
+            ],
+            components: {
+              card: { activeSide: "back", sizePreset: "bridge" },
+              doubleSide: {
+                enabled: false,
+                sideComponents: {
+                  back: {
+                    appearance: {
+                      backgroundColor: "#ABCDEF",
+                      backgroundOpacity: -1,
+                      borderStyle: "dashed"
+                    },
+                    layout: { columns: 0, mode: "grid" },
+                    text: { content: "ignored on cards" }
+                  }
+                }
+              },
+              rectTransform: {
+                height: 200,
+                scaleX: 2,
+                scaleY: 3,
+                width: 200,
+                x: 12,
+                y: 24
+              }
+            },
+            visible: true
+          },
+          {
+            id: "card-2",
+            kind: "card",
+            name: "Card 2",
+            components: {
+              card: { activeSide: "nope", sizePreset: "custom" },
+              rectTransform: {
+                height: 123,
+                scaleX: 2,
+                scaleY: 3,
+                width: 77
+              }
+            },
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ]);
+
+    expect(updatedProject?.fileTree[0]?.objectTree).toMatchObject([
+      {
+        id: "card-1",
+        kind: "card",
+        children: [
+          {
+            cardSide: "back",
+            id: "back-label",
+            kind: "label"
+          }
+        ],
+        components: {
+          card: { activeSide: "back", sizePreset: "bridge" },
+          doubleSide: {
+            enabled: false,
+            sideComponents: {
+              back: {
+                appearance: {
+                  backgroundColor: "#abcdef",
+                  backgroundOpacity: 0,
+                  borderStyle: "dashed"
+                },
+                layout: {
+                  columns: 1,
+                  mode: "grid"
+                }
+              }
+            }
+          },
+          layout: {
+            mode: "free"
+          },
+          rectTransform: {
+            height: 89,
+            scaleX: 1,
+            scaleY: 1,
+            width: 57,
+            x: 12,
+            y: 24
+          }
+        }
+      },
+      {
+        id: "card-2",
+        kind: "card",
+        components: {
+          card: { activeSide: "front", sizePreset: "custom" },
+          doubleSide: { enabled: true },
+          rectTransform: {
+            height: 123,
+            scaleX: 2,
+            scaleY: 3,
+            width: 77
+          }
+        }
+      }
+    ]);
+  });
+
   it("restores the protected Assets folder as a root folder", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 

@@ -1,8 +1,15 @@
 import type {
   Project,
   ProjectFileNode,
+  ProjectObjectCard,
+  ProjectObjectCardSide,
   ProjectObjectNode,
   ProjectObjectRectTransform
+} from "@bg-maker/shared";
+import {
+  doesProjectObjectClipChildren,
+  hasProjectObjectLayout,
+  isProjectObjectCardSizePresetLocked
 } from "@bg-maker/shared";
 import {
   Maximize2,
@@ -11,7 +18,10 @@ import {
   Redo2,
   RotateCw,
   Rows3,
+  Scan,
   Undo2,
+  ZoomIn,
+  ZoomOut,
   type LucideIcon
 } from "lucide-react";
 import {
@@ -23,6 +33,7 @@ import {
   useState
 } from "react";
 import {
+  createUpdateProjectObjectTreeCommand,
   createUpdateProjectObjectRectTransformCommand,
   type ProjectEditorCommand
 } from "./project-editor-commands";
@@ -36,8 +47,12 @@ import {
 } from "./project-image-assets";
 import {
   getProjectObjectNodeAppearance,
+  getProjectObjectNodeCard,
+  getProjectObjectNodeDoubleSide,
+  getProjectObjectNodeVisibleChildren,
   getProjectObjectNodeLayout,
-  getProjectObjectNodeRectTransform
+  getProjectObjectNodeRectTransform,
+  setProjectObjectNodeCard
 } from "./project-object-tree";
 import { getProjectObjectLayoutRectTransformOverrides } from "./project-object-layout";
 import { ProjectObjectSurface } from "./ProjectObjectSurface";
@@ -56,6 +71,11 @@ type WorkspaceToolDefinition = {
   id: WorkspaceTool;
   label: string;
 };
+
+const minCanvasScale = 0.5;
+const maxCanvasScale = 6;
+const defaultCanvasScale = 2;
+const canvasScaleStep = 0.25;
 
 type ProjectWorkspaceAreaProps = {
   canRedo: boolean;
@@ -85,6 +105,7 @@ export function ProjectWorkspaceArea({
   onUndo
 }: ProjectWorkspaceAreaProps) {
   const [activeTool, setActiveTool] = useState<WorkspaceTool>("select");
+  const [canvasScale, setCanvasScale] = useState(defaultCanvasScale);
   const selectedNode = useMemo(
     () => (selectedNodeId ? findProjectFileNode(fileTree, selectedNodeId) : undefined),
     [fileTree, selectedNodeId]
@@ -109,15 +130,17 @@ export function ProjectWorkspaceArea({
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#eef1ed]">
       <WorkspaceToolbar
         activeTool={activeTool}
+        canvasScale={canvasScale}
         canRedo={canRedo}
         canUndo={canUndo}
+        onCanvasScaleChange={setCanvasScale}
         onRedo={onRedo}
         onToolChange={setActiveTool}
         onUndo={onUndo}
       />
 
       <div
-        className="min-h-0 flex-1 overflow-hidden"
+        className="min-h-0 flex-1 overflow-auto"
         style={{
           backgroundColor: "#e7ece6",
           backgroundImage:
@@ -127,6 +150,7 @@ export function ProjectWorkspaceArea({
       >
         <WorkspaceViewport
           activeTool={activeTool}
+          canvasScale={canvasScale}
           contentFileNode={contentFileNode}
           imageAssets={imageAssets}
           objectTree={objectTree}
@@ -143,8 +167,10 @@ export function ProjectWorkspaceArea({
 
 type WorkspaceToolbarProps = {
   activeTool: WorkspaceTool;
+  canvasScale: number;
   canRedo: boolean;
   canUndo: boolean;
+  onCanvasScaleChange: (scale: number) => void;
   onRedo: () => void;
   onToolChange: (tool: WorkspaceTool) => void;
   onUndo: () => void;
@@ -152,8 +178,10 @@ type WorkspaceToolbarProps = {
 
 function WorkspaceToolbar({
   activeTool,
+  canvasScale,
   canRedo,
   canUndo,
+  onCanvasScaleChange,
   onRedo,
   onToolChange,
   onUndo
@@ -181,6 +209,30 @@ function WorkspaceToolbar({
           );
         })}
       </nav>
+      <span className="h-6 w-px bg-slate-200" aria-hidden />
+      <div className="flex items-center gap-1" aria-label="Canvas zoom">
+        <ToolbarIconButton
+          disabled={canvasScale <= minCanvasScale}
+          icon={ZoomOut}
+          label="Zoom out"
+          onClick={() => onCanvasScaleChange(normalizeCanvasScale(canvasScale - canvasScaleStep))}
+        />
+        <button
+          className="h-8 min-w-14 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold tabular-nums text-slate-700 hover:border-slate-300 hover:text-slate-950"
+          title="Reset zoom"
+          type="button"
+          onClick={() => onCanvasScaleChange(defaultCanvasScale)}
+        >
+          {Math.round(canvasScale * 100)}%
+        </button>
+        <ToolbarIconButton
+          disabled={canvasScale >= maxCanvasScale}
+          icon={ZoomIn}
+          label="Zoom in"
+          onClick={() => onCanvasScaleChange(normalizeCanvasScale(canvasScale + canvasScaleStep))}
+        />
+        <ToolbarIconButton icon={Scan} label="Actual size" onClick={() => onCanvasScaleChange(1)} />
+      </div>
     </div>
   );
 }
@@ -223,6 +275,7 @@ function ToolbarIconButton({
 
 type WorkspaceViewportProps = {
   activeTool: WorkspaceTool;
+  canvasScale: number;
   contentFileNode: ProjectFileNode | null;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
@@ -235,6 +288,7 @@ type WorkspaceViewportProps = {
 
 function WorkspaceViewport({
   activeTool,
+  canvasScale,
   contentFileNode,
   imageAssets,
   objectTree,
@@ -248,6 +302,7 @@ function WorkspaceViewport({
     return (
       <TableLayoutWorkspace
         activeTool={activeTool}
+        canvasScale={canvasScale}
         fileNode={contentFileNode}
         imageAssets={imageAssets}
         objectTree={objectTree}
@@ -262,6 +317,7 @@ function WorkspaceViewport({
     return (
       <ObjectFileWorkspace
         activeTool={activeTool}
+        canvasScale={canvasScale}
         fileNode={contentFileNode}
         imageAssets={imageAssets}
         objectTree={objectTree}
@@ -287,6 +343,7 @@ function WorkspaceViewport({
 
 type TableLayoutWorkspaceProps = {
   activeTool: WorkspaceTool;
+  canvasScale: number;
   fileNode: ProjectFileNode;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
@@ -297,6 +354,7 @@ type TableLayoutWorkspaceProps = {
 
 function TableLayoutWorkspace({
   activeTool,
+  canvasScale,
   fileNode,
   imageAssets,
   objectTree,
@@ -318,6 +376,7 @@ function TableLayoutWorkspace({
         {objectTree.length > 0 ? (
           <ObjectScene
             activeTool={activeTool}
+            canvasScale={canvasScale}
             fileNodeId={fileNode.id}
             imageAssets={imageAssets}
             objectTree={objectTree}
@@ -340,6 +399,7 @@ function TableLayoutWorkspace({
 
 type ObjectFileWorkspaceProps = {
   activeTool: WorkspaceTool;
+  canvasScale: number;
   fileNode: ProjectFileNode;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
@@ -350,6 +410,7 @@ type ObjectFileWorkspaceProps = {
 
 function ObjectFileWorkspace({
   activeTool,
+  canvasScale,
   fileNode,
   imageAssets,
   objectTree,
@@ -362,6 +423,7 @@ function ObjectFileWorkspace({
       <div className="flex h-full min-h-0 items-center justify-center p-8">
         <ObjectScene
           activeTool={activeTool}
+          canvasScale={canvasScale}
           fileNodeId={fileNode.id}
           imageAssets={imageAssets}
           objectTree={objectTree}
@@ -383,6 +445,7 @@ function ObjectFileWorkspace({
 
 type ObjectSceneProps = {
   activeTool: WorkspaceTool;
+  canvasScale: number;
   fileNodeId: string;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
@@ -394,6 +457,7 @@ type ObjectSceneProps = {
 
 function ObjectScene({
   activeTool,
+  canvasScale,
   fileNodeId,
   imageAssets,
   objectTree,
@@ -407,17 +471,51 @@ function ObjectScene({
     [imageAssets]
   );
 
+  function handleCardSideChange(
+    objectId: string,
+    card: ProjectObjectCard,
+    activeSide: ProjectObjectCardSide
+  ) {
+    if (card.activeSide === activeSide) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeCard(objectTree, objectId, {
+      ...card,
+      activeSide
+    });
+
+    if (nextObjectTree === objectTree) {
+      return;
+    }
+
+    onExecuteCommand(
+      createUpdateProjectObjectTreeCommand({
+        after: nextObjectTree,
+        before: objectTree,
+        fileNodeId,
+        label: activeSide === "front" ? "Show card front" : "Show card back"
+      })
+    );
+  }
+
   return (
     <div
       className={cx(
         "relative overflow-visible",
         size === "small" ? "h-full w-full" : "h-[min(70vh,760px)] min-h-[420px] w-[min(92%,960px)]"
       )}
+      style={{
+        transform: `scale(${canvasScale})`,
+        transformOrigin: "center"
+      }}
     >
+      <WorkspaceAxes />
       {objectTree.map((object, index) => (
         <SceneObjectFrame
           key={object.id}
           activeTool={activeTool}
+          canvasScale={canvasScale}
           fileNodeId={fileNodeId}
           imageAssetById={imageAssetById}
           object={object}
@@ -425,10 +523,30 @@ function ObjectScene({
           selectedObjectId={selectedObjectId}
           siblingIndex={index}
           size={size}
+          onCardSideChange={handleCardSideChange}
           onExecuteCommand={onExecuteCommand}
           onSelectObject={onSelectObject}
         />
       ))}
+    </div>
+  );
+}
+
+function WorkspaceAxes() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 z-0 overflow-visible">
+      <span className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-sky-600/45 shadow-[0_0_0_1px_rgba(255,255,255,0.35)]" />
+      <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-rose-600/45 shadow-[0_0_0_1px_rgba(255,255,255,0.35)]" />
+      <span className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-500/40 bg-white/90 shadow-sm" />
+      <span className="absolute left-[calc(50%+8px)] top-[calc(50%+8px)] rounded border border-slate-300 bg-white/85 px-1 py-0.5 text-[10px] font-semibold leading-none tabular-nums text-slate-600 shadow-sm">
+        0,0
+      </span>
+      <span className="absolute right-2 top-[calc(50%+6px)] rounded border border-sky-200 bg-white/85 px-1 py-0.5 text-[10px] font-semibold leading-none text-sky-700 shadow-sm">
+        X
+      </span>
+      <span className="absolute left-[calc(50%+6px)] top-2 rounded border border-rose-200 bg-white/85 px-1 py-0.5 text-[10px] font-semibold leading-none text-rose-700 shadow-sm">
+        Y
+      </span>
     </div>
   );
 }
@@ -439,7 +557,11 @@ type SelectedFileWorkspaceProps = {
   parentFolderName?: string;
 };
 
-function SelectedFileWorkspace({ imageAssets, node, parentFolderName }: SelectedFileWorkspaceProps) {
+function SelectedFileWorkspace({
+  imageAssets,
+  node,
+  parentFolderName
+}: SelectedFileWorkspaceProps) {
   const childCount = node.type === "folder" ? (node.children ?? []).length : 0;
   const selectedImageAsset = node.imageAsset
     ? getProjectImageAssetOptionById(imageAssets, node.imageAsset.id)
@@ -496,6 +618,7 @@ function ProjectWorkspacePlaceholder() {
 
 type SceneObjectFrameProps = {
   activeTool: WorkspaceTool;
+  canvasScale: number;
   fileNodeId: string;
   imageAssetById: Map<string, ProjectImageAssetOption>;
   object: ProjectObjectNode;
@@ -504,6 +627,11 @@ type SceneObjectFrameProps = {
   selectedObjectId: string | null;
   siblingIndex: number;
   size: "large" | "medium" | "small";
+  onCardSideChange: (
+    objectId: string,
+    card: ProjectObjectCard,
+    activeSide: ProjectObjectCardSide
+  ) => void;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onSelectObject: (objectId: string | null) => void;
 };
@@ -511,6 +639,10 @@ type SceneObjectFrameProps = {
 type TransformDragState = {
   current: ProjectObjectRectTransform;
   pointerId: number;
+  rotateOffset?: number;
+  rotatePivotClientX?: number;
+  rotatePivotClientY?: number;
+  rotatePointerAngle?: number;
   startClientX: number;
   startClientY: number;
   before: ProjectObjectRectTransform;
@@ -518,6 +650,7 @@ type TransformDragState = {
 
 function SceneObjectFrame({
   activeTool,
+  canvasScale,
   fileNodeId,
   imageAssetById,
   object,
@@ -525,6 +658,7 @@ function SceneObjectFrame({
   root = false,
   selectedObjectId,
   siblingIndex,
+  onCardSideChange,
   onExecuteCommand,
   onSelectObject,
   size
@@ -535,17 +669,23 @@ function SceneObjectFrame({
   const visibleRectTransform = dragState?.current ?? baseVisibleRectTransform;
   const selected = selectedObjectId === object.id;
   const layoutManaged = Boolean(rectTransformOverride);
-  const interactive = selected && activeTool !== "select" && Boolean(fileNodeId) && !layoutManaged;
-  const children = object.children ?? [];
-  const childRectTransformOverrides =
-    object.kind === "group"
-      ? getProjectObjectLayoutRectTransformOverrides(
-          visibleRectTransform,
-          children,
-          getProjectObjectNodeLayout(object),
-          getProjectObjectNodeAppearance(object).padding
-        )
-      : new Map<string, ProjectObjectRectTransform>();
+  const appearance = getProjectObjectNodeAppearance(object);
+  const card = object.kind === "card" ? getProjectObjectNodeCard(object) : null;
+  const doubleSide = object.kind === "card" ? getProjectObjectNodeDoubleSide(object) : null;
+  const clipsChildren = doesProjectObjectClipChildren(object.kind);
+  const sizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
+  const resizeLocked = activeTool === "resize" && sizePresetLocked;
+  const interactive =
+    selected && activeTool !== "select" && Boolean(fileNodeId) && !layoutManaged && !resizeLocked;
+  const children = getProjectObjectNodeVisibleChildren(object);
+  const childRectTransformOverrides = hasProjectObjectLayout(object.kind)
+    ? getProjectObjectLayoutRectTransformOverrides(
+        visibleRectTransform,
+        children,
+        getProjectObjectNodeLayout(object),
+        appearance.padding
+      )
+    : new Map<string, ProjectObjectRectTransform>();
 
   if (!object.visible) {
     return null;
@@ -561,10 +701,16 @@ function SceneObjectFrame({
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
+    const rotateDragState =
+      activeTool === "rotate"
+        ? getRotateDragState(event.currentTarget, event.clientX, event.clientY)
+        : {};
+
     setDragState({
       before: objectRectTransform,
       current: objectRectTransform,
       pointerId: event.pointerId,
+      ...rotateDragState,
       startClientX: event.clientX,
       startClientY: event.clientY
     });
@@ -576,17 +722,16 @@ function SceneObjectFrame({
     }
 
     event.preventDefault();
-    const deltaX = event.clientX - dragState.startClientX;
-    const deltaY = event.clientY - dragState.startClientY;
 
     setDragState((currentState) =>
       currentState
-        ? {
-            ...currentState,
-            current: roundProjectObjectRectTransform(
-              getDraggedProjectObjectRectTransform(activeTool, currentState.before, deltaX, deltaY)
-            )
-          }
+        ? getNextTransformDragState(
+            currentState,
+            activeTool,
+            canvasScale,
+            event.clientX,
+            event.clientY
+          )
         : currentState
     );
   }
@@ -663,36 +808,115 @@ function SceneObjectFrame({
       onPointerUp={handlePointerUp}
     >
       <ProjectObjectSurface imageAssetById={imageAssetById} object={object} />
-      {children.map((child, index) => (
-        <SceneObjectFrame
-          key={child.id}
-          activeTool={activeTool}
-          fileNodeId={fileNodeId}
-          imageAssetById={imageAssetById}
-          object={child}
-          rectTransformOverride={childRectTransformOverrides.get(child.id)}
-          selectedObjectId={selectedObjectId}
-          siblingIndex={index}
-          size={size}
-          onExecuteCommand={onExecuteCommand}
-          onSelectObject={onSelectObject}
+      <div
+        className={cx(
+          "absolute inset-0",
+          clipsChildren ? "overflow-hidden" : "overflow-visible"
+        )}
+        style={{ borderRadius: `${appearance.borderRadius}px` }}
+      >
+        {children.map((child, index) => (
+          <SceneObjectFrame
+            key={child.id}
+            activeTool={activeTool}
+            canvasScale={canvasScale}
+            fileNodeId={fileNodeId}
+            imageAssetById={imageAssetById}
+            object={child}
+            rectTransformOverride={childRectTransformOverrides.get(child.id)}
+            selectedObjectId={selectedObjectId}
+            siblingIndex={index}
+            size={size}
+            onCardSideChange={onCardSideChange}
+            onExecuteCommand={onExecuteCommand}
+            onSelectObject={onSelectObject}
+          />
+        ))}
+      </div>
+      {selected && card && doubleSide?.enabled ? (
+        <CardSideSwitcher
+          activeSide={card.activeSide}
+          canvasScale={canvasScale}
+          onSideChange={(activeSide) => onCardSideChange(object.id, card, activeSide)}
         />
-      ))}
-      {selected ? <ObjectSelectionOverlay activeTool={layoutManaged ? "select" : activeTool} /> : null}
+      ) : null}
+      {selected ? (
+        <ObjectSelectionOverlay
+          activeTool={layoutManaged || resizeLocked ? "select" : activeTool}
+          canvasScale={canvasScale}
+          topControlsOffset={card && doubleSide?.enabled ? 44 : 0}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+type CardSideSwitcherProps = {
+  activeSide: ProjectObjectCardSide;
+  canvasScale: number;
+  onSideChange: (side: ProjectObjectCardSide) => void;
+};
+
+function CardSideSwitcher({ activeSide, canvasScale, onSideChange }: CardSideSwitcherProps) {
+  return (
+    <div
+      aria-label="Card side"
+      className="absolute left-1/2 z-[60] flex h-8 items-center rounded-md border border-sky-200 bg-white p-0.5 shadow-lg shadow-slate-900/10"
+      style={{
+        bottom: `calc(100% + ${10 / canvasScale}px)`,
+        transform: `translateX(-50%) scale(${1 / canvasScale})`,
+        transformOrigin: "bottom center"
+      }}
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      {(["front", "back"] as const).map((side) => {
+        const active = activeSide === side;
+
+        return (
+          <button
+            key={side}
+            aria-pressed={active}
+            className={cx(
+              "h-7 min-w-14 rounded px-2 text-xs font-semibold transition-colors",
+              active
+                ? "bg-sky-500 text-white shadow-sm"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+            )}
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSideChange(side);
+            }}
+          >
+            {side === "front" ? "Front" : "Back"}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 type ObjectSelectionOverlayProps = {
   activeTool: WorkspaceTool;
+  canvasScale: number;
+  topControlsOffset: number;
 };
 
-function ObjectSelectionOverlay({ activeTool }: ObjectSelectionOverlayProps) {
+function ObjectSelectionOverlay({
+  activeTool,
+  canvasScale,
+  topControlsOffset
+}: ObjectSelectionOverlayProps) {
   return (
     <>
       <span className="pointer-events-none absolute inset-0 z-40 rounded-lg ring-2 ring-sky-500 ring-offset-2 ring-offset-[#e7ece6]" />
       <div className="pointer-events-none absolute inset-0 z-50">
-        <WorkspaceToolHandles activeTool={activeTool} />
+        <WorkspaceToolHandles
+          activeTool={activeTool}
+          canvasScale={canvasScale}
+          topControlsOffset={topControlsOffset}
+        />
       </div>
     </>
   );
@@ -700,14 +924,41 @@ function ObjectSelectionOverlay({ activeTool }: ObjectSelectionOverlayProps) {
 
 type WorkspaceToolHandlesProps = {
   activeTool: WorkspaceTool;
+  canvasScale: number;
+  topControlsOffset: number;
 };
 
-function WorkspaceToolHandles({ activeTool }: WorkspaceToolHandlesProps) {
+function WorkspaceToolHandles({
+  activeTool,
+  canvasScale,
+  topControlsOffset
+}: WorkspaceToolHandlesProps) {
+  const inverseCanvasScale = 1 / canvasScale;
+
   if (activeTool === "rotate") {
+    const handleTop = -62 - topControlsOffset;
+    const lineTop = -46 - topControlsOffset;
+    const lineHeight = 40 + topControlsOffset;
+
     return (
       <>
-        <span className="absolute left-1/2 top-[-46px] h-10 w-px -translate-x-1/2 bg-sky-500" />
-        <span className="pointer-events-auto absolute left-1/2 top-[-62px] flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-sky-500 bg-white text-sky-700 shadow-sm">
+        <span
+          className="absolute left-1/2 bg-sky-500"
+          style={{
+            height: `${lineHeight / canvasScale}px`,
+            top: `${lineTop / canvasScale}px`,
+            transform: "translateX(-50%)",
+            width: `${1 / canvasScale}px`
+          }}
+        />
+        <span
+          className="pointer-events-auto absolute left-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-sky-500 bg-white text-sky-700 shadow-sm"
+          style={{
+            top: `${handleTop / canvasScale}px`,
+            transform: `translateX(-50%) scale(${inverseCanvasScale})`,
+            transformOrigin: "center"
+          }}
+        >
           <RotateCw size={16} />
         </span>
       </>
@@ -716,7 +967,13 @@ function WorkspaceToolHandles({ activeTool }: WorkspaceToolHandlesProps) {
 
   if (activeTool === "move") {
     return (
-      <span className="pointer-events-auto absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-sky-500 bg-white/95 text-sky-700 shadow-sm">
+      <span
+        className="pointer-events-auto absolute left-1/2 top-1/2 flex h-10 w-10 items-center justify-center rounded-full border border-sky-500 bg-white/95 text-sky-700 shadow-sm"
+        style={{
+          transform: `translate(-50%, -50%) scale(${inverseCanvasScale})`,
+          transformOrigin: "center"
+        }}
+      >
         <Move size={18} />
       </span>
     );
@@ -724,7 +981,15 @@ function WorkspaceToolHandles({ activeTool }: WorkspaceToolHandlesProps) {
 
   if (activeTool === "resize") {
     return (
-      <span className="pointer-events-auto absolute -bottom-4 -right-4 flex h-8 w-8 items-center justify-center rounded-full border border-sky-500 bg-white text-sky-700 shadow-sm">
+      <span
+        className="pointer-events-auto absolute flex h-8 w-8 items-center justify-center rounded-full border border-sky-500 bg-white text-sky-700 shadow-sm"
+        style={{
+          bottom: `${-16 / canvasScale}px`,
+          right: `${-16 / canvasScale}px`,
+          transform: `scale(${inverseCanvasScale})`,
+          transformOrigin: "center"
+        }}
+      >
         <Maximize2 size={15} />
       </span>
     );
@@ -767,11 +1032,111 @@ function getSceneObjectFrameStyle(
   };
 }
 
+function getRotateDragState(element: HTMLElement, clientX: number, clientY: number) {
+  const pivot = getElementCenterClientPoint(element);
+  const pointerAngle = getPointerAngleDegrees(clientX, clientY, pivot.x, pivot.y);
+
+  return {
+    rotateOffset: 0,
+    rotatePivotClientX: pivot.x,
+    rotatePivotClientY: pivot.y,
+    rotatePointerAngle: pointerAngle
+  };
+}
+
+function getNextTransformDragState(
+  currentState: TransformDragState,
+  activeTool: WorkspaceTool,
+  canvasScale: number,
+  clientX: number,
+  clientY: number
+): TransformDragState {
+  const deltaX = (clientX - currentState.startClientX) / canvasScale;
+  const deltaY = (clientY - currentState.startClientY) / canvasScale;
+  const rotateDragUpdate = getRotateDragUpdate(currentState, activeTool, clientX, clientY);
+
+  return {
+    ...currentState,
+    ...rotateDragUpdate,
+    current: roundProjectObjectRectTransform(
+      getDraggedProjectObjectRectTransform(
+        activeTool,
+        currentState.before,
+        deltaX,
+        deltaY,
+        rotateDragUpdate.rotateOffset ?? currentState.rotateOffset ?? 0
+      )
+    )
+  };
+}
+
+function getRotateDragUpdate(
+  currentState: TransformDragState,
+  activeTool: WorkspaceTool,
+  clientX: number,
+  clientY: number
+): Pick<TransformDragState, "rotateOffset" | "rotatePointerAngle"> {
+  if (
+    activeTool !== "rotate" ||
+    currentState.rotatePivotClientX === undefined ||
+    currentState.rotatePivotClientY === undefined ||
+    currentState.rotatePointerAngle === undefined
+  ) {
+    return {};
+  }
+
+  const pointerAngle = getPointerAngleDegrees(
+    clientX,
+    clientY,
+    currentState.rotatePivotClientX,
+    currentState.rotatePivotClientY
+  );
+  const angleDelta = getShortestAngleDelta(pointerAngle, currentState.rotatePointerAngle);
+
+  return {
+    rotateOffset: (currentState.rotateOffset ?? 0) + angleDelta,
+    rotatePointerAngle: pointerAngle
+  };
+}
+
+function getElementCenterClientPoint(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2
+  };
+}
+
+function getPointerAngleDegrees(
+  clientX: number,
+  clientY: number,
+  pivotClientX: number,
+  pivotClientY: number
+) {
+  return (Math.atan2(clientY - pivotClientY, clientX - pivotClientX) * 180) / Math.PI;
+}
+
+function getShortestAngleDelta(currentAngle: number, previousAngle: number) {
+  let delta = currentAngle - previousAngle;
+
+  while (delta > 180) {
+    delta -= 360;
+  }
+
+  while (delta < -180) {
+    delta += 360;
+  }
+
+  return delta;
+}
+
 function getDraggedProjectObjectRectTransform(
   activeTool: WorkspaceTool,
   before: ProjectObjectRectTransform,
   deltaX: number,
-  deltaY: number
+  deltaY: number,
+  rotateOffset = 0
 ): ProjectObjectRectTransform {
   if (activeTool === "move") {
     return {
@@ -784,15 +1149,15 @@ function getDraggedProjectObjectRectTransform(
   if (activeTool === "rotate") {
     return {
       ...before,
-      rotation: before.rotation + deltaX * 0.45
+      rotation: before.rotation + rotateOffset
     };
   }
 
   if (activeTool === "resize") {
     return {
       ...before,
-      height: clamp(before.height + deltaY, 24, 2000),
-      width: clamp(before.width + deltaX, 24, 2000)
+      height: clamp(before.height + deltaY, 1, 2000),
+      width: clamp(before.width + deltaX, 1, 2000)
     };
   }
 
@@ -850,6 +1215,14 @@ function getRectTransformCommandLabel(activeTool: WorkspaceTool) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeCanvasScale(value: number) {
+  return clamp(
+    Math.round(value / canvasScaleStep) * canvasScaleStep,
+    minCanvasScale,
+    maxCanvasScale
+  );
 }
 
 function roundTo(value: number, decimals: number) {

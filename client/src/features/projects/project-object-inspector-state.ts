@@ -1,6 +1,9 @@
 import type {
   ProjectObjectAppearance,
   ProjectObjectBorderStyle,
+  ProjectObjectCard,
+  ProjectObjectCardSide,
+  ProjectObjectCardSizePresetValue,
   ProjectObjectImage,
   ProjectObjectImageFit,
   ProjectObjectLayout,
@@ -14,6 +17,11 @@ import type {
   ProjectObjectTextAlign,
   ProjectObjectTextFontStyle,
   ProjectObjectTextVerticalAlign
+} from "@bg-maker/shared";
+import {
+  projectObjectCardCustomSizePresetId,
+  projectObjectCardSides,
+  projectObjectCardSizePresets
 } from "@bg-maker/shared";
 
 export type RectTransformFieldKey = keyof ProjectObjectRectTransform;
@@ -30,6 +38,12 @@ export type AppearanceDraft = {
   borderWidth: string;
   opacity: string;
   padding: string;
+};
+
+export type CardFieldKey = keyof ProjectObjectCard;
+export type CardDraft = {
+  activeSide: ProjectObjectCardSide;
+  sizePreset: ProjectObjectCardSizePresetValue;
 };
 
 export type TextFieldKey = keyof ProjectObjectText;
@@ -117,6 +131,11 @@ export const layoutNumberFieldSettings = {
 
 const borderStyles = new Set<ProjectObjectBorderStyle>(["none", "solid", "dashed", "dotted"]);
 const imageFits = new Set<ProjectObjectImageFit>(["contain", "cover", "fill", "scaleDown"]);
+const cardSizePresetValues = new Set<ProjectObjectCardSizePresetValue>([
+  projectObjectCardCustomSizePresetId,
+  ...projectObjectCardSizePresets.map((preset) => preset.id)
+]);
+const cardSides = new Set<ProjectObjectCardSide>(projectObjectCardSides);
 const layoutAlignments = new Set<ProjectObjectLayoutAlignment>(["center", "end", "start"]);
 const layoutJustifications = new Set<ProjectObjectLayoutJustification>([
   "center",
@@ -242,6 +261,13 @@ export function createAppearanceDraft(appearance: ProjectObjectAppearance): Appe
   };
 }
 
+export function createCardDraft(card: ProjectObjectCard): CardDraft {
+  return {
+    activeSide: card.activeSide,
+    sizePreset: card.sizePreset
+  };
+}
+
 export function createTextDraft(text: ProjectObjectText): TextDraft {
   return {
     color: text.color,
@@ -286,6 +312,20 @@ export function getAppearanceWithDraftField(
   }
 
   return areAppearancesEqual(appearance, nextAppearance) ? null : nextAppearance;
+}
+
+export function getCardWithDraftField(
+  card: ProjectObjectCard,
+  fieldKey: CardFieldKey,
+  value: string
+) {
+  const nextCard = createNextCard(card, fieldKey, value);
+
+  if (!nextCard) {
+    return null;
+  }
+
+  return areCardsEqual(card, nextCard) ? null : nextCard;
 }
 
 export function getTextWithDraftField(
@@ -456,6 +496,26 @@ function createNextAppearance(
   };
 }
 
+function createNextCard(
+  card: ProjectObjectCard,
+  fieldKey: CardFieldKey,
+  value: string
+): ProjectObjectCard | null {
+  if (fieldKey === "activeSide") {
+    return cardSides.has(value as ProjectObjectCardSide)
+      ? { ...card, activeSide: value as ProjectObjectCardSide }
+      : null;
+  }
+
+  if (fieldKey === "sizePreset") {
+    return cardSizePresetValues.has(value as ProjectObjectCardSizePresetValue)
+      ? { ...card, sizePreset: value as ProjectObjectCardSizePresetValue }
+      : null;
+  }
+
+  return null;
+}
+
 function createNextText(
   text: ProjectObjectText,
   fieldKey: TextFieldKey,
@@ -578,6 +638,10 @@ function areAppearancesEqual(left: ProjectObjectAppearance, right: ProjectObject
     left.opacity === right.opacity &&
     left.padding === right.padding
   );
+}
+
+function areCardsEqual(left: ProjectObjectCard, right: ProjectObjectCard) {
+  return left.activeSide === right.activeSide && left.sizePreset === right.sizePreset;
 }
 
 function areTextsEqual(left: ProjectObjectText, right: ProjectObjectText) {

@@ -16,7 +16,7 @@ export type ProjectFileKind = "tableSetup" | "object" | "image" | "document";
 export const projectAssetsFolderId = "assets";
 export const projectAssetsFolderName = "Assets";
 
-export const projectObjectKinds = ["group", "label", "image", "shape"] as const;
+export const projectObjectKinds = ["group", "card", "label", "image", "shape"] as const;
 
 export type ProjectObjectKind = (typeof projectObjectKinds)[number];
 
@@ -71,6 +71,48 @@ export type ProjectObjectImage = {
   positionY: number;
 };
 
+export const projectObjectCardCustomSizePresetId = "custom" as const;
+
+export const projectObjectCardSizePresets = [
+  { id: "poker", label: "Poker", width: 63, height: 88 },
+  { id: "bridge", label: "Bridge", width: 57, height: 89 },
+  { id: "standardAmerican", label: "Standard American", width: 56, height: 87 },
+  { id: "standardEuro", label: "Standard Euro", width: 59, height: 92 },
+  { id: "miniAmerican", label: "Mini American", width: 41, height: 63 },
+  { id: "tarot", label: "Tarot", width: 70, height: 120 },
+  { id: "square", label: "Square", width: 70, height: 70 }
+] as const;
+
+export type ProjectObjectCardSizePreset = (typeof projectObjectCardSizePresets)[number];
+
+export type ProjectObjectCardSizePresetId = ProjectObjectCardSizePreset["id"];
+
+export type ProjectObjectCardSizePresetValue =
+  | ProjectObjectCardSizePresetId
+  | typeof projectObjectCardCustomSizePresetId;
+
+export const projectObjectCardSides = ["front", "back"] as const;
+
+export type ProjectObjectCardSide = (typeof projectObjectCardSides)[number];
+
+export type ProjectObjectCard = {
+  activeSide: ProjectObjectCardSide;
+  sizePreset: ProjectObjectCardSizePresetValue;
+};
+
+export type ProjectObjectSideComponents = {
+  appearance?: ProjectObjectAppearance;
+  image?: ProjectObjectImage;
+  layout?: ProjectObjectLayout;
+  shape?: ProjectObjectShape;
+  text?: ProjectObjectText;
+};
+
+export type ProjectObjectDoubleSide = {
+  enabled: boolean;
+  sideComponents?: Partial<Record<ProjectObjectCardSide, ProjectObjectSideComponents>>;
+};
+
 export type ProjectObjectLayoutMode = "free" | "grid" | "horizontal" | "vertical";
 
 export type ProjectObjectLayoutAlignment = "center" | "end" | "start";
@@ -105,6 +147,8 @@ export type ProjectObjectRectTransform = {
 
 export type ProjectObjectComponents = {
   appearance?: ProjectObjectAppearance;
+  card?: ProjectObjectCard;
+  doubleSide?: ProjectObjectDoubleSide;
   image?: ProjectObjectImage;
   layout?: ProjectObjectLayout;
   rectTransform?: ProjectObjectRectTransform;
@@ -113,6 +157,7 @@ export type ProjectObjectComponents = {
 };
 
 export type ProjectObjectNode = {
+  cardSide?: ProjectObjectCardSide;
   id: string;
   name: string;
   kind: ProjectObjectKind;
@@ -170,6 +215,7 @@ export type ApiErrorResponse = {
 };
 
 const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; width: number }> = {
+  card: { height: 88, width: 63 },
   group: { height: 240, width: 320 },
   image: { height: 180, width: 240 },
   label: { height: 32, width: 160 },
@@ -177,6 +223,7 @@ const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; wid
 };
 
 const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
+  card: "New card",
   group: "New group",
   image: "New image",
   label: "New label",
@@ -184,6 +231,16 @@ const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
 };
 
 const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAppearance> = {
+  card: {
+    backgroundColor: "#ffffff",
+    backgroundOpacity: 1,
+    borderColor: "#94a3b8",
+    borderRadius: 5,
+    borderStyle: "solid",
+    borderWidth: 1,
+    opacity: 1,
+    padding: 0
+  },
   group: {
     backgroundColor: "#f0fdfa",
     backgroundOpacity: 1,
@@ -281,6 +338,21 @@ export function getDefaultProjectObjectImage(): ProjectObjectImage {
   };
 }
 
+export function getDefaultProjectObjectCard(): ProjectObjectCard {
+  return {
+    activeSide: "front",
+    sizePreset: "poker"
+  };
+}
+
+export function getDefaultProjectObjectDoubleSide(
+  kind: ProjectObjectKind = "card"
+): ProjectObjectDoubleSide {
+  return {
+    enabled: kind === "card"
+  };
+}
+
 export function getDefaultProjectObjectLayout(): ProjectObjectLayout {
   return {
     alignItems: "start",
@@ -289,6 +361,43 @@ export function getDefaultProjectObjectLayout(): ProjectObjectLayout {
     justifyContent: "start",
     mode: "free"
   };
+}
+
+export function getProjectObjectCardSizePreset(
+  sizePreset: ProjectObjectCardSizePresetValue | string
+): ProjectObjectCardSizePreset | undefined {
+  return projectObjectCardSizePresets.find((preset) => preset.id === sizePreset);
+}
+
+export function isProjectObjectCardSizePresetLocked(card: ProjectObjectCard) {
+  return Boolean(getProjectObjectCardSizePreset(card.sizePreset));
+}
+
+export function getProjectObjectRectTransformWithCardSizePreset(
+  rectTransform: ProjectObjectRectTransform,
+  card: ProjectObjectCard
+): ProjectObjectRectTransform {
+  const preset = getProjectObjectCardSizePreset(card.sizePreset);
+
+  if (!preset) {
+    return rectTransform;
+  }
+
+  return {
+    ...rectTransform,
+    height: preset.height,
+    scaleX: 1,
+    scaleY: 1,
+    width: preset.width
+  };
+}
+
+export function hasProjectObjectLayout(kind: ProjectObjectKind) {
+  return kind === "group" || kind === "card";
+}
+
+export function doesProjectObjectClipChildren(kind: ProjectObjectKind) {
+  return kind === "card" || kind === "shape";
 }
 
 export function getDefaultProjectObjectShape(): ProjectObjectShape {
@@ -307,6 +416,12 @@ export function createDefaultProjectObjectComponents(
   };
 
   if (kind === "group") {
+    components.layout = getDefaultProjectObjectLayout();
+  }
+
+  if (kind === "card") {
+    components.card = getDefaultProjectObjectCard();
+    components.doubleSide = getDefaultProjectObjectDoubleSide(kind);
     components.layout = getDefaultProjectObjectLayout();
   }
 

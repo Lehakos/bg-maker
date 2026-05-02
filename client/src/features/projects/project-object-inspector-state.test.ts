@@ -1,5 +1,6 @@
 import type {
   ProjectObjectAppearance,
+  ProjectObjectCard,
   ProjectObjectImage,
   ProjectObjectLayout,
   ProjectObjectRectTransform,
@@ -9,11 +10,13 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
   createAppearanceDraft,
+  createCardDraft,
   createImageDraft,
   createLayoutDraft,
   createRectTransformDraft,
   createTextDraft,
   getAppearanceWithDraftField,
+  getCardWithDraftField,
   getImageWithDraftField,
   getLayoutWithDraftField,
   getRectTransformWithDraftField,
@@ -51,6 +54,11 @@ const appearance: ProjectObjectAppearance = {
   borderWidth: 2.4,
   opacity: 0.876,
   padding: 4.2
+};
+
+const card: ProjectObjectCard = {
+  activeSide: "front",
+  sizePreset: "poker"
 };
 
 const text: ProjectObjectText = {
@@ -150,6 +158,28 @@ describe("project object inspector state", () => {
       borderStyle: "dashed"
     });
     expect(getAppearanceWithDraftField(appearance, "borderColor", "red")).toBeNull();
+  });
+
+  it("creates and updates card drafts", () => {
+    expect(createCardDraft(card)).toEqual({
+      activeSide: "front",
+      sizePreset: "poker"
+    });
+    expect(getCardWithDraftField(card, "activeSide", "back")).toEqual({
+      activeSide: "back",
+      sizePreset: "poker"
+    });
+    expect(getCardWithDraftField(card, "sizePreset", "bridge")).toEqual({
+      activeSide: "front",
+      sizePreset: "bridge"
+    });
+    expect(getCardWithDraftField(card, "sizePreset", "custom")).toEqual({
+      activeSide: "front",
+      sizePreset: "custom"
+    });
+    expect(getCardWithDraftField(card, "activeSide", "middle")).toBeNull();
+    expect(getCardWithDraftField(card, "sizePreset", "unknown-size")).toBeNull();
+    expect(getCardWithDraftField(card, "sizePreset", "poker")).toBeNull();
   });
 
   it("creates and normalizes text drafts", () => {

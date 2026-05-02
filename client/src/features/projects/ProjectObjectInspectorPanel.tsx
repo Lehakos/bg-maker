@@ -1,6 +1,8 @@
 import type {
   ProjectFileNode,
   ProjectObjectAppearance,
+  ProjectObjectCard,
+  ProjectObjectCardSizePresetValue,
   ProjectObjectImage,
   ProjectObjectLayout,
   ProjectObjectLayoutAlignment,
@@ -10,6 +12,12 @@ import type {
   ProjectObjectText,
   ProjectObjectTextAlign,
   ProjectObjectTextVerticalAlign
+} from "@bg-maker/shared";
+import {
+  hasProjectObjectLayout,
+  isProjectObjectCardSizePresetLocked,
+  projectObjectCardCustomSizePresetId,
+  projectObjectCardSizePresets
 } from "@bg-maker/shared";
 import {
   AlignCenter,
@@ -26,6 +34,7 @@ import {
   Box,
   Bold,
   Columns3,
+  CreditCard,
   Eye,
   EyeOff,
   Grid3x3,
@@ -58,6 +67,8 @@ import {
 } from "./project-image-assets";
 import {
   getProjectObjectNodeAppearance,
+  getProjectObjectNodeCard,
+  getProjectObjectNodeDoubleSide,
   getProjectObjectNodeImage,
   getProjectObjectNodeLayout,
   getProjectObjectNodeRectTransform,
@@ -65,6 +76,8 @@ import {
   getProjectObjectNodeText,
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
+  setProjectObjectNodeCard,
+  setProjectObjectNodeDoubleSide,
   setProjectObjectNodeImage,
   setProjectObjectNodeLayout,
   setProjectObjectNodeRectTransform,
@@ -81,6 +94,7 @@ import {
 import {
   createRectTransformDraft,
   createAppearanceDraft,
+  createCardDraft,
   createImageDraft,
   createLayoutDraft,
   createTextDraft,
@@ -90,6 +104,7 @@ import {
   formatRectTransformValue,
   formatTextNumberValue,
   getAppearanceWithDraftField,
+  getCardWithDraftField,
   getImageWithDraftField,
   getLayoutWithDraftField,
   getRectTransformWithDraftField,
@@ -111,6 +126,8 @@ import {
   textNumberFieldSettings,
   type AppearanceDraft,
   type AppearanceFieldKey,
+  type CardDraft,
+  type CardFieldKey,
   type ImageDraft,
   type ImageFieldKey,
   type LayoutDraft,
@@ -146,8 +163,18 @@ const sizeFields: readonly RectTransformFieldDefinition[] = [
   { key: "height", label: "Height" }
 ];
 
-const transformFields: readonly RectTransformFieldDefinition[] = [
-  { key: "rotation", label: "Rotation" },
+const cardPresetLockedRectTransformFields = new Set<RectTransformFieldKey>([
+  "height",
+  "scaleX",
+  "scaleY",
+  "width"
+]);
+
+const rotationFields: readonly RectTransformFieldDefinition[] = [
+  { key: "rotation", label: "Rotation" }
+];
+
+const scaleFields: readonly RectTransformFieldDefinition[] = [
   { key: "scaleX", label: "Scale X" },
   { key: "scaleY", label: "Scale Y" }
 ];
@@ -201,6 +228,17 @@ const textNumberFields: readonly TextNumberFieldDefinition[] = [
 const imageNumberFields: readonly ImageNumberFieldDefinition[] = [
   { key: "positionX", label: "Pos X" },
   { key: "positionY", label: "Pos Y" }
+];
+
+const cardSizePresetOptions: readonly {
+  label: string;
+  value: ProjectObjectCardSizePresetValue;
+}[] = [
+  { label: "Custom", value: projectObjectCardCustomSizePresetId },
+  ...projectObjectCardSizePresets.map((preset) => ({
+    label: `${preset.label} (${preset.width} x ${preset.height})`,
+    value: preset.id
+  }))
 ];
 
 const layoutColumnsField = {
@@ -353,8 +391,19 @@ export function ProjectObjectInspectorPanel({
     () => (selectedObject ? getProjectObjectNodeAppearance(selectedObject) : null),
     [selectedObject]
   );
+  const card = useMemo(
+    () => (selectedObject?.kind === "card" ? getProjectObjectNodeCard(selectedObject) : null),
+    [selectedObject]
+  );
+  const doubleSide = useMemo(
+    () => (selectedObject?.kind === "card" ? getProjectObjectNodeDoubleSide(selectedObject) : null),
+    [selectedObject]
+  );
   const layout = useMemo(
-    () => (selectedObject?.kind === "group" ? getProjectObjectNodeLayout(selectedObject) : null),
+    () =>
+      selectedObject && hasProjectObjectLayout(selectedObject.kind)
+        ? getProjectObjectNodeLayout(selectedObject)
+        : null,
     [selectedObject]
   );
   const text = useMemo(
@@ -377,6 +426,9 @@ export function ProjectObjectInspectorPanel({
     appearance
       ? createAppearanceDraft(appearance)
       : createAppearanceDraft(getFallbackAppearanceDraftValue())
+  );
+  const [cardDraft, setCardDraft] = useState<CardDraft>(() =>
+    card ? createCardDraft(card) : createCardDraft(getFallbackCardDraftValue())
   );
   const [textDraft, setTextDraft] = useState<TextDraft>(() =>
     text ? createTextDraft(text) : createTextDraft(getFallbackTextDraftValue())
@@ -404,6 +456,12 @@ export function ProjectObjectInspectorPanel({
       setAppearanceDraft(createAppearanceDraft(appearance));
     }
   }, [appearance, selectedObject?.id]);
+
+  useEffect(() => {
+    if (card) {
+      setCardDraft(createCardDraft(card));
+    }
+  }, [card, selectedObject?.id]);
 
   useEffect(() => {
     if (text) {
@@ -479,7 +537,19 @@ export function ProjectObjectInspectorPanel({
     }
   }
 
+  function isRectTransformFieldPresetLocked(fieldKey: RectTransformFieldKey) {
+    return Boolean(
+      card &&
+      isProjectObjectCardSizePresetLocked(card) &&
+      cardPresetLockedRectTransformFields.has(fieldKey)
+    );
+  }
+
   function updateRectTransformDraft(fieldKey: RectTransformFieldKey, value: string) {
+    if (isRectTransformFieldPresetLocked(fieldKey)) {
+      return;
+    }
+
     setRectTransformDraft((currentDraft) => ({
       ...currentDraft,
       [fieldKey]: value
@@ -499,7 +569,12 @@ export function ProjectObjectInspectorPanel({
   }
 
   function updateObjectTreeRectTransformField(fieldKey: RectTransformFieldKey, value: string) {
-    if (!contentFileNode || !selectedObject || !rectTransform) {
+    if (
+      !contentFileNode ||
+      !selectedObject ||
+      !rectTransform ||
+      isRectTransformFieldPresetLocked(fieldKey)
+    ) {
       return;
     }
 
@@ -524,7 +599,12 @@ export function ProjectObjectInspectorPanel({
     fieldKey: RectTransformFieldKey,
     value = rectTransformDraft[fieldKey]
   ) {
-    if (!contentFileNode || !selectedObject || !rectTransform) {
+    if (
+      !contentFileNode ||
+      !selectedObject ||
+      !rectTransform ||
+      isRectTransformFieldPresetLocked(fieldKey)
+    ) {
       return;
     }
 
@@ -609,6 +689,57 @@ export function ProjectObjectInspectorPanel({
         fieldKey
       )
     }));
+  }
+
+  function updateCardDraft<TFieldKey extends CardFieldKey>(
+    fieldKey: TFieldKey,
+    value: ProjectObjectCard[TFieldKey]
+  ) {
+    setCardDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    updateObjectTreeCardField(fieldKey, value);
+  }
+
+  function updateObjectTreeCardField<TFieldKey extends CardFieldKey>(
+    fieldKey: TFieldKey,
+    value: ProjectObjectCard[TFieldKey]
+  ) {
+    if (!contentFileNode || !selectedObject || !card) {
+      return;
+    }
+
+    const nextCard = getCardWithDraftField(card, fieldKey, value);
+
+    if (!nextCard) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeCard(objectTree, selectedObject.id, nextCard);
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
+  function updateDoubleSideEnabled(enabled: boolean) {
+    if (!contentFileNode || !selectedObject || !doubleSide) {
+      return;
+    }
+
+    if (doubleSide.enabled === enabled) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeDoubleSide(objectTree, selectedObject.id, {
+      ...doubleSide,
+      enabled
+    });
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
   }
 
   function updateTextDraft(fieldKey: TextFieldKey, value: string) {
@@ -859,6 +990,7 @@ export function ProjectObjectInspectorPanel({
   const selectedImageAsset = image?.assetId
     ? getProjectImageAssetOptionById(imageAssets, image.assetId)
     : undefined;
+  const cardSizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
   const textDraftBold = isTextFontWeightBold(textDraft.fontWeight);
   const textDraftItalic = textDraft.fontStyle === "italic";
   const layoutAuto = layoutDraft.mode !== "free";
@@ -925,6 +1057,23 @@ export function ProjectObjectInspectorPanel({
               onChange={handleVisibilityChange}
             />
           </section>
+
+          {card && doubleSide ? (
+            <InspectorSection icon={<CreditCard size={15} />} title="Card">
+              <InspectorSelectField
+                label="Size preset"
+                value={cardDraft.sizePreset}
+                options={cardSizePresetOptions}
+                onChange={(value) => updateCardDraft("sizePreset", value)}
+              />
+              <InspectorSwitchField
+                checked={doubleSide.enabled}
+                icon={<CreditCard className="shrink-0" size={15} />}
+                label="Double-sided"
+                onChange={(event) => updateDoubleSideEnabled(event.currentTarget.checked)}
+              />
+            </InspectorSection>
+          ) : null}
 
           {appearance ? (
             <InspectorSection icon={<Palette size={15} />} title="Appearance">
@@ -1023,6 +1172,10 @@ export function ProjectObjectInspectorPanel({
             <InspectorNumberGrid
               fields={sizeFields}
               rectTransformDraft={rectTransformDraft}
+              disabledFields={
+                cardSizePresetLocked ? cardPresetLockedRectTransformFields : undefined
+              }
+              disabledTitle="Size is controlled by the selected card preset"
               onCommit={commitRectTransformField}
               onDraftChange={updateRectTransformDraft}
               onReset={resetRectTransformDraft}
@@ -1031,8 +1184,19 @@ export function ProjectObjectInspectorPanel({
 
           <InspectorSection title="Transform">
             <InspectorNumberGrid
-              fields={transformFields}
+              fields={rotationFields}
               rectTransformDraft={rectTransformDraft}
+              onCommit={commitRectTransformField}
+              onDraftChange={updateRectTransformDraft}
+              onReset={resetRectTransformDraft}
+            />
+            <InspectorNumberGrid
+              fields={scaleFields}
+              rectTransformDraft={rectTransformDraft}
+              disabledFields={
+                cardSizePresetLocked ? cardPresetLockedRectTransformFields : undefined
+              }
+              disabledTitle="Scale is controlled by the selected card preset"
               onCommit={commitRectTransformField}
               onDraftChange={updateRectTransformDraft}
               onReset={resetRectTransformDraft}
@@ -1647,6 +1811,8 @@ function InspectorBehaviorNumberField<TFieldKey extends string>({
 }
 
 type InspectorNumberGridProps = {
+  disabledFields?: ReadonlySet<RectTransformFieldKey>;
+  disabledTitle?: string;
   fields: readonly RectTransformFieldDefinition[];
   rectTransformDraft: RectTransformDraft;
   onCommit: (fieldKey: RectTransformFieldKey, value: string) => void;
@@ -1655,6 +1821,8 @@ type InspectorNumberGridProps = {
 };
 
 function InspectorNumberGrid({
+  disabledFields,
+  disabledTitle,
   fields,
   rectTransformDraft,
   onCommit,
@@ -1666,6 +1834,8 @@ function InspectorNumberGrid({
       {fields.map((field) => (
         <InspectorNumberField
           key={field.key}
+          disabled={disabledFields?.has(field.key) ?? false}
+          disabledTitle={disabledTitle}
           field={field}
           value={rectTransformDraft[field.key]}
           onCommit={onCommit}
@@ -1678,6 +1848,8 @@ function InspectorNumberGrid({
 }
 
 type InspectorNumberFieldProps = {
+  disabled?: boolean;
+  disabledTitle?: string;
   field: RectTransformFieldDefinition;
   value: string;
   onCommit: (fieldKey: RectTransformFieldKey, value: string) => void;
@@ -1686,6 +1858,8 @@ type InspectorNumberFieldProps = {
 };
 
 function InspectorNumberField({
+  disabled = false,
+  disabledTitle,
   field,
   value,
   onCommit,
@@ -1710,10 +1884,17 @@ function InspectorNumberField({
   }
 
   return (
-    <label className="block min-w-0 text-xs font-medium text-slate-500">
+    <label
+      className="block min-w-0 text-xs font-medium text-slate-500"
+      title={disabled ? disabledTitle : undefined}
+    >
       <span>{field.label}</span>
       <input
-        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm tabular-nums text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        className={cx(
+          "mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm tabular-nums text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100",
+          disabled && "cursor-not-allowed bg-slate-100 text-slate-400"
+        )}
+        disabled={disabled}
         inputMode="decimal"
         max={settings.max}
         min={settings.min}
@@ -1738,6 +1919,13 @@ function getFallbackAppearanceDraftValue(): ProjectObjectAppearance {
     borderWidth: 0,
     opacity: 1,
     padding: 0
+  };
+}
+
+function getFallbackCardDraftValue(): ProjectObjectCard {
+  return {
+    activeSide: "front",
+    sizePreset: "poker"
   };
 }
 
