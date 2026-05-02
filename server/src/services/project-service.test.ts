@@ -351,7 +351,7 @@ describe("ProjectService", () => {
             name: "Card 1",
             children: [
               {
-                cardSide: "back",
+                parentSide: "back",
                 id: "back-label",
                 kind: "label",
                 name: "Back label",
@@ -359,8 +359,9 @@ describe("ProjectService", () => {
               }
             ],
             components: {
-              card: { activeSide: "back", sizePreset: "bridge" },
+              card: { sizePreset: "bridge" },
               doubleSide: {
+                activeSide: "back",
                 enabled: false,
                 sideComponents: {
                   back: {
@@ -390,7 +391,7 @@ describe("ProjectService", () => {
             kind: "card",
             name: "Card 2",
             components: {
-              card: { activeSide: "nope", sizePreset: "custom" },
+              card: { sizePreset: "custom" },
               rectTransform: {
                 height: 123,
                 scaleX: 2,
@@ -411,14 +412,15 @@ describe("ProjectService", () => {
         kind: "card",
         children: [
           {
-            cardSide: "back",
+            parentSide: "back",
             id: "back-label",
             kind: "label"
           }
         ],
         components: {
-          card: { activeSide: "back", sizePreset: "bridge" },
+          card: { sizePreset: "bridge" },
           doubleSide: {
+            activeSide: "back",
             enabled: false,
             sideComponents: {
               back: {
@@ -451,8 +453,8 @@ describe("ProjectService", () => {
         id: "card-2",
         kind: "card",
         components: {
-          card: { activeSide: "front", sizePreset: "custom" },
-          doubleSide: { enabled: true },
+          card: { sizePreset: "custom" },
+          doubleSide: { activeSide: "front", enabled: true },
           rectTransform: {
             height: 123,
             scaleX: 2,
@@ -514,6 +516,73 @@ describe("ProjectService", () => {
       ]
     });
     expect(normalizedDie?.faces[0]?.label).toHaveLength(projectObjectDieFaceLabelMaxLength);
+  });
+
+  it("normalizes token components as a two-sided shape container", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "object-file",
+        kind: "object",
+        name: "Object file",
+        objectTree: [
+          {
+            children: [
+              {
+                parentSide: "back",
+                id: "token-back-label",
+                kind: "label",
+                name: "Back",
+                visible: true
+              }
+            ],
+            components: {
+              doubleSide: { activeSide: "sideways" },
+              shape: { variant: "hexagon" }
+            },
+            id: "token-1",
+            kind: "token",
+            name: "Token 1",
+            visible: true
+          },
+          {
+            components: {},
+            id: "token-2",
+            kind: "token",
+            name: "Token 2",
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ]);
+
+    expect(updatedProject?.fileTree[0]?.objectTree).toMatchObject([
+      {
+        children: [
+          {
+            parentSide: "back",
+            id: "token-back-label",
+            kind: "label"
+          }
+        ],
+        components: {
+          doubleSide: { activeSide: "front", enabled: true },
+          shape: { variant: "hexagon" }
+        },
+        id: "token-1",
+        kind: "token"
+      },
+      {
+        components: {
+          doubleSide: { activeSide: "front", enabled: true },
+          shape: { variant: "ellipse" }
+        },
+        id: "token-2",
+        kind: "token"
+      }
+    ]);
   });
 
   it("restores the protected Assets folder as a root folder", async () => {

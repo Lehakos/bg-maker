@@ -24,7 +24,6 @@ export function normalizeProjectObjectCard(card: ProjectObjectCard): ProjectObje
       : getDefaultProjectObjectCard().sizePreset;
 
   return {
-    activeSide: card.activeSide === "back" ? "back" : "front",
     sizePreset
   };
 }

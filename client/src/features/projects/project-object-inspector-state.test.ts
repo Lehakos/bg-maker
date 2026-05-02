@@ -72,7 +72,6 @@ const appearance: ProjectObjectAppearance = {
 };
 
 const card: ProjectObjectCard = {
-  activeSide: "front",
   sizePreset: "poker"
 };
 
@@ -188,22 +187,14 @@ describe("project object inspector state", () => {
 
   it("creates and updates card drafts", () => {
     expect(createCardDraft(card)).toEqual({
-      activeSide: "front",
-      sizePreset: "poker"
-    });
-    expect(getCardWithDraftField(card, "activeSide", "back")).toEqual({
-      activeSide: "back",
       sizePreset: "poker"
     });
     expect(getCardWithDraftField(card, "sizePreset", "bridge")).toEqual({
-      activeSide: "front",
       sizePreset: "bridge"
     });
     expect(getCardWithDraftField(card, "sizePreset", "custom")).toEqual({
-      activeSide: "front",
       sizePreset: "custom"
     });
-    expect(getCardWithDraftField(card, "activeSide", "middle")).toBeNull();
     expect(getCardWithDraftField(card, "sizePreset", "unknown-size")).toBeNull();
     expect(getCardWithDraftField(card, "sizePreset", "poker")).toBeNull();
   });

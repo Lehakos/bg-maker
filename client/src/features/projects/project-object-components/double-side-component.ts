@@ -1,23 +1,33 @@
 import type {
-  ProjectObjectCardSide,
+  ProjectObjectSide,
   ProjectObjectDoubleSide,
   ProjectObjectNode,
   ProjectObjectSideComponents
 } from "@bg-maker/shared";
-import { getDefaultProjectObjectDoubleSide } from "@bg-maker/shared";
-import { getProjectObjectCardComponent } from "./card-component";
+import { getDefaultProjectObjectDoubleSide, projectObjectSides } from "@bg-maker/shared";
+
+const objectSides = new Set(projectObjectSides);
 
 export function getProjectObjectDoubleSideComponent(
   object: ProjectObjectNode
 ): ProjectObjectDoubleSide {
-  return {
+  return normalizeProjectObjectDoubleSide({
     ...getDefaultProjectObjectDoubleSide(object.kind),
     ...object.components?.doubleSide
-  };
+  });
 }
 
-export function getProjectObjectActiveSide(object: ProjectObjectNode): ProjectObjectCardSide {
-  return object.kind === "card" ? getProjectObjectCardComponent(object).activeSide : "front";
+export function getProjectObjectActiveSide(object: ProjectObjectNode): ProjectObjectSide {
+  return getProjectObjectDoubleSideComponent(object).activeSide;
+}
+
+export function normalizeProjectObjectDoubleSide(
+  doubleSide: ProjectObjectDoubleSide
+): ProjectObjectDoubleSide {
+  return {
+    ...doubleSide,
+    activeSide: objectSides.has(doubleSide.activeSide) ? doubleSide.activeSide : "front"
+  };
 }
 
 export function getProjectObjectSideComponent<
@@ -39,11 +49,18 @@ export function withProjectObjectDoubleSideComponent(
   object: ProjectObjectNode,
   doubleSide: ProjectObjectDoubleSide
 ): ProjectObjectNode {
+  const currentDoubleSide = getProjectObjectDoubleSideComponent(object);
+  const nextDoubleSide = {
+    ...currentDoubleSide,
+    ...doubleSide,
+    sideComponents: doubleSide.sideComponents ?? currentDoubleSide.sideComponents
+  };
+
   return {
     ...object,
     components: {
       ...object.components,
-      doubleSide
+      doubleSide: normalizeProjectObjectDoubleSide(nextDoubleSide)
     }
   };
 }

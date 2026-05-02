@@ -35,6 +35,10 @@ export function ProjectObjectSurface({ imageAssetById, object }: ProjectObjectSu
     return <DieVisual imageAssetById={imageAssetById} object={object} />;
   }
 
+  if (object.kind === "token") {
+    return <TokenVisual object={object} />;
+  }
+
   if (object.kind === "group") {
     return <GroupVisual object={object} />;
   }
@@ -218,6 +222,38 @@ function ShapeVisual({ object }: ObjectVisualProps) {
       >
         {object.name}
       </span>
+    </div>
+  );
+}
+
+function TokenVisual({ object }: ObjectVisualProps) {
+  const appearance = getProjectObjectNodeAppearance(object);
+  const shape = getProjectObjectNodeShape(object);
+  const strokeDasharray = getStrokeDasharray(appearance.borderStyle);
+  const strokeWidth = appearance.borderStyle === "none" ? 0 : appearance.borderWidth;
+
+  return (
+    <div
+      className="relative flex h-full w-full items-center justify-center overflow-visible text-center text-orange-950 shadow-[0_14px_30px_rgba(15,23,42,0.14)]"
+      style={{ opacity: appearance.opacity }}
+    >
+      <svg
+        aria-hidden
+        className="absolute inset-0 h-full w-full overflow-visible"
+        preserveAspectRatio="none"
+        viewBox="0 0 100 100"
+      >
+        <ShapeSvgElement
+          borderRadius={appearance.borderRadius}
+          fill={appearance.backgroundColor}
+          fillOpacity={appearance.backgroundOpacity}
+          stroke={appearance.borderColor}
+          strokeDasharray={strokeDasharray}
+          strokeWidth={strokeWidth}
+          polygonPoints={shape.polygonPoints}
+          variant={shape.variant}
+        />
+      </svg>
     </div>
   );
 }

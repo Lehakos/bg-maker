@@ -13,6 +13,7 @@ import type {
   ProjectObjectShape,
   ProjectObjectText
 } from "@bg-maker/shared";
+import { hasProjectObjectSides } from "@bg-maker/shared";
 import { projectObjectComponentEngine } from "./project-object-components";
 
 export type ProjectObjectTreeParentId = string | null;
@@ -91,13 +92,13 @@ export function getProjectObjectNodeChildren(
 export function getProjectObjectNodeVisibleChildren(object: ProjectObjectNode) {
   const children = object.children ?? [];
 
-  if (object.kind !== "card") {
+  if (!hasProjectObjectSides(object.kind)) {
     return children;
   }
 
-  const activeSide = getProjectObjectNodeCard(object).activeSide;
+  const activeSide = getProjectObjectNodeActiveSide(object);
 
-  return children.filter((child) => child.cardSide === activeSide);
+  return children.filter((child) => child.parentSide === activeSide);
 }
 
 export function getExpandableProjectObjectNodeIds(objectTree: ProjectObjectNode[]) {
@@ -422,7 +423,7 @@ function insertProjectObjectNode(
   if (parentId === null) {
     return {
       changed: true,
-      nodes: insertAt(objectTree, clearProjectObjectNodeCardSide(node), index)
+      nodes: insertAt(objectTree, clearProjectObjectNodeParentSide(node), index)
     };
   }
 
@@ -454,13 +455,13 @@ function insertProjectObjectNode(
   return { changed, nodes };
 }
 
-function clearProjectObjectNodeCardSide(node: ProjectObjectNode): ProjectObjectNode {
-  if (!node.cardSide) {
+function clearProjectObjectNodeParentSide(node: ProjectObjectNode): ProjectObjectNode {
+  if (!node.parentSide) {
     return node;
   }
 
   const nextNode = { ...node };
-  delete nextNode.cardSide;
+  delete nextNode.parentSide;
 
   return nextNode;
 }
@@ -469,14 +470,18 @@ function getProjectObjectNodeForParent(
   node: ProjectObjectNode,
   parent: ProjectObjectNode
 ): ProjectObjectNode {
-  if (parent.kind !== "card") {
-    return clearProjectObjectNodeCardSide(node);
+  if (!hasProjectObjectSides(parent.kind)) {
+    return clearProjectObjectNodeParentSide(node);
   }
 
   return {
     ...node,
-    cardSide: getProjectObjectNodeCard(parent).activeSide
+    parentSide: getProjectObjectNodeActiveSide(parent)
   };
+}
+
+function getProjectObjectNodeActiveSide(object: ProjectObjectNode) {
+  return getProjectObjectNodeDoubleSide(object).activeSide;
 }
 
 function isProjectObjectNodeDescendant(

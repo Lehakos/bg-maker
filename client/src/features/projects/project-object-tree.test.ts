@@ -201,11 +201,9 @@ describe("project object tree helpers", () => {
   it("locks card dimensions to the selected size preset", () => {
     const objectTree = [objectNode("card-1", "Card", "card")];
     const bridgeCard: ProjectObjectCard = {
-      activeSide: "front",
       sizePreset: "bridge"
     };
     const customCard: ProjectObjectCard = {
-      activeSide: "front",
       sizePreset: "custom"
     };
     const oversizedRectTransform: ProjectObjectRectTransform = {
@@ -237,6 +235,7 @@ describe("project object tree helpers", () => {
       bridgeCard
     );
     expect(getProjectObjectNodeDoubleSide(findProjectObjectNode(bridgeTree, "card-1")!)).toEqual({
+      activeSide: "front",
       enabled: true
     });
     expect(
@@ -258,9 +257,11 @@ describe("project object tree helpers", () => {
       width: 200
     });
     expect(
-      setProjectObjectNodeDoubleSide(objectTree, "card-1", { enabled: false })[0]?.components
-        ?.doubleSide
-    ).toEqual({ enabled: false });
+      setProjectObjectNodeDoubleSide(objectTree, "card-1", {
+        activeSide: "front",
+        enabled: false
+      })[0]?.components?.doubleSide
+    ).toEqual({ activeSide: "front", enabled: false });
   });
 
   it("keeps card children on the active card side", () => {
@@ -268,24 +269,47 @@ describe("project object tree helpers", () => {
     const frontChild = objectNode("front-label", "Front label", "label");
     const backChild = objectNode("back-label", "Back label", "label");
     const frontTree = appendProjectObjectNode(objectTree, "card-1", frontChild);
-    const backCardTree = setProjectObjectNodeCard(frontTree, "card-1", {
+    const backCardTree = setProjectObjectNodeDoubleSide(frontTree, "card-1", {
       activeSide: "back",
-      sizePreset: "poker"
+      enabled: true
     });
     const backTree = appendProjectObjectNode(backCardTree, "card-1", backChild);
     const card = findProjectObjectNode(backTree, "card-1")!;
     const movedOutTree = moveProjectObjectNode(backTree, "back-label", null, 1);
 
-    expect(findProjectObjectNode(backTree, "front-label")?.cardSide).toBe("front");
-    expect(findProjectObjectNode(backTree, "back-label")?.cardSide).toBe("back");
+    expect(findProjectObjectNode(backTree, "front-label")?.parentSide).toBe("front");
+    expect(findProjectObjectNode(backTree, "back-label")?.parentSide).toBe("back");
     expect(getProjectObjectNodeVisibleChildren(card).map((child) => child.id)).toEqual([
       "back-label"
     ]);
-    expect(findProjectObjectNode(movedOutTree, "back-label")?.cardSide).toBeUndefined();
+    expect(findProjectObjectNode(movedOutTree, "back-label")?.parentSide).toBeUndefined();
   });
 
-  it("clips card, die, and shape children by object kind", () => {
+  it("keeps token children on the active token side", () => {
+    const objectTree = [objectNode("token-1", "Token", "token")];
+    const frontChild = objectNode("front-image", "Front image", "image");
+    const backChild = objectNode("back-label", "Back label", "label");
+    const frontTree = appendProjectObjectNode(objectTree, "token-1", frontChild);
+    const backTokenTree = setProjectObjectNodeDoubleSide(frontTree, "token-1", {
+      activeSide: "back",
+      enabled: true
+    });
+    const backTree = appendProjectObjectNode(backTokenTree, "token-1", backChild);
+    const token = findProjectObjectNode(backTree, "token-1")!;
+    const movedOutTree = moveProjectObjectNode(backTree, "back-label", null, 1);
+
+    expect(getProjectObjectNodeDoubleSide(token)).toMatchObject({ activeSide: "back" });
+    expect(findProjectObjectNode(backTree, "front-image")?.parentSide).toBe("front");
+    expect(findProjectObjectNode(backTree, "back-label")?.parentSide).toBe("back");
+    expect(getProjectObjectNodeVisibleChildren(token).map((child) => child.id)).toEqual([
+      "back-label"
+    ]);
+    expect(findProjectObjectNode(movedOutTree, "back-label")?.parentSide).toBeUndefined();
+  });
+
+  it("clips card, token, die, and shape children by object kind", () => {
     expect(doesProjectObjectClipChildren("card")).toBe(true);
+    expect(doesProjectObjectClipChildren("token")).toBe(true);
     expect(doesProjectObjectClipChildren("die")).toBe(true);
     expect(doesProjectObjectClipChildren("shape")).toBe(true);
     expect(doesProjectObjectClipChildren("group")).toBe(false);
@@ -316,14 +340,14 @@ describe("project object tree helpers", () => {
       padding: 8
     };
     const frontTree = setProjectObjectNodeAppearance(objectTree, "card-1", frontAppearance);
-    const backCardTree = setProjectObjectNodeCard(frontTree, "card-1", {
+    const backCardTree = setProjectObjectNodeDoubleSide(frontTree, "card-1", {
       activeSide: "back",
-      sizePreset: "poker"
+      enabled: true
     });
     const backTree = setProjectObjectNodeAppearance(backCardTree, "card-1", backAppearance);
-    const frontAgainTree = setProjectObjectNodeCard(backTree, "card-1", {
+    const frontAgainTree = setProjectObjectNodeDoubleSide(backTree, "card-1", {
       activeSide: "front",
-      sizePreset: "poker"
+      enabled: true
     });
 
     expect(getProjectObjectNodeAppearance(findProjectObjectNode(backTree, "card-1")!)).toEqual(
@@ -394,6 +418,10 @@ describe("project object tree helpers", () => {
       ],
       variant: "triangle"
     };
+    const doubleSide = {
+      activeSide: "back" as const,
+      enabled: true
+    };
 
     const appearanceTree = setProjectObjectNodeAppearance(objectTree, "shape-1", appearance);
     const textTree = setProjectObjectNodeText(objectTree, "label-1", text);
@@ -401,6 +429,11 @@ describe("project object tree helpers", () => {
     const dieTree = setProjectObjectNodeDie([objectNode("die-1", "Die", "die")], "die-1", die);
     const layoutTree = setProjectObjectNodeLayout(objectTree, "group-1", layout);
     const shapeTree = setProjectObjectNodeShape(objectTree, "shape-1", shape);
+    const tokenTree = setProjectObjectNodeDoubleSide(
+      [objectNode("token-1", "Token", "token")],
+      "token-1",
+      doubleSide
+    );
 
     expect(
       getProjectObjectNodeAppearance(findProjectObjectNode(appearanceTree, "shape-1")!)
@@ -412,10 +445,16 @@ describe("project object tree helpers", () => {
       layout
     );
     expect(getProjectObjectNodeShape(findProjectObjectNode(shapeTree, "shape-1")!)).toEqual(shape);
+    expect(getProjectObjectNodeDoubleSide(findProjectObjectNode(tokenTree, "token-1")!)).toEqual(
+      doubleSide
+    );
     expect(findProjectObjectNode(objectTree, "image-1")?.components?.image).toBeUndefined();
     expect(setProjectObjectNodeImage(objectTree, "missing-object", image)).toBe(objectTree);
     expect(setProjectObjectNodeDie(objectTree, "missing-object", die)).toBe(objectTree);
     expect(setProjectObjectNodeLayout(objectTree, "missing-object", layout)).toBe(objectTree);
+    expect(setProjectObjectNodeDoubleSide(objectTree, "missing-object", doubleSide)).toBe(
+      objectTree
+    );
   });
 
   it("updates object trees only for supported project file nodes", () => {

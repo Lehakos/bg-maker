@@ -39,7 +39,7 @@ import {
   Box,
   Bold,
   Columns3,
-  CreditCard,
+  Copy,
   Dices,
   Eye,
   EyeOff,
@@ -47,6 +47,7 @@ import {
   ImagePlus,
   Italic,
   LayoutPanelTop,
+  MirrorRectangular,
   Move,
   Palette,
   Rows3,
@@ -446,7 +447,10 @@ export function ProjectObjectInspectorPanel({
     [selectedObject]
   );
   const doubleSide = useMemo(
-    () => (selectedObject?.kind === "card" ? getProjectObjectNodeDoubleSide(selectedObject) : null),
+    () =>
+      selectedObject?.kind === "card" || selectedObject?.kind === "token"
+        ? getProjectObjectNodeDoubleSide(selectedObject)
+        : null,
     [selectedObject]
   );
   const layout = useMemo(
@@ -465,7 +469,10 @@ export function ProjectObjectInspectorPanel({
     [selectedObject]
   );
   const shape = useMemo(
-    () => (selectedObject?.kind === "shape" ? getProjectObjectNodeShape(selectedObject) : null),
+    () =>
+      selectedObject?.kind === "shape" || selectedObject?.kind === "token"
+        ? getProjectObjectNodeShape(selectedObject)
+        : null,
     [selectedObject]
   );
   const shapePolygonPoints = useMemo(() => (shape ? getShapePolygonPoints(shape) : []), [shape]);
@@ -1288,19 +1295,22 @@ export function ProjectObjectInspectorPanel({
             />
           </section>
 
-          {card && doubleSide ? (
-            <InspectorSection icon={<CreditCard size={15} />} title="Card">
+          {card ? (
+            <InspectorSection icon={<MirrorRectangular size={15} />} title="Card">
               <InspectorSelectField
                 label="Size preset"
                 value={cardDraft.sizePreset}
                 options={cardSizePresetOptions}
                 onChange={(value) => updateCardDraft("sizePreset", value)}
               />
-              <InspectorSwitchField
-                checked={doubleSide.enabled}
-                icon={<CreditCard className="shrink-0" size={15} />}
-                label="Double-sided"
-                onChange={(event) => updateDoubleSideEnabled(event.currentTarget.checked)}
+            </InspectorSection>
+          ) : null}
+
+          {doubleSide ? (
+            <InspectorSection icon={<Copy size={15} />} title="Double-sided">
+              <InspectorDoubleSidedControls
+                enabled={doubleSide.enabled}
+                onEnabledChange={updateDoubleSideEnabled}
               />
             </InspectorSection>
           ) : null}
@@ -1700,7 +1710,7 @@ function InspectorInlineTextField({ label, value, onChange }: InspectorInlineTex
 
 type InspectorSwitchFieldProps = {
   checked: boolean;
-  icon: ReactNode;
+  icon?: ReactNode;
   label: string;
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
 };
@@ -1709,15 +1719,17 @@ function InspectorSwitchField({ checked, icon, label, onChange }: InspectorSwitc
   return (
     <label className="flex min-h-8 cursor-pointer items-center justify-between gap-3 py-1 text-sm font-medium text-slate-700">
       <span className="flex min-w-0 items-center gap-2">
-        <span
-          className={
-            checked
-              ? "flex h-6 w-6 shrink-0 items-center justify-center rounded text-sky-700"
-              : "flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400"
-          }
-        >
-          {icon}
-        </span>
+        {icon ? (
+          <span
+            className={
+              checked
+                ? "flex h-6 w-6 shrink-0 items-center justify-center rounded text-sky-700"
+                : "flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400"
+            }
+          >
+            {icon}
+          </span>
+        ) : null}
         <span className="truncate">{label}</span>
       </span>
       <span className="relative inline-flex h-5 w-9 shrink-0 items-center">
@@ -1732,6 +1744,24 @@ function InspectorSwitchField({ checked, icon, label, onChange }: InspectorSwitc
         <span className="absolute left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
       </span>
     </label>
+  );
+}
+
+type InspectorDoubleSidedControlsProps = {
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+};
+
+function InspectorDoubleSidedControls({
+  enabled,
+  onEnabledChange
+}: InspectorDoubleSidedControlsProps) {
+  return (
+    <InspectorSwitchField
+      checked={enabled}
+      label="Enabled"
+      onChange={(event) => onEnabledChange(event.currentTarget.checked)}
+    />
   );
 }
 
@@ -2248,7 +2278,6 @@ function getFallbackAppearanceDraftValue(): ProjectObjectAppearance {
 
 function getFallbackCardDraftValue(): ProjectObjectCard {
   return {
-    activeSide: "front",
     sizePreset: "poker"
   };
 }

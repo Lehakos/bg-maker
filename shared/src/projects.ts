@@ -16,7 +16,15 @@ export type ProjectFileKind = "tableSetup" | "object" | "image" | "document";
 export const projectAssetsFolderId = "assets";
 export const projectAssetsFolderName = "Assets";
 
-export const projectObjectKinds = ["group", "card", "die", "label", "image", "shape"] as const;
+export const projectObjectKinds = [
+  "group",
+  "card",
+  "token",
+  "die",
+  "label",
+  "image",
+  "shape"
+] as const;
 
 export type ProjectObjectKind = (typeof projectObjectKinds)[number];
 
@@ -91,12 +99,11 @@ export type ProjectObjectCardSizePresetValue =
   | ProjectObjectCardSizePresetId
   | typeof projectObjectCardCustomSizePresetId;
 
-export const projectObjectCardSides = ["front", "back"] as const;
+export const projectObjectSides = ["front", "back"] as const;
 
-export type ProjectObjectCardSide = (typeof projectObjectCardSides)[number];
+export type ProjectObjectSide = (typeof projectObjectSides)[number];
 
 export type ProjectObjectCard = {
-  activeSide: ProjectObjectCardSide;
   sizePreset: ProjectObjectCardSizePresetValue;
 };
 
@@ -134,8 +141,9 @@ export type ProjectObjectSideComponents = {
 };
 
 export type ProjectObjectDoubleSide = {
+  activeSide: ProjectObjectSide;
   enabled: boolean;
-  sideComponents?: Partial<Record<ProjectObjectCardSide, ProjectObjectSideComponents>>;
+  sideComponents?: Partial<Record<ProjectObjectSide, ProjectObjectSideComponents>>;
 };
 
 export type ProjectObjectLayoutMode = "free" | "grid" | "horizontal" | "vertical";
@@ -205,7 +213,7 @@ export type ProjectObjectComponents = {
 };
 
 export type ProjectObjectNode = {
-  cardSide?: ProjectObjectCardSide;
+  parentSide?: ProjectObjectSide;
   id: string;
   name: string;
   kind: ProjectObjectKind;
@@ -268,7 +276,8 @@ const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; wid
   group: { height: 240, width: 320 },
   image: { height: 180, width: 240 },
   label: { height: 32, width: 160 },
-  shape: { height: 120, width: 120 }
+  shape: { height: 120, width: 120 },
+  token: { height: 80, width: 80 }
 };
 
 const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
@@ -277,7 +286,8 @@ const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
   group: "New group",
   image: "New image",
   label: "New label",
-  shape: "New shape"
+  shape: "New shape",
+  token: "New token"
 };
 
 const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAppearance> = {
@@ -340,6 +350,16 @@ const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAp
     borderWidth: 1,
     opacity: 1,
     padding: 8
+  },
+  token: {
+    backgroundColor: "#fef3c7",
+    backgroundOpacity: 1,
+    borderColor: "#d97706",
+    borderRadius: 999,
+    borderStyle: "solid",
+    borderWidth: 2,
+    opacity: 1,
+    padding: 6
   }
 };
 
@@ -400,7 +420,6 @@ export function getDefaultProjectObjectImage(): ProjectObjectImage {
 
 export function getDefaultProjectObjectCard(): ProjectObjectCard {
   return {
-    activeSide: "front",
     sizePreset: "poker"
   };
 }
@@ -440,7 +459,8 @@ export function getDefaultProjectObjectDoubleSide(
   kind: ProjectObjectKind = "card"
 ): ProjectObjectDoubleSide {
   return {
-    enabled: kind === "card"
+    activeSide: "front",
+    enabled: hasProjectObjectSides(kind)
   };
 }
 
@@ -510,8 +530,12 @@ export function hasProjectObjectLayout(kind: ProjectObjectKind) {
   return kind === "group" || kind === "card";
 }
 
+export function hasProjectObjectSides(kind: ProjectObjectKind) {
+  return kind === "card" || kind === "token";
+}
+
 export function doesProjectObjectClipChildren(kind: ProjectObjectKind) {
-  return kind === "card" || kind === "die" || kind === "shape";
+  return kind === "card" || kind === "die" || kind === "shape" || kind === "token";
 }
 
 const defaultProjectObjectShapePolygonPoints: readonly ProjectObjectShapePoint[] = [
@@ -525,10 +549,12 @@ export function getDefaultProjectObjectShapePolygonPoints(): ProjectObjectShapeP
   return defaultProjectObjectShapePolygonPoints.map((point) => ({ ...point }));
 }
 
-export function getDefaultProjectObjectShape(): ProjectObjectShape {
+export function getDefaultProjectObjectShape(
+  kind: ProjectObjectKind = "shape"
+): ProjectObjectShape {
   return {
     polygonPoints: getDefaultProjectObjectShapePolygonPoints(),
-    variant: "rectangle"
+    variant: kind === "token" ? "ellipse" : "rectangle"
   };
 }
 
@@ -553,6 +579,11 @@ export function createDefaultProjectObjectComponents(
 
   if (kind === "die") {
     components.die = getDefaultProjectObjectDie();
+  }
+
+  if (kind === "token") {
+    components.doubleSide = getDefaultProjectObjectDoubleSide(kind);
+    components.shape = getDefaultProjectObjectShape(kind);
   }
 
   if (kind === "label") {

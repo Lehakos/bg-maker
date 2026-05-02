@@ -11,7 +11,7 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectBorderStyle,
   ProjectObjectCard,
-  ProjectObjectCardSide,
+  ProjectObjectSide,
   ProjectObjectCardSizePresetValue,
   ProjectObjectDie,
   ProjectObjectDieFace,
@@ -55,7 +55,7 @@ import {
   projectAssetsFolderId,
   projectAssetsFolderName,
   projectObjectCardCustomSizePresetId,
-  projectObjectCardSides,
+  projectObjectSides,
   projectObjectDieFaceCountLimits,
   projectObjectDieFaceLabelMaxLength,
   projectObjectDieFaceModes,
@@ -134,7 +134,7 @@ const projectObjectImageFits = new Set<ProjectObjectImageFit>([
 const projectObjectDieFaceModeSet = new Set<ProjectObjectDieFaceMode>(projectObjectDieFaceModes);
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
 const projectObjectKinds = new Set<ProjectObjectKind>(sharedProjectObjectKinds);
-const projectObjectCardSideSet = new Set<ProjectObjectCardSide>(projectObjectCardSides);
+const projectObjectSideSet = new Set<ProjectObjectSide>(projectObjectSides);
 const projectObjectLayoutAlignments = new Set<ProjectObjectLayoutAlignment>([
   "center",
   "end",
@@ -687,12 +687,12 @@ function normalizeProjectObjectNode(
   const kind = projectObjectKinds.has(record.kind as ProjectObjectKind)
     ? (record.kind as ProjectObjectKind)
     : "group";
-  const cardSide = projectObjectCardSideSet.has(record.cardSide as ProjectObjectCardSide)
-    ? (record.cardSide as ProjectObjectCardSide)
+  const parentSide = projectObjectSideSet.has(record.parentSide as ProjectObjectSide)
+    ? (record.parentSide as ProjectObjectSide)
     : undefined;
 
   return {
-    ...(cardSide ? { cardSide } : {}),
+    ...(parentSide ? { parentSide } : {}),
     id,
     name,
     kind,
@@ -714,7 +714,7 @@ function normalizeProjectObjectComponents(value: unknown, kind: ProjectObjectKin
     rectTransform
   };
 
-  if (kind === "card" || hasOwnRecordKey(record, "doubleSide")) {
+  if (kind === "card" || kind === "token" || hasOwnRecordKey(record, "doubleSide")) {
     components.doubleSide = normalizeProjectObjectDoubleSide(record.doubleSide, kind, name);
   }
 
@@ -740,6 +740,13 @@ function normalizeProjectObjectComponents(value: unknown, kind: ProjectObjectKin
     return {
       ...components,
       die: normalizeProjectObjectDie(record.die)
+    };
+  }
+
+  if (kind === "token") {
+    return {
+      ...components,
+      shape: normalizeProjectObjectShape(record.shape, kind)
     };
   }
 
@@ -892,12 +899,8 @@ function normalizeProjectObjectCard(value: unknown): ProjectObjectCard {
       getProjectObjectCardSizePreset(record.sizePreset))
       ? (record.sizePreset as ProjectObjectCardSizePresetValue)
       : defaultCard.sizePreset;
-  const activeSide = projectObjectCardSideSet.has(record.activeSide as ProjectObjectCardSide)
-    ? (record.activeSide as ProjectObjectCardSide)
-    : defaultCard.activeSide;
 
   return {
-    activeSide,
     sizePreset
   };
 }
@@ -915,6 +918,9 @@ function normalizeProjectObjectDoubleSide(
     name
   );
   const doubleSide: ProjectObjectDoubleSide = {
+    activeSide: projectObjectSideSet.has(record.activeSide as ProjectObjectSide)
+      ? (record.activeSide as ProjectObjectSide)
+      : defaultDoubleSide.activeSide,
     enabled: typeof record.enabled === "boolean" ? record.enabled : defaultDoubleSide.enabled
   };
 
@@ -931,9 +937,9 @@ function normalizeProjectObjectSideComponentOverrides(
   name: string
 ): ProjectObjectDoubleSide["sideComponents"] {
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-  const sideComponents: Partial<Record<ProjectObjectCardSide, ProjectObjectSideComponents>> = {};
+  const sideComponents: Partial<Record<ProjectObjectSide, ProjectObjectSideComponents>> = {};
 
-  for (const side of projectObjectCardSides) {
+  for (const side of projectObjectSides) {
     const sideRecord = record[side];
 
     if (!sideRecord || typeof sideRecord !== "object") {
@@ -977,8 +983,8 @@ function normalizeProjectObjectSideComponents(
     components.image = normalizeProjectObjectImage(record.image);
   }
 
-  if (kind === "shape" && hasOwnRecordKey(record, "shape")) {
-    components.shape = normalizeProjectObjectShape(record.shape);
+  if ((kind === "shape" || kind === "token") && hasOwnRecordKey(record, "shape")) {
+    components.shape = normalizeProjectObjectShape(record.shape, kind);
   }
 
   return components;
@@ -1085,8 +1091,11 @@ function normalizeProjectObjectImage(value: unknown): ProjectObjectImage {
   };
 }
 
-function normalizeProjectObjectShape(value: unknown): ProjectObjectShape {
-  const defaultShape = getDefaultProjectObjectShape();
+function normalizeProjectObjectShape(
+  value: unknown,
+  kind: ProjectObjectKind = "shape"
+): ProjectObjectShape {
+  const defaultShape = getDefaultProjectObjectShape(kind);
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
   return {

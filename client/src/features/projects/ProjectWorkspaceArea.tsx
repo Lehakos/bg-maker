@@ -1,9 +1,9 @@
 import type {
   Project,
   ProjectFileNode,
-  ProjectObjectCard,
-  ProjectObjectCardSide,
+  ProjectObjectSide,
   ProjectObjectDie,
+  ProjectObjectDoubleSide,
   ProjectObjectNode,
   ProjectObjectRectTransform
 } from "@bg-maker/shared";
@@ -55,8 +55,8 @@ import {
   getProjectObjectNodeVisibleChildren,
   getProjectObjectNodeLayout,
   getProjectObjectNodeRectTransform,
-  setProjectObjectNodeCard,
-  setProjectObjectNodeDie
+  setProjectObjectNodeDie,
+  setProjectObjectNodeDoubleSide
 } from "./project-object-tree";
 import { getProjectObjectLayoutRectTransformOverrides } from "./project-object-layout";
 import { ProjectObjectSurface } from "./ProjectObjectSurface";
@@ -475,17 +475,18 @@ function ObjectScene({
     [imageAssets]
   );
 
-  function handleCardSideChange(
+  function handleObjectSideChange(
     objectId: string,
-    card: ProjectObjectCard,
-    activeSide: ProjectObjectCardSide
+    doubleSide: ProjectObjectDoubleSide,
+    activeSide: ProjectObjectSide,
+    objectLabel: "card" | "token"
   ) {
-    if (card.activeSide === activeSide) {
+    if (doubleSide.activeSide === activeSide) {
       return;
     }
 
-    const nextObjectTree = setProjectObjectNodeCard(objectTree, objectId, {
-      ...card,
+    const nextObjectTree = setProjectObjectNodeDoubleSide(objectTree, objectId, {
+      ...doubleSide,
       activeSide
     });
 
@@ -498,7 +499,7 @@ function ObjectScene({
         after: nextObjectTree,
         before: objectTree,
         fileNodeId,
-        label: activeSide === "front" ? "Show card front" : "Show card back"
+        label: `Show ${objectLabel} ${activeSide}`
       })
     );
   }
@@ -553,9 +554,9 @@ function ObjectScene({
           selectedObjectId={selectedObjectId}
           siblingIndex={index}
           size={size}
-          onCardSideChange={handleCardSideChange}
           onDieFaceChange={handleDieFaceChange}
           onExecuteCommand={onExecuteCommand}
+          onObjectSideChange={handleObjectSideChange}
           onSelectObject={onSelectObject}
         />
       ))}
@@ -658,13 +659,14 @@ type SceneObjectFrameProps = {
   selectedObjectId: string | null;
   siblingIndex: number;
   size: "large" | "medium" | "small";
-  onCardSideChange: (
-    objectId: string,
-    card: ProjectObjectCard,
-    activeSide: ProjectObjectCardSide
-  ) => void;
   onDieFaceChange: (objectId: string, die: ProjectObjectDie, activeFace: number) => void;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onObjectSideChange: (
+    objectId: string,
+    doubleSide: ProjectObjectDoubleSide,
+    activeSide: ProjectObjectSide,
+    objectLabel: "card" | "token"
+  ) => void;
   onSelectObject: (objectId: string | null) => void;
 };
 
@@ -690,9 +692,9 @@ function SceneObjectFrame({
   root = false,
   selectedObjectId,
   siblingIndex,
-  onCardSideChange,
   onDieFaceChange,
   onExecuteCommand,
+  onObjectSideChange,
   onSelectObject,
   size
 }: SceneObjectFrameProps) {
@@ -705,8 +707,14 @@ function SceneObjectFrame({
   const appearance = getProjectObjectNodeAppearance(object);
   const card = object.kind === "card" ? getProjectObjectNodeCard(object) : null;
   const die = object.kind === "die" ? getProjectObjectNodeDie(object) : null;
-  const doubleSide = object.kind === "card" ? getProjectObjectNodeDoubleSide(object) : null;
-  const hasTopObjectControls = Boolean((card && doubleSide?.enabled) || die);
+  const token = object.kind === "token";
+  const doubleSide =
+    object.kind === "card" || object.kind === "token"
+      ? getProjectObjectNodeDoubleSide(object)
+      : null;
+  const hasTopObjectControls = Boolean(
+    (card && doubleSide?.enabled) || die || (token && doubleSide?.enabled)
+  );
   const clipsChildren = doesProjectObjectClipChildren(object.kind);
   const sizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
   const resizeLocked = activeTool === "resize" && sizePresetLocked;
@@ -859,18 +867,21 @@ function SceneObjectFrame({
             selectedObjectId={selectedObjectId}
             siblingIndex={index}
             size={size}
-            onCardSideChange={onCardSideChange}
             onDieFaceChange={onDieFaceChange}
             onExecuteCommand={onExecuteCommand}
+            onObjectSideChange={onObjectSideChange}
             onSelectObject={onSelectObject}
           />
         ))}
       </div>
       {selected && card && doubleSide?.enabled ? (
-        <CardSideSwitcher
-          activeSide={card.activeSide}
+        <ObjectSideSwitcher
+          activeSide={doubleSide.activeSide}
           canvasScale={canvasScale}
-          onSideChange={(activeSide) => onCardSideChange(object.id, card, activeSide)}
+          label="Card side"
+          onSideChange={(activeSide) =>
+            onObjectSideChange(object.id, doubleSide, activeSide, "card")
+          }
         />
       ) : null}
       {selected && die ? (
@@ -879,6 +890,16 @@ function SceneObjectFrame({
           canvasScale={canvasScale}
           die={die}
           onFaceChange={(activeFace) => onDieFaceChange(object.id, die, activeFace)}
+        />
+      ) : null}
+      {selected && token && doubleSide?.enabled ? (
+        <ObjectSideSwitcher
+          activeSide={doubleSide.activeSide}
+          canvasScale={canvasScale}
+          label="Token side"
+          onSideChange={(activeSide) =>
+            onObjectSideChange(object.id, doubleSide, activeSide, "token")
+          }
         />
       ) : null}
       {selected ? (
@@ -892,16 +913,22 @@ function SceneObjectFrame({
   );
 }
 
-type CardSideSwitcherProps = {
-  activeSide: ProjectObjectCardSide;
+type ObjectSideSwitcherProps = {
+  activeSide: ProjectObjectSide;
   canvasScale: number;
-  onSideChange: (side: ProjectObjectCardSide) => void;
+  label: string;
+  onSideChange: (side: ProjectObjectSide) => void;
 };
 
-function CardSideSwitcher({ activeSide, canvasScale, onSideChange }: CardSideSwitcherProps) {
+function ObjectSideSwitcher({
+  activeSide,
+  canvasScale,
+  label,
+  onSideChange
+}: ObjectSideSwitcherProps) {
   return (
     <div
-      aria-label="Card side"
+      aria-label={label}
       className="absolute left-1/2 z-[60] flex h-8 items-center rounded-md border border-sky-200 bg-white p-0.5 shadow-lg shadow-slate-900/10"
       style={{
         bottom: `calc(100% + ${10 / canvasScale}px)`,

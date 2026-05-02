@@ -2,7 +2,6 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectBorderStyle,
   ProjectObjectCard,
-  ProjectObjectCardSide,
   ProjectObjectCardSizePresetValue,
   ProjectObjectDie,
   ProjectObjectDieFace,
@@ -28,7 +27,6 @@ import {
   normalizeProjectObjectDieActiveFace,
   normalizeProjectObjectDieFaceCount,
   projectObjectCardCustomSizePresetId,
-  projectObjectCardSides,
   projectObjectCardSizePresets,
   projectObjectDieFaceCountLimits,
   projectObjectDieFaceLabelMaxLength,
@@ -55,7 +53,6 @@ export type AppearanceDraft = {
 
 export type CardFieldKey = keyof ProjectObjectCard;
 export type CardDraft = {
-  activeSide: ProjectObjectCardSide;
   sizePreset: ProjectObjectCardSizePresetValue;
 };
 
@@ -188,7 +185,6 @@ const cardSizePresetValues = new Set<ProjectObjectCardSizePresetValue>([
   projectObjectCardCustomSizePresetId,
   ...projectObjectCardSizePresets.map((preset) => preset.id)
 ]);
-const cardSides = new Set<ProjectObjectCardSide>(projectObjectCardSides);
 const dieFaceModes = new Set<ProjectObjectDieFaceMode>(projectObjectDieFaceModes);
 const layoutAlignments = new Set<ProjectObjectLayoutAlignment>(["center", "end", "start"]);
 const layoutJustifications = new Set<ProjectObjectLayoutJustification>([
@@ -319,7 +315,6 @@ export function createAppearanceDraft(appearance: ProjectObjectAppearance): Appe
 
 export function createCardDraft(card: ProjectObjectCard): CardDraft {
   return {
-    activeSide: card.activeSide,
     sizePreset: card.sizePreset
   };
 }
@@ -755,12 +750,6 @@ function createNextCard(
   fieldKey: CardFieldKey,
   value: string
 ): ProjectObjectCard | null {
-  if (fieldKey === "activeSide") {
-    return cardSides.has(value as ProjectObjectCardSide)
-      ? { ...card, activeSide: value as ProjectObjectCardSide }
-      : null;
-  }
-
   if (fieldKey === "sizePreset") {
     return cardSizePresetValues.has(value as ProjectObjectCardSizePresetValue)
       ? { ...card, sizePreset: value as ProjectObjectCardSizePresetValue }
@@ -956,7 +945,7 @@ function areAppearancesEqual(left: ProjectObjectAppearance, right: ProjectObject
 }
 
 function areCardsEqual(left: ProjectObjectCard, right: ProjectObjectCard) {
-  return left.activeSide === right.activeSide && left.sizePreset === right.sizePreset;
+  return left.sizePreset === right.sizePreset;
 }
 
 function areDiesEqual(left: ProjectObjectDie, right: ProjectObjectDie) {

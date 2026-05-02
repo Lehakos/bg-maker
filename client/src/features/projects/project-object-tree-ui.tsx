@@ -1,10 +1,11 @@
 import type { ProjectFileNode, ProjectObjectKind, ProjectObjectNode } from "@bg-maker/shared";
 import {
   Boxes,
+  Circle,
   Component,
-  CreditCard,
   Dices,
   Image,
+  MirrorRectangular,
   Rows3,
   Square,
   Type,
@@ -25,7 +26,11 @@ type ProjectObjectTreeRootIconProps = LucideProps & {
 
 export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindIconProps) {
   if (kind === "card") {
-    return <CreditCard {...iconProps} />;
+    return <MirrorRectangular {...iconProps} />;
+  }
+
+  if (kind === "token") {
+    return <Circle {...iconProps} />;
   }
 
   if (kind === "die") {

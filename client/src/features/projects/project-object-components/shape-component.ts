@@ -8,7 +8,7 @@ import {
 
 export function getProjectObjectShapeComponent(object: ProjectObjectNode): ProjectObjectShape {
   return {
-    ...getDefaultProjectObjectShape(),
+    ...getDefaultProjectObjectShape(object.kind),
     ...object.components?.shape,
     ...getProjectObjectSideComponent(object, "shape")
   };
