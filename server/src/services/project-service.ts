@@ -772,6 +772,14 @@ function normalizeProjectObjectComponents(value: unknown, kind: ProjectObjectKin
     };
   }
 
+  if (kind === "bag") {
+    return {
+      ...components,
+      container: normalizeProjectObjectContainer(record.container, kind),
+      stackDisplay: normalizeProjectObjectStackDisplay(record.stackDisplay)
+    };
+  }
+
   if (kind === "counter") {
     return {
       ...components,

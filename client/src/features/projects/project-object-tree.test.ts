@@ -1,5 +1,6 @@
 import {
   doesProjectObjectClipChildren,
+  getProjectObjectContainerAcceptedObjectKinds,
   type ProjectFileKind,
   type ProjectFileNode,
   type ProjectObjectAppearance,
@@ -324,6 +325,46 @@ describe("project object tree helpers", () => {
     });
   });
 
+  it("creates bag defaults as a free-sized token container stack", () => {
+    const objectTree = [objectNode("bag-1", "Bag", "bag")];
+    const oversizedRectTransform: ProjectObjectRectTransform = {
+      height: 200,
+      pivotX: 0.5,
+      pivotY: 0.5,
+      rotation: 0,
+      scaleX: 2,
+      scaleY: 3,
+      width: 200,
+      x: 10,
+      y: 20
+    };
+
+    const resizedTree = setProjectObjectNodeRectTransform(
+      objectTree,
+      "bag-1",
+      oversizedRectTransform
+    );
+    const bag = findProjectObjectNode(resizedTree, "bag-1")!;
+
+    expect(getProjectObjectNodeContainer(bag)).toEqual({
+      entries: []
+    });
+    expect(getProjectObjectNodeStackDisplay(bag)).toMatchObject({
+      showCount: true,
+      visibleItemCount: 4
+    });
+    expect(getProjectObjectContainerAcceptedObjectKinds("bag")).toEqual(["token"]);
+    expect(getProjectObjectContainerAcceptedObjectKinds("deck")).toEqual(["card"]);
+    expect(getProjectObjectNodeRectTransform(bag)).toMatchObject({
+      height: 200,
+      scaleX: 2,
+      scaleY: 3,
+      width: 200,
+      x: 10,
+      y: 20
+    });
+  });
+
   it("keeps card children on the active card side", () => {
     const objectTree = [objectNode("card-1", "Card", "card")];
     const frontChild = objectNode("front-label", "Front label", "label");
@@ -368,6 +409,7 @@ describe("project object tree helpers", () => {
   });
 
   it("clips card, token, counter, die, and shape children by object kind", () => {
+    expect(doesProjectObjectClipChildren("bag")).toBe(true);
     expect(doesProjectObjectClipChildren("card")).toBe(true);
     expect(doesProjectObjectClipChildren("deck")).toBe(true);
     expect(doesProjectObjectClipChildren("token")).toBe(true);

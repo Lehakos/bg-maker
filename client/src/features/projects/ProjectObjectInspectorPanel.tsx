@@ -72,6 +72,7 @@ import {
   Rows3,
   Scan,
   Shapes,
+  ShoppingBag,
   SlidersHorizontal,
   Trash2,
   Type,
@@ -599,12 +600,16 @@ export function ProjectObjectInspectorPanel({
   );
   const container = useMemo(
     () =>
-      selectedObject?.kind === "deck" ? getProjectObjectNodeContainer(selectedObject) : null,
+      selectedObject?.kind === "deck" || selectedObject?.kind === "bag"
+        ? getProjectObjectNodeContainer(selectedObject)
+        : null,
     [selectedObject]
   );
   const stackDisplay = useMemo(
     () =>
-      selectedObject?.kind === "deck" ? getProjectObjectNodeStackDisplay(selectedObject) : null,
+      selectedObject?.kind === "deck" || selectedObject?.kind === "bag"
+        ? getProjectObjectNodeStackDisplay(selectedObject)
+        : null,
     [selectedObject]
   );
   const zone = useMemo(
@@ -1941,7 +1946,10 @@ export function ProjectObjectInspectorPanel({
           ) : null}
 
           {container ? (
-            <InspectorSection icon={<Boxes size={15} />} title="Container">
+            <InspectorSection
+              icon={selectedObject.kind === "bag" ? <ShoppingBag size={15} /> : <Boxes size={15} />}
+              title="Container"
+            >
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-600">
                   {containerTotalCount} item{containerTotalCount === 1 ? "" : "s"}

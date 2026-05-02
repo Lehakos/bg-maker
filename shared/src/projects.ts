@@ -20,6 +20,7 @@ export const projectObjectKinds = [
   "group",
   "card",
   "deck",
+  "bag",
   "zone",
   "token",
   "counter",
@@ -359,6 +360,7 @@ export type ApiErrorResponse = {
 };
 
 const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; width: number }> = {
+  bag: { height: 96, width: 96 },
   card: { height: 88, width: 63 },
   counter: { height: 64, width: 112 },
   deck: { height: 88, width: 63 },
@@ -372,6 +374,7 @@ const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; wid
 };
 
 const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
+  bag: "New bag",
   card: "New card",
   counter: "New counter",
   deck: "New deck",
@@ -385,6 +388,16 @@ const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
 };
 
 const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAppearance> = {
+  bag: {
+    backgroundColor: "#f5f3ff",
+    backgroundOpacity: 1,
+    borderColor: "#7c3aed",
+    borderRadius: 16,
+    borderStyle: "solid",
+    borderWidth: 2,
+    opacity: 1,
+    padding: 8
+  },
   card: {
     backgroundColor: "#ffffff",
     backgroundOpacity: 1,
@@ -553,6 +566,10 @@ export function getProjectObjectContainerAcceptedObjectKinds(
 ): ProjectObjectKind[] {
   if (kind === "deck") {
     return ["card"];
+  }
+
+  if (kind === "bag") {
+    return ["token"];
   }
 
   return [];
@@ -745,6 +762,7 @@ export function hasProjectObjectSides(kind: ProjectObjectKind) {
 export function doesProjectObjectClipChildren(kind: ProjectObjectKind) {
   return (
     kind === "card" ||
+    kind === "bag" ||
     kind === "counter" ||
     kind === "deck" ||
     kind === "die" ||
@@ -795,6 +813,11 @@ export function createDefaultProjectObjectComponents(
   if (kind === "deck") {
     components.container = getDefaultProjectObjectContainer(kind);
     components.deck = getDefaultProjectObjectDeck();
+    components.stackDisplay = getDefaultProjectObjectStackDisplay();
+  }
+
+  if (kind === "bag") {
+    components.container = getDefaultProjectObjectContainer(kind);
     components.stackDisplay = getDefaultProjectObjectStackDisplay();
   }
 

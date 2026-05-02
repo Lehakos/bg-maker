@@ -9,6 +9,7 @@ import {
   MirrorRectangular,
   Rows3,
   Scan,
+  ShoppingBag,
   Square,
   Type,
   type LucideProps
@@ -41,6 +42,10 @@ export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindI
 
   if (kind === "deck") {
     return <Boxes {...iconProps} />;
+  }
+
+  if (kind === "bag") {
+    return <ShoppingBag {...iconProps} />;
   }
 
   if (kind === "die") {

@@ -549,6 +549,78 @@ describe("ProjectService", () => {
     ]);
   });
 
+  it("normalizes bag components as a free-sized token container stack", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "object-file",
+        kind: "object",
+        name: "Object file",
+        objectTree: [
+          {
+            id: "bag-1",
+            kind: "bag",
+            name: "Bag 1",
+            components: {
+              container: {
+                entries: [
+                  { objectFileNodeId: " token-file-1 ", quantity: 2 },
+                  { objectFileNodeId: "token-file-1", quantity: 9999 },
+                  { objectFileNodeId: "", quantity: 4 }
+                ]
+              },
+              rectTransform: {
+                height: 200,
+                scaleX: 2,
+                scaleY: 3,
+                width: 200
+              },
+              stackDisplay: {
+                showCount: false,
+                stackOffsetX: 99,
+                stackOffsetY: -99,
+                visibleItemCount: 99
+              }
+            },
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ]);
+
+    expect(updatedProject?.fileTree[0]?.objectTree).toMatchObject([
+      {
+        id: "bag-1",
+        kind: "bag",
+        components: {
+          container: {
+            entries: [
+              {
+                objectFileNodeId: "token-file-1",
+                quantity: projectObjectContainerEntryQuantityLimits.max
+              }
+            ]
+          },
+          rectTransform: {
+            height: 200,
+            scaleX: 2,
+            scaleY: 3,
+            width: 200
+          },
+          stackDisplay: {
+            showCount: false,
+            stackOffsetX: 24,
+            stackOffsetY: -24,
+            visibleItemCount: projectObjectStackDisplayVisibleItemCountLimits.max
+          }
+        }
+      }
+    ]);
+    expect(updatedProject?.fileTree[0]?.objectTree?.[0]?.components).not.toHaveProperty("deck");
+  });
+
   it("normalizes die components and face customization", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 

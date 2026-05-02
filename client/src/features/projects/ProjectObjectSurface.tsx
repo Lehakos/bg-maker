@@ -3,6 +3,7 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectBorderStyle,
   ProjectObjectCounter,
+  ProjectObjectKind,
   ProjectObjectNode,
   ProjectObjectShapePoint,
   ProjectObjectShapeVariant,
@@ -49,6 +50,10 @@ export function ProjectObjectSurface({
 
   if (object.kind === "deck") {
     return <DeckVisual object={object} />;
+  }
+
+  if (object.kind === "bag") {
+    return <BagVisual object={object} />;
   }
 
   if (object.kind === "zone") {
@@ -131,6 +136,43 @@ function CounterVisual({ object }: ObjectVisualProps) {
 }
 
 function DeckVisual({ object }: ObjectVisualProps) {
+  return (
+    <StackedContainerVisual
+      countClassName="border-sky-200 text-sky-700"
+      emptyClassName="text-sky-800"
+      emptyLabel="Empty deck"
+      iconKind="deck"
+      object={object}
+    />
+  );
+}
+
+function BagVisual({ object }: ObjectVisualProps) {
+  return (
+    <StackedContainerVisual
+      countClassName="border-violet-200 text-violet-700"
+      emptyClassName="text-violet-800"
+      emptyLabel="Empty bag"
+      iconKind="bag"
+      object={object}
+    />
+  );
+}
+
+type StackedContainerVisualProps = ObjectVisualProps & {
+  countClassName: string;
+  emptyClassName: string;
+  emptyLabel: string;
+  iconKind: ProjectObjectKind;
+};
+
+function StackedContainerVisual({
+  countClassName,
+  emptyClassName,
+  emptyLabel,
+  iconKind,
+  object
+}: StackedContainerVisualProps) {
   const appearance = getProjectObjectNodeAppearance(object);
   const container = getProjectObjectNodeContainer(object);
   const stackDisplay = getProjectObjectNodeStackDisplay(object);
@@ -158,13 +200,17 @@ function DeckVisual({ object }: ObjectVisualProps) {
         );
       })}
       {totalCount === 0 ? (
-        <div className="absolute inset-0 flex min-w-0 flex-col items-center justify-center px-2 text-sky-800">
-          <ProjectObjectKindIcon kind="deck" size={24} />
-          <span className="mt-2 max-w-full truncate text-xs font-semibold">Empty deck</span>
+        <div
+          className={`absolute inset-0 flex min-w-0 flex-col items-center justify-center px-2 ${emptyClassName}`}
+        >
+          <ProjectObjectKindIcon kind={iconKind} size={24} />
+          <span className="mt-2 max-w-full truncate text-xs font-semibold">{emptyLabel}</span>
         </div>
       ) : null}
       {stackDisplay.showCount ? (
-        <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded border border-sky-200 bg-white/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-sky-700 shadow-sm">
+        <span
+          className={`pointer-events-none absolute bottom-1.5 right-1.5 rounded border bg-white/90 px-1.5 py-0.5 text-[10px] font-bold leading-none shadow-sm ${countClassName}`}
+        >
           {totalCount}
         </span>
       ) : null}
