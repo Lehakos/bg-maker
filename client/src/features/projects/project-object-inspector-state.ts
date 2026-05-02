@@ -3,6 +3,9 @@ import type {
   ProjectObjectBorderStyle,
   ProjectObjectCard,
   ProjectObjectCardSizePresetValue,
+  ProjectObjectCounter,
+  ProjectObjectCounterBoundsMode,
+  ProjectObjectCounterDisplayMode,
   ProjectObjectDie,
   ProjectObjectDieFace,
   ProjectObjectDieFaceMode,
@@ -28,6 +31,11 @@ import {
   normalizeProjectObjectDieFaceCount,
   projectObjectCardCustomSizePresetId,
   projectObjectCardSizePresets,
+  projectObjectCounterAffixMaxLength,
+  projectObjectCounterBoundsModes,
+  projectObjectCounterDisplayModes,
+  projectObjectCounterStepLimits,
+  projectObjectCounterValueLimits,
   projectObjectDieFaceCountLimits,
   projectObjectDieFaceLabelMaxLength,
   projectObjectDieFaceModes,
@@ -54,6 +62,22 @@ export type AppearanceDraft = {
 export type CardFieldKey = keyof ProjectObjectCard;
 export type CardDraft = {
   sizePreset: ProjectObjectCardSizePresetValue;
+};
+
+export type CounterFieldKey = keyof ProjectObjectCounter;
+export type CounterNumberFieldKey = Extract<
+  CounterFieldKey,
+  "defaultValue" | "maxValue" | "minValue" | "step"
+>;
+export type CounterDraft = {
+  boundsMode: ProjectObjectCounterBoundsMode;
+  defaultValue: string;
+  displayMode: ProjectObjectCounterDisplayMode;
+  maxValue: string;
+  minValue: string;
+  prefix: string;
+  step: string;
+  suffix: string;
 };
 
 export type DieFieldKey = "activeFace" | "faceCount";
@@ -133,6 +157,36 @@ export const textNumberFieldSettings = {
   { decimals: number; max: number; min: number; step: number }
 >;
 
+export const counterNumberFieldSettings = {
+  defaultValue: {
+    decimals: 0,
+    max: projectObjectCounterValueLimits.max,
+    min: projectObjectCounterValueLimits.min,
+    step: 1
+  },
+  maxValue: {
+    decimals: 0,
+    max: projectObjectCounterValueLimits.max,
+    min: projectObjectCounterValueLimits.min,
+    step: 1
+  },
+  minValue: {
+    decimals: 0,
+    max: projectObjectCounterValueLimits.max,
+    min: projectObjectCounterValueLimits.min,
+    step: 1
+  },
+  step: {
+    decimals: 0,
+    max: projectObjectCounterStepLimits.max,
+    min: projectObjectCounterStepLimits.min,
+    step: 1
+  }
+} as const satisfies Record<
+  CounterNumberFieldKey,
+  { decimals: number; max: number; min: number; step: number }
+>;
+
 export const dieNumberFieldSettings = {
   faceCount: {
     decimals: 0,
@@ -185,6 +239,10 @@ const cardSizePresetValues = new Set<ProjectObjectCardSizePresetValue>([
   projectObjectCardCustomSizePresetId,
   ...projectObjectCardSizePresets.map((preset) => preset.id)
 ]);
+const counterBoundsModes = new Set<ProjectObjectCounterBoundsMode>(projectObjectCounterBoundsModes);
+const counterDisplayModes = new Set<ProjectObjectCounterDisplayMode>(
+  projectObjectCounterDisplayModes
+);
 const dieFaceModes = new Set<ProjectObjectDieFaceMode>(projectObjectDieFaceModes);
 const layoutAlignments = new Set<ProjectObjectLayoutAlignment>(["center", "end", "start"]);
 const layoutJustifications = new Set<ProjectObjectLayoutJustification>([
@@ -319,6 +377,19 @@ export function createCardDraft(card: ProjectObjectCard): CardDraft {
   };
 }
 
+export function createCounterDraft(counter: ProjectObjectCounter): CounterDraft {
+  return {
+    boundsMode: counter.boundsMode,
+    defaultValue: formatCounterNumberValue(counter.defaultValue, "defaultValue"),
+    displayMode: counter.displayMode,
+    maxValue: formatCounterNumberValue(counter.maxValue, "maxValue"),
+    minValue: formatCounterNumberValue(counter.minValue, "minValue"),
+    prefix: counter.prefix,
+    step: formatCounterNumberValue(counter.step, "step"),
+    suffix: counter.suffix
+  };
+}
+
 export function createDieDraft(die: ProjectObjectDie): DieDraft {
   return {
     activeFace: String(normalizeProjectObjectDieActiveFace(die.activeFace, die.faceCount)),
@@ -384,6 +455,20 @@ export function getCardWithDraftField(
   }
 
   return areCardsEqual(card, nextCard) ? null : nextCard;
+}
+
+export function getCounterWithDraftField(
+  counter: ProjectObjectCounter,
+  fieldKey: CounterFieldKey,
+  value: string
+) {
+  const nextCounter = createNextCounter(counter, fieldKey, value);
+
+  if (!nextCounter) {
+    return null;
+  }
+
+  return areCountersEqual(counter, nextCounter) ? null : nextCounter;
 }
 
 export function getDieWithDraftField(die: ProjectObjectDie, fieldKey: DieFieldKey, value: string) {
@@ -635,6 +720,15 @@ export function normalizeTextNumberValue(
   return roundTo(clamp(value, min, max), decimals);
 }
 
+export function normalizeCounterNumberValue(
+  fieldKey: keyof typeof counterNumberFieldSettings,
+  value: number
+) {
+  const { decimals, max, min } = counterNumberFieldSettings[fieldKey];
+
+  return roundTo(clamp(value, min, max), decimals);
+}
+
 export function normalizeDieNumberValue(
   fieldKey: keyof typeof dieNumberFieldSettings,
   value: number
@@ -676,6 +770,15 @@ export function formatTextNumberValue(
   fieldKey: keyof typeof textNumberFieldSettings
 ) {
   const { decimals } = textNumberFieldSettings[fieldKey];
+
+  return String(roundTo(value, decimals));
+}
+
+export function formatCounterNumberValue(
+  value: number,
+  fieldKey: keyof typeof counterNumberFieldSettings
+) {
+  const { decimals } = counterNumberFieldSettings[fieldKey];
 
   return String(roundTo(value, decimals));
 }
@@ -757,6 +860,42 @@ function createNextCard(
   }
 
   return null;
+}
+
+function createNextCounter(
+  counter: ProjectObjectCounter,
+  fieldKey: CounterFieldKey,
+  value: string
+): ProjectObjectCounter | null {
+  if (fieldKey === "boundsMode") {
+    return counterBoundsModes.has(value as ProjectObjectCounterBoundsMode)
+      ? normalizeCounter({ ...counter, boundsMode: value as ProjectObjectCounterBoundsMode })
+      : null;
+  }
+
+  if (fieldKey === "displayMode") {
+    return counterDisplayModes.has(value as ProjectObjectCounterDisplayMode)
+      ? { ...counter, displayMode: value as ProjectObjectCounterDisplayMode }
+      : null;
+  }
+
+  if (fieldKey === "prefix" || fieldKey === "suffix") {
+    return {
+      ...counter,
+      [fieldKey]: value.slice(0, projectObjectCounterAffixMaxLength)
+    };
+  }
+
+  const parsedValue = parseRectTransformDraftValue(value);
+
+  if (parsedValue === null) {
+    return null;
+  }
+
+  return normalizeCounter({
+    ...counter,
+    [fieldKey]: normalizeCounterNumberValue(fieldKey, parsedValue)
+  });
 }
 
 function createNextDie(
@@ -948,6 +1087,19 @@ function areCardsEqual(left: ProjectObjectCard, right: ProjectObjectCard) {
   return left.sizePreset === right.sizePreset;
 }
 
+function areCountersEqual(left: ProjectObjectCounter, right: ProjectObjectCounter) {
+  return (
+    left.boundsMode === right.boundsMode &&
+    left.defaultValue === right.defaultValue &&
+    left.displayMode === right.displayMode &&
+    left.maxValue === right.maxValue &&
+    left.minValue === right.minValue &&
+    left.prefix === right.prefix &&
+    left.step === right.step &&
+    left.suffix === right.suffix
+  );
+}
+
 function areDiesEqual(left: ProjectObjectDie, right: ProjectObjectDie) {
   return (
     left.activeFace === right.activeFace &&
@@ -1028,6 +1180,27 @@ function normalizeDie(die: ProjectObjectDie): ProjectObjectDie {
     activeFace: normalizeProjectObjectDieActiveFace(die.activeFace, faceCount),
     faceCount,
     faces: getDieFaces({ ...die, faceCount })
+  };
+}
+
+function normalizeCounter(counter: ProjectObjectCounter): ProjectObjectCounter {
+  const minValue = normalizeCounterNumberValue("minValue", counter.minValue);
+  const maxValue = Math.max(minValue, normalizeCounterNumberValue("maxValue", counter.maxValue));
+  const defaultValue = normalizeCounterNumberValue(
+    "defaultValue",
+    counter.boundsMode === "none"
+      ? counter.defaultValue
+      : clamp(counter.defaultValue, minValue, maxValue)
+  );
+
+  return {
+    ...counter,
+    defaultValue,
+    maxValue,
+    minValue,
+    prefix: counter.prefix.slice(0, projectObjectCounterAffixMaxLength),
+    step: normalizeCounterNumberValue("step", counter.step),
+    suffix: counter.suffix.slice(0, projectObjectCounterAffixMaxLength)
   };
 }
 

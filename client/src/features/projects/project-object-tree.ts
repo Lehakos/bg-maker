@@ -4,6 +4,7 @@ import type {
   ProjectFileKind,
   ProjectFileNode,
   ProjectObjectCard,
+  ProjectObjectCounter,
   ProjectObjectDie,
   ProjectObjectDoubleSide,
   ProjectObjectKind,
@@ -188,6 +189,10 @@ export function getProjectObjectNodeCard(object: ProjectObjectNode): ProjectObje
   return projectObjectComponentEngine.getCard(object);
 }
 
+export function getProjectObjectNodeCounter(object: ProjectObjectNode): ProjectObjectCounter {
+  return projectObjectComponentEngine.getCounter(object);
+}
+
 export function getProjectObjectNodeDie(object: ProjectObjectNode): ProjectObjectDie {
   return projectObjectComponentEngine.getDie(object);
 }
@@ -243,6 +248,18 @@ export function setProjectObjectNodeCard(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withCard(node, card)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeCounter(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  counter: ProjectObjectCounter
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withCounter(node, counter)
   );
 
   return result.changed ? result.nodes : objectTree;

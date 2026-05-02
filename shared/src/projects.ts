@@ -20,6 +20,7 @@ export const projectObjectKinds = [
   "group",
   "card",
   "token",
+  "counter",
   "die",
   "label",
   "image",
@@ -105,6 +106,37 @@ export type ProjectObjectSide = (typeof projectObjectSides)[number];
 
 export type ProjectObjectCard = {
   sizePreset: ProjectObjectCardSizePresetValue;
+};
+
+export const projectObjectCounterBoundsModes = ["clamp", "none", "wrap"] as const;
+
+export type ProjectObjectCounterBoundsMode = (typeof projectObjectCounterBoundsModes)[number];
+
+export const projectObjectCounterDisplayModes = ["value", "valueAndMax"] as const;
+
+export type ProjectObjectCounterDisplayMode = (typeof projectObjectCounterDisplayModes)[number];
+
+export const projectObjectCounterValueLimits = {
+  max: 999999,
+  min: -999999
+} as const;
+
+export const projectObjectCounterStepLimits = {
+  max: 999999,
+  min: 1
+} as const;
+
+export const projectObjectCounterAffixMaxLength = 24;
+
+export type ProjectObjectCounter = {
+  boundsMode: ProjectObjectCounterBoundsMode;
+  defaultValue: number;
+  displayMode: ProjectObjectCounterDisplayMode;
+  maxValue: number;
+  minValue: number;
+  prefix: string;
+  step: number;
+  suffix: string;
 };
 
 export const projectObjectDieDefaultFaceCount = 6;
@@ -203,6 +235,7 @@ export type ProjectObjectRectTransform = {
 export type ProjectObjectComponents = {
   appearance?: ProjectObjectAppearance;
   card?: ProjectObjectCard;
+  counter?: ProjectObjectCounter;
   die?: ProjectObjectDie;
   doubleSide?: ProjectObjectDoubleSide;
   image?: ProjectObjectImage;
@@ -272,6 +305,7 @@ export type ApiErrorResponse = {
 
 const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; width: number }> = {
   card: { height: 88, width: 63 },
+  counter: { height: 64, width: 112 },
   die: { height: 120, width: 120 },
   group: { height: 240, width: 320 },
   image: { height: 180, width: 240 },
@@ -282,6 +316,7 @@ const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; wid
 
 const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
   card: "New card",
+  counter: "New counter",
   die: "New die",
   group: "New group",
   image: "New image",
@@ -300,6 +335,16 @@ const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAp
     borderWidth: 1,
     opacity: 1,
     padding: 0
+  },
+  counter: {
+    backgroundColor: "#eff6ff",
+    backgroundOpacity: 1,
+    borderColor: "#2563eb",
+    borderRadius: 8,
+    borderStyle: "solid",
+    borderWidth: 2,
+    opacity: 1,
+    padding: 8
   },
   die: {
     backgroundColor: "#ffffff",
@@ -424,6 +469,19 @@ export function getDefaultProjectObjectCard(): ProjectObjectCard {
   };
 }
 
+export function getDefaultProjectObjectCounter(): ProjectObjectCounter {
+  return {
+    boundsMode: "clamp",
+    defaultValue: 0,
+    displayMode: "value",
+    maxValue: 10,
+    minValue: 0,
+    prefix: "",
+    step: 1,
+    suffix: ""
+  };
+}
+
 export function getDefaultProjectObjectDieFace(faceNumber: number): ProjectObjectDieFace {
   const normalizedFaceNumber = Math.max(
     1,
@@ -535,7 +593,13 @@ export function hasProjectObjectSides(kind: ProjectObjectKind) {
 }
 
 export function doesProjectObjectClipChildren(kind: ProjectObjectKind) {
-  return kind === "card" || kind === "die" || kind === "shape" || kind === "token";
+  return (
+    kind === "card" ||
+    kind === "counter" ||
+    kind === "die" ||
+    kind === "shape" ||
+    kind === "token"
+  );
 }
 
 const defaultProjectObjectShapePolygonPoints: readonly ProjectObjectShapePoint[] = [
@@ -575,6 +639,10 @@ export function createDefaultProjectObjectComponents(
     components.card = getDefaultProjectObjectCard();
     components.doubleSide = getDefaultProjectObjectDoubleSide(kind);
     components.layout = getDefaultProjectObjectLayout();
+  }
+
+  if (kind === "counter") {
+    components.counter = getDefaultProjectObjectCounter();
   }
 
   if (kind === "die") {

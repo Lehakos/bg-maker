@@ -1,6 +1,7 @@
 import type {
   ProjectObjectAppearance,
   ProjectObjectCard,
+  ProjectObjectCounter,
   ProjectObjectDie,
   ProjectObjectDoubleSide,
   ProjectObjectImage,
@@ -17,6 +18,10 @@ import {
   withProjectObjectAppearanceComponent
 } from "./appearance-component";
 import { getProjectObjectCardComponent, withProjectObjectCardComponent } from "./card-component";
+import {
+  getProjectObjectCounterComponent,
+  withProjectObjectCounterComponent
+} from "./counter-component";
 import { getProjectObjectDieComponent, withProjectObjectDieComponent } from "./die-component";
 import {
   getProjectObjectDoubleSideComponent,
@@ -52,6 +57,10 @@ export class ProjectObjectComponentEngine {
 
   getCard(object: ProjectObjectNode): ProjectObjectCard {
     return getProjectObjectCardComponent(object);
+  }
+
+  getCounter(object: ProjectObjectNode): ProjectObjectCounter {
+    return getProjectObjectCounterComponent(object);
   }
 
   getDie(object: ProjectObjectNode): ProjectObjectDie {
@@ -94,6 +103,10 @@ export class ProjectObjectComponentEngine {
 
   withCard(object: ProjectObjectNode, card: ProjectObjectCard): ProjectObjectNode {
     return withProjectObjectCardComponent(object, card);
+  }
+
+  withCounter(object: ProjectObjectNode, counter: ProjectObjectCounter): ProjectObjectNode {
+    return withProjectObjectCounterComponent(object, counter);
   }
 
   withDie(object: ProjectObjectNode, die: ProjectObjectDie): ProjectObjectNode {

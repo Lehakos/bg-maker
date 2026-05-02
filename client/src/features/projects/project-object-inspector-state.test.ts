@@ -1,6 +1,7 @@
 import type {
   ProjectObjectAppearance,
   ProjectObjectCard,
+  ProjectObjectCounter,
   ProjectObjectDie,
   ProjectObjectImage,
   ProjectObjectLayout,
@@ -12,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import {
   createAppearanceDraft,
   createCardDraft,
+  createCounterDraft,
   createDieDraft,
   createImageDraft,
   createLayoutDraft,
@@ -20,6 +22,7 @@ import {
   createTextDraft,
   getAppearanceWithDraftField,
   getCardWithDraftField,
+  getCounterWithDraftField,
   getDieFace,
   getDieFaces,
   getDieWithDraftField,
@@ -39,6 +42,7 @@ import {
   getTextWithDraftField,
   isTextFontWeightBold,
   normalizeAppearanceNumberValue,
+  normalizeCounterNumberValue,
   normalizeDieNumberValue,
   normalizeImageNumberValue,
   normalizeLayoutNumberValue,
@@ -73,6 +77,17 @@ const appearance: ProjectObjectAppearance = {
 
 const card: ProjectObjectCard = {
   sizePreset: "poker"
+};
+
+const counter: ProjectObjectCounter = {
+  boundsMode: "clamp",
+  defaultValue: 5,
+  displayMode: "value",
+  maxValue: 10,
+  minValue: 0,
+  prefix: "",
+  step: 1,
+  suffix: " HP"
 };
 
 const die: ProjectObjectDie = {
@@ -197,6 +212,38 @@ describe("project object inspector state", () => {
     });
     expect(getCardWithDraftField(card, "sizePreset", "unknown-size")).toBeNull();
     expect(getCardWithDraftField(card, "sizePreset", "poker")).toBeNull();
+  });
+
+  it("creates and updates counter drafts", () => {
+    expect(createCounterDraft(counter)).toEqual({
+      boundsMode: "clamp",
+      defaultValue: "5",
+      displayMode: "value",
+      maxValue: "10",
+      minValue: "0",
+      prefix: "",
+      step: "1",
+      suffix: " HP"
+    });
+    expect(normalizeCounterNumberValue("defaultValue", 1000000)).toBe(999999);
+    expect(normalizeCounterNumberValue("step", 0)).toBe(1);
+    expect(getCounterWithDraftField(counter, "defaultValue", "7")).toMatchObject({
+      defaultValue: 7
+    });
+    expect(getCounterWithDraftField(counter, "defaultValue", "12")).toMatchObject({
+      defaultValue: 10
+    });
+    expect(getCounterWithDraftField(counter, "boundsMode", "none")).toMatchObject({
+      boundsMode: "none"
+    });
+    expect(getCounterWithDraftField(counter, "displayMode", "valueAndMax")).toMatchObject({
+      displayMode: "valueAndMax"
+    });
+    expect(getCounterWithDraftField(counter, "suffix", " VP")).toMatchObject({
+      suffix: " VP"
+    });
+    expect(getCounterWithDraftField(counter, "boundsMode", "bounce")).toBeNull();
+    expect(getCounterWithDraftField(counter, "step", "nope")).toBeNull();
   });
 
   it("creates and updates die drafts and faces", () => {

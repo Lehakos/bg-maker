@@ -4,6 +4,7 @@ import {
   type ProjectFileNode,
   type ProjectObjectAppearance,
   type ProjectObjectCard,
+  type ProjectObjectCounter,
   type ProjectObjectDie,
   type ProjectObjectImage,
   type ProjectObjectKind,
@@ -22,6 +23,7 @@ import {
   getExpandableProjectObjectNodeIds,
   getProjectObjectNodeAppearance,
   getProjectObjectNodeCard,
+  getProjectObjectNodeCounter,
   getProjectObjectNodeDie,
   getProjectObjectNodeChildren,
   getProjectObjectNodeDoubleSide,
@@ -35,6 +37,7 @@ import {
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
   setProjectObjectNodeCard,
+  setProjectObjectNodeCounter,
   setProjectObjectNodeDie,
   setProjectObjectNodeDoubleSide,
   setProjectObjectNodeImage,
@@ -307,9 +310,10 @@ describe("project object tree helpers", () => {
     expect(findProjectObjectNode(movedOutTree, "back-label")?.parentSide).toBeUndefined();
   });
 
-  it("clips card, token, die, and shape children by object kind", () => {
+  it("clips card, token, counter, die, and shape children by object kind", () => {
     expect(doesProjectObjectClipChildren("card")).toBe(true);
     expect(doesProjectObjectClipChildren("token")).toBe(true);
+    expect(doesProjectObjectClipChildren("counter")).toBe(true);
     expect(doesProjectObjectClipChildren("die")).toBe(true);
     expect(doesProjectObjectClipChildren("shape")).toBe(true);
     expect(doesProjectObjectClipChildren("group")).toBe(false);
@@ -393,6 +397,16 @@ describe("project object tree helpers", () => {
       positionX: 40,
       positionY: 60
     };
+    const counter: ProjectObjectCounter = {
+      boundsMode: "clamp",
+      defaultValue: 5,
+      displayMode: "valueAndMax",
+      maxValue: 10,
+      minValue: 0,
+      prefix: "",
+      step: 1,
+      suffix: " HP"
+    };
     const die: ProjectObjectDie = {
       activeFace: 2,
       faceCount: 4,
@@ -426,6 +440,11 @@ describe("project object tree helpers", () => {
     const appearanceTree = setProjectObjectNodeAppearance(objectTree, "shape-1", appearance);
     const textTree = setProjectObjectNodeText(objectTree, "label-1", text);
     const imageTree = setProjectObjectNodeImage(objectTree, "image-1", image);
+    const counterTree = setProjectObjectNodeCounter(
+      [objectNode("counter-1", "Counter", "counter")],
+      "counter-1",
+      counter
+    );
     const dieTree = setProjectObjectNodeDie([objectNode("die-1", "Die", "die")], "die-1", die);
     const layoutTree = setProjectObjectNodeLayout(objectTree, "group-1", layout);
     const shapeTree = setProjectObjectNodeShape(objectTree, "shape-1", shape);
@@ -440,6 +459,9 @@ describe("project object tree helpers", () => {
     ).toEqual(appearance);
     expect(getProjectObjectNodeText(findProjectObjectNode(textTree, "label-1")!)).toEqual(text);
     expect(getProjectObjectNodeImage(findProjectObjectNode(imageTree, "image-1")!)).toEqual(image);
+    expect(getProjectObjectNodeCounter(findProjectObjectNode(counterTree, "counter-1")!)).toEqual(
+      counter
+    );
     expect(getProjectObjectNodeDie(findProjectObjectNode(dieTree, "die-1")!)).toEqual(die);
     expect(getProjectObjectNodeLayout(findProjectObjectNode(layoutTree, "group-1")!)).toEqual(
       layout
@@ -449,6 +471,7 @@ describe("project object tree helpers", () => {
       doubleSide
     );
     expect(findProjectObjectNode(objectTree, "image-1")?.components?.image).toBeUndefined();
+    expect(setProjectObjectNodeCounter(objectTree, "missing-object", counter)).toBe(objectTree);
     expect(setProjectObjectNodeImage(objectTree, "missing-object", image)).toBe(objectTree);
     expect(setProjectObjectNodeDie(objectTree, "missing-object", die)).toBe(objectTree);
     expect(setProjectObjectNodeLayout(objectTree, "missing-object", layout)).toBe(objectTree);

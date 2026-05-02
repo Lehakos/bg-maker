@@ -4,6 +4,7 @@ import {
   Circle,
   Component,
   Dices,
+  Hash,
   Image,
   MirrorRectangular,
   Rows3,
@@ -31,6 +32,10 @@ export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindI
 
   if (kind === "token") {
     return <Circle {...iconProps} />;
+  }
+
+  if (kind === "counter") {
+    return <Hash {...iconProps} />;
   }
 
   if (kind === "die") {

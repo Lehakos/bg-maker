@@ -11,6 +11,9 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectBorderStyle,
   ProjectObjectCard,
+  ProjectObjectCounter,
+  ProjectObjectCounterBoundsMode,
+  ProjectObjectCounterDisplayMode,
   ProjectObjectSide,
   ProjectObjectCardSizePresetValue,
   ProjectObjectDie,
@@ -41,6 +44,7 @@ import {
   createDefaultProjectObjectNode,
   getDefaultProjectObjectAppearance,
   getDefaultProjectObjectCard,
+  getDefaultProjectObjectCounter,
   getDefaultProjectObjectDie,
   getDefaultProjectObjectDieFace,
   getDefaultProjectObjectDoubleSide,
@@ -55,6 +59,11 @@ import {
   projectAssetsFolderId,
   projectAssetsFolderName,
   projectObjectCardCustomSizePresetId,
+  projectObjectCounterAffixMaxLength,
+  projectObjectCounterBoundsModes,
+  projectObjectCounterDisplayModes,
+  projectObjectCounterStepLimits,
+  projectObjectCounterValueLimits,
   projectObjectSides,
   projectObjectDieFaceCountLimits,
   projectObjectDieFaceLabelMaxLength,
@@ -132,6 +141,12 @@ const projectObjectImageFits = new Set<ProjectObjectImageFit>([
   "scaleDown"
 ]);
 const projectObjectDieFaceModeSet = new Set<ProjectObjectDieFaceMode>(projectObjectDieFaceModes);
+const projectObjectCounterBoundsModeSet = new Set<ProjectObjectCounterBoundsMode>(
+  projectObjectCounterBoundsModes
+);
+const projectObjectCounterDisplayModeSet = new Set<ProjectObjectCounterDisplayMode>(
+  projectObjectCounterDisplayModes
+);
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
 const projectObjectKinds = new Set<ProjectObjectKind>(sharedProjectObjectKinds);
 const projectObjectSideSet = new Set<ProjectObjectSide>(projectObjectSides);
@@ -736,6 +751,13 @@ function normalizeProjectObjectComponents(value: unknown, kind: ProjectObjectKin
     };
   }
 
+  if (kind === "counter") {
+    return {
+      ...components,
+      counter: normalizeProjectObjectCounter(record.counter)
+    };
+  }
+
   if (kind === "die") {
     return {
       ...components,
@@ -903,6 +925,58 @@ function normalizeProjectObjectCard(value: unknown): ProjectObjectCard {
   return {
     sizePreset
   };
+}
+
+function normalizeProjectObjectCounter(value: unknown): ProjectObjectCounter {
+  const defaultCounter = getDefaultProjectObjectCounter();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const minValue = normalizeIntegerNumber(record.minValue, defaultCounter.minValue, {
+    max: projectObjectCounterValueLimits.max,
+    min: projectObjectCounterValueLimits.min
+  });
+  const maxValue = Math.max(
+    minValue,
+    normalizeIntegerNumber(record.maxValue, defaultCounter.maxValue, {
+      max: projectObjectCounterValueLimits.max,
+      min: projectObjectCounterValueLimits.min
+    })
+  );
+  const boundsMode = projectObjectCounterBoundsModeSet.has(
+    record.boundsMode as ProjectObjectCounterBoundsMode
+  )
+    ? (record.boundsMode as ProjectObjectCounterBoundsMode)
+    : defaultCounter.boundsMode;
+
+  return {
+    boundsMode,
+    defaultValue: normalizeIntegerNumber(
+      record.defaultValue,
+      defaultCounter.defaultValue,
+      boundsMode === "none"
+        ? {
+            max: projectObjectCounterValueLimits.max,
+            min: projectObjectCounterValueLimits.min
+          }
+        : { max: maxValue, min: minValue }
+    ),
+    displayMode: projectObjectCounterDisplayModeSet.has(
+      record.displayMode as ProjectObjectCounterDisplayMode
+    )
+      ? (record.displayMode as ProjectObjectCounterDisplayMode)
+      : defaultCounter.displayMode,
+    maxValue,
+    minValue,
+    prefix: normalizeProjectObjectCounterAffix(record.prefix),
+    step: normalizeIntegerNumber(record.step, defaultCounter.step, {
+      max: projectObjectCounterStepLimits.max,
+      min: projectObjectCounterStepLimits.min
+    }),
+    suffix: normalizeProjectObjectCounterAffix(record.suffix)
+  };
+}
+
+function normalizeProjectObjectCounterAffix(value: unknown) {
+  return typeof value === "string" ? value.slice(0, projectObjectCounterAffixMaxLength) : "";
 }
 
 function normalizeProjectObjectDoubleSide(

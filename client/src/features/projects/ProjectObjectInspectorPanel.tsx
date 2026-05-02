@@ -3,6 +3,9 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectCard,
   ProjectObjectCardSizePresetValue,
+  ProjectObjectCounter,
+  ProjectObjectCounterBoundsMode,
+  ProjectObjectCounterDisplayMode,
   ProjectObjectDie,
   ProjectObjectDieFaceMode,
   ProjectObjectImage,
@@ -18,6 +21,7 @@ import type {
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
 import {
+  getDefaultProjectObjectCounter,
   getDefaultProjectObjectDie,
   hasProjectObjectLayout,
   isProjectObjectCardSizePresetLocked,
@@ -44,6 +48,7 @@ import {
   Eye,
   EyeOff,
   Grid3x3,
+  Hash,
   ImagePlus,
   Italic,
   LayoutPanelTop,
@@ -62,9 +67,11 @@ import {
   type KeyboardEvent,
   type ReactNode,
   useEffect,
+  useId,
   useMemo,
   useState
 } from "react";
+import { InfoTip } from "../../components/InfoTip";
 import { uploadProjectImageAsset } from "./project-api";
 import {
   appendProjectImageAssetFileNode,
@@ -75,6 +82,7 @@ import {
 import {
   getProjectObjectNodeAppearance,
   getProjectObjectNodeCard,
+  getProjectObjectNodeCounter,
   getProjectObjectNodeDie,
   getProjectObjectNodeDoubleSide,
   getProjectObjectNodeImage,
@@ -85,6 +93,7 @@ import {
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
   setProjectObjectNodeCard,
+  setProjectObjectNodeCounter,
   setProjectObjectNodeDie,
   setProjectObjectNodeDoubleSide,
   setProjectObjectNodeImage,
@@ -104,11 +113,13 @@ import {
   createRectTransformDraft,
   createAppearanceDraft,
   createCardDraft,
+  createCounterDraft,
   createDieDraft,
   createImageDraft,
   createLayoutDraft,
   createTextDraft,
   formatAppearanceNumberValue,
+  formatCounterNumberValue,
   formatDieNumberValue,
   formatImageNumberValue,
   formatLayoutNumberValue,
@@ -116,6 +127,7 @@ import {
   formatTextNumberValue,
   getAppearanceWithDraftField,
   getCardWithDraftField,
+  getCounterWithDraftField,
   getDieFace,
   getDieWithDraftField,
   getDieWithFaceField,
@@ -136,12 +148,14 @@ import {
   isTextFontWeightBold,
   normalizeRectTransformValue,
   normalizeAppearanceNumberValue,
+  normalizeCounterNumberValue,
   normalizeDieNumberValue,
   normalizeImageNumberValue,
   normalizeLayoutNumberValue,
   normalizeTextNumberValue,
   parseRectTransformDraftValue,
   appearanceNumberFieldSettings,
+  counterNumberFieldSettings,
   dieNumberFieldSettings,
   layoutNumberFieldSettings,
   rectTransformFieldSettings,
@@ -150,6 +164,9 @@ import {
   type AppearanceFieldKey,
   type CardDraft,
   type CardFieldKey,
+  type CounterDraft,
+  type CounterFieldKey,
+  type CounterNumberFieldKey,
   type DieDraft,
   type DieFaceFieldKey,
   type DieFieldKey,
@@ -221,6 +238,11 @@ type TextNumberFieldDefinition = {
   label: string;
 };
 
+type CounterNumberFieldDefinition = {
+  key: keyof typeof counterNumberFieldSettings;
+  label: string;
+};
+
 type ImageNumberFieldDefinition = {
   key: keyof typeof imageNumberFieldSettings;
   label: string;
@@ -255,6 +277,16 @@ const appearanceBorderWidthField = {
 const textNumberFields: readonly TextNumberFieldDefinition[] = [
   { key: "fontSize", label: "Size" },
   { key: "lineHeight", label: "Line" }
+];
+
+const counterValueFields: readonly CounterNumberFieldDefinition[] = [
+  { key: "defaultValue", label: "Default" },
+  { key: "step", label: "Step" }
+];
+
+const counterBoundsFields: readonly CounterNumberFieldDefinition[] = [
+  { key: "minValue", label: "Min" },
+  { key: "maxValue", label: "Max" }
 ];
 
 const imageNumberFields: readonly ImageNumberFieldDefinition[] = [
@@ -404,6 +436,34 @@ const dieFaceModeOptions = [
   value: ProjectObjectDieFaceMode;
 }[];
 
+const counterBoundsModeOptions = [
+  { label: "Clamp", value: "clamp" },
+  { label: "No bounds", value: "none" },
+  { label: "Wrap", value: "wrap" }
+] as const satisfies readonly {
+  label: string;
+  value: ProjectObjectCounterBoundsMode;
+}[];
+
+const counterDisplayModeOptions = [
+  { label: "Value", value: "value" },
+  { label: "Value / max", value: "valueAndMax" }
+] as const satisfies readonly {
+  label: string;
+  value: ProjectObjectCounterDisplayMode;
+}[];
+
+const counterBoundsModeInfoItems = [
+  { description: "Keeps future values between Min and Max.", label: "Clamp" },
+  { description: "Cycles past Max back to Min, and past Min back to Max.", label: "Wrap" },
+  { description: "Ignores Min and Max while changing the counter.", label: "No bounds" }
+] as const;
+
+const counterDisplayModeInfoItems = [
+  { description: "Shows only the default value.", label: "Value" },
+  { description: "Shows the default value together with Max.", label: "Value / max" }
+] as const;
+
 const shapeVariantOptions = [
   { label: "Rectangle", value: "rectangle" },
   { label: "Ellipse", value: "ellipse" },
@@ -440,6 +500,11 @@ export function ProjectObjectInspectorPanel({
   );
   const card = useMemo(
     () => (selectedObject?.kind === "card" ? getProjectObjectNodeCard(selectedObject) : null),
+    [selectedObject]
+  );
+  const counter = useMemo(
+    () =>
+      selectedObject?.kind === "counter" ? getProjectObjectNodeCounter(selectedObject) : null,
     [selectedObject]
   );
   const die = useMemo(
@@ -488,6 +553,9 @@ export function ProjectObjectInspectorPanel({
   const [cardDraft, setCardDraft] = useState<CardDraft>(() =>
     card ? createCardDraft(card) : createCardDraft(getFallbackCardDraftValue())
   );
+  const [counterDraft, setCounterDraft] = useState<CounterDraft>(() =>
+    counter ? createCounterDraft(counter) : createCounterDraft(getFallbackCounterDraftValue())
+  );
   const [dieDraft, setDieDraft] = useState<DieDraft>(() =>
     die ? createDieDraft(die) : createDieDraft(getFallbackDieDraftValue())
   );
@@ -525,6 +593,12 @@ export function ProjectObjectInspectorPanel({
       setCardDraft(createCardDraft(card));
     }
   }, [card, selectedObject?.id]);
+
+  useEffect(() => {
+    if (counter) {
+      setCounterDraft(createCounterDraft(counter));
+    }
+  }, [counter, selectedObject?.id]);
 
   useEffect(() => {
     if (die) {
@@ -791,6 +865,74 @@ export function ProjectObjectInspectorPanel({
     if (nextObjectTree !== objectTree) {
       onObjectTreeChange(contentFileNode.id, nextObjectTree);
     }
+  }
+
+  function updateCounterDraft(fieldKey: CounterFieldKey, value: string) {
+    setCounterDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    updateObjectTreeCounterField(fieldKey, value);
+  }
+
+  function resetCounterDraft(fieldKey: CounterFieldKey) {
+    if (!counter) {
+      return;
+    }
+
+    const nextDraft = createCounterDraft(counter);
+
+    setCounterDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: nextDraft[fieldKey]
+    }));
+  }
+
+  function updateObjectTreeCounterField(fieldKey: CounterFieldKey, value: string) {
+    if (!contentFileNode || !selectedObject || !counter) {
+      return;
+    }
+
+    const nextCounter = getCounterWithDraftField(counter, fieldKey, value);
+
+    if (!nextCounter) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeCounter(
+      objectTree,
+      selectedObject.id,
+      nextCounter
+    );
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
+  function commitCounterNumberField(
+    fieldKey: CounterNumberFieldKey,
+    value = counterDraft[fieldKey]
+  ) {
+    if (!counter) {
+      return;
+    }
+
+    const parsedValue = parseRectTransformDraftValue(value);
+
+    if (parsedValue === null) {
+      resetCounterDraft(fieldKey);
+      return;
+    }
+
+    updateObjectTreeCounterField(fieldKey, value);
+    setCounterDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: formatCounterNumberValue(
+        normalizeCounterNumberValue(fieldKey, parsedValue),
+        fieldKey
+      )
+    }));
   }
 
   function updateDieDraft(fieldKey: DieFieldKey, value: string) {
@@ -1312,6 +1454,55 @@ export function ProjectObjectInspectorPanel({
                 enabled={doubleSide.enabled}
                 onEnabledChange={updateDoubleSideEnabled}
               />
+            </InspectorSection>
+          ) : null}
+
+          {counter ? (
+            <InspectorSection icon={<Hash size={15} />} title="Counter">
+              <CounterNumberGrid
+                fields={counterValueFields}
+                value={counterDraft}
+                onCommit={commitCounterNumberField}
+                onDraftChange={updateCounterDraft}
+                onReset={resetCounterDraft}
+              />
+              <CounterNumberGrid
+                fields={counterBoundsFields}
+                value={counterDraft}
+                onCommit={commitCounterNumberField}
+                onDraftChange={updateCounterDraft}
+                onReset={resetCounterDraft}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <InspectorSelectField
+                  label="Bounds"
+                  info={<InspectorModeInfo items={counterBoundsModeInfoItems} />}
+                  infoAlign="start"
+                  value={counterDraft.boundsMode}
+                  options={counterBoundsModeOptions}
+                  onChange={(value) => updateCounterDraft("boundsMode", value)}
+                />
+                <InspectorSelectField
+                  label="Display"
+                  info={<InspectorModeInfo items={counterDisplayModeInfoItems} />}
+                  infoAlign="end"
+                  value={counterDraft.displayMode}
+                  options={counterDisplayModeOptions}
+                  onChange={(value) => updateCounterDraft("displayMode", value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <InspectorInlineTextField
+                  label="Prefix"
+                  value={counterDraft.prefix}
+                  onChange={(value) => updateCounterDraft("prefix", value)}
+                />
+                <InspectorInlineTextField
+                  label="Suffix"
+                  value={counterDraft.suffix}
+                  onChange={(value) => updateCounterDraft("suffix", value)}
+                />
+              </div>
             </InspectorSection>
           ) : null}
 
@@ -1955,7 +2146,29 @@ function InspectorIconToggleButton({
   );
 }
 
+type InspectorModeInfoProps = {
+  items: readonly {
+    description: string;
+    label: string;
+  }[];
+};
+
+function InspectorModeInfo({ items }: InspectorModeInfoProps) {
+  return (
+    <dl className="space-y-1.5">
+      {items.map((item) => (
+        <div key={item.label}>
+          <dt className="font-semibold text-white">{item.label}</dt>
+          <dd className="mt-0.5 text-slate-200">{item.description}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 type InspectorSelectFieldProps<TValue extends string> = {
+  info?: ReactNode;
+  infoAlign?: "center" | "end" | "start";
   label: string;
   options: readonly { label: string; value: TValue }[];
   value: TValue;
@@ -1963,15 +2176,25 @@ type InspectorSelectFieldProps<TValue extends string> = {
 };
 
 function InspectorSelectField<TValue extends string>({
+  info,
+  infoAlign,
   label,
   options,
   value,
   onChange
 }: InspectorSelectFieldProps<TValue>) {
+  const selectId = useId();
+
   return (
-    <label className="block min-w-0 text-xs font-medium text-slate-500">
-      <span>{label}</span>
+    <div className="block min-w-0 text-xs font-medium text-slate-500">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <label className="truncate" htmlFor={selectId}>
+          {label}
+        </label>
+        {info ? <InfoTip align={infoAlign}>{info}</InfoTip> : null}
+      </span>
       <select
+        id={selectId}
         className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
         value={value}
         onChange={(event) => onChange(event.currentTarget.value as TValue)}
@@ -1982,7 +2205,7 @@ function InspectorSelectField<TValue extends string>({
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }
 
@@ -2034,6 +2257,38 @@ function TextNumberGrid({ fields, value, onCommit, onDraftChange, onReset }: Tex
           key={field.key}
           field={field}
           settings={textNumberFieldSettings[field.key]}
+          value={value[field.key]}
+          onCommit={onCommit}
+          onDraftChange={onDraftChange}
+          onReset={onReset}
+        />
+      ))}
+    </div>
+  );
+}
+
+type CounterNumberGridProps = {
+  fields: readonly CounterNumberFieldDefinition[];
+  value: CounterDraft;
+  onCommit: (fieldKey: CounterNumberFieldKey, value: string) => void;
+  onDraftChange: (fieldKey: CounterFieldKey, value: string) => void;
+  onReset: (fieldKey: CounterFieldKey) => void;
+};
+
+function CounterNumberGrid({
+  fields,
+  value,
+  onCommit,
+  onDraftChange,
+  onReset
+}: CounterNumberGridProps) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {fields.map((field) => (
+        <InspectorBehaviorNumberField
+          key={field.key}
+          field={field}
+          settings={counterNumberFieldSettings[field.key]}
           value={value[field.key]}
           onCommit={onCommit}
           onDraftChange={onDraftChange}
@@ -2280,6 +2535,10 @@ function getFallbackCardDraftValue(): ProjectObjectCard {
   return {
     sizePreset: "poker"
   };
+}
+
+function getFallbackCounterDraftValue(): ProjectObjectCounter {
+  return getDefaultProjectObjectCounter();
 }
 
 function getFallbackDieDraftValue(): ProjectObjectDie {

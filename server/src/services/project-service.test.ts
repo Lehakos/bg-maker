@@ -1,7 +1,11 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { projectObjectDieFaceLabelMaxLength, type Project } from "@bg-maker/shared";
+import {
+  projectObjectCounterAffixMaxLength,
+  projectObjectDieFaceLabelMaxLength,
+  type Project
+} from "@bg-maker/shared";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -516,6 +520,79 @@ describe("ProjectService", () => {
       ]
     });
     expect(normalizedDie?.faces[0]?.label).toHaveLength(projectObjectDieFaceLabelMaxLength);
+  });
+
+  it("normalizes counter components without storing runtime value", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "object-file",
+        kind: "object",
+        name: "Object file",
+        objectTree: [
+          {
+            id: "counter-1",
+            kind: "counter",
+            name: "Counter 1",
+            components: {
+              counter: {
+                boundsMode: "clamp",
+                defaultValue: 50,
+                displayMode: "valueAndMax",
+                maxValue: 12,
+                minValue: 2,
+                prefix: "$".repeat(projectObjectCounterAffixMaxLength + 10),
+                step: 0,
+                suffix: " VP"
+              }
+            },
+            visible: true
+          },
+          {
+            id: "counter-2",
+            kind: "counter",
+            name: "Counter 2",
+            components: {
+              counter: {
+                boundsMode: "none",
+                defaultValue: 50,
+                displayMode: "bad",
+                maxValue: 10,
+                minValue: 20,
+                step: 2
+              }
+            },
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ]);
+
+    const normalizedCounters = updatedProject?.fileTree[0]?.objectTree?.map(
+      (node) => node.components?.counter
+    );
+
+    expect(normalizedCounters?.[0]).toMatchObject({
+      boundsMode: "clamp",
+      defaultValue: 12,
+      displayMode: "valueAndMax",
+      maxValue: 12,
+      minValue: 2,
+      step: 1,
+      suffix: " VP"
+    });
+    expect(normalizedCounters?.[0]?.prefix).toHaveLength(projectObjectCounterAffixMaxLength);
+    expect(normalizedCounters?.[0]).not.toHaveProperty("value");
+    expect(normalizedCounters?.[1]).toMatchObject({
+      boundsMode: "none",
+      defaultValue: 50,
+      displayMode: "value",
+      maxValue: 20,
+      minValue: 20,
+      step: 2
+    });
   });
 
   it("normalizes token components as a two-sided shape container", async () => {

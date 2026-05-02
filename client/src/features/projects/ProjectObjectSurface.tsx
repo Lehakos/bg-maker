@@ -1,6 +1,7 @@
 import type {
   ProjectObjectAppearance,
   ProjectObjectBorderStyle,
+  ProjectObjectCounter,
   ProjectObjectNode,
   ProjectObjectShapePoint,
   ProjectObjectShapeVariant,
@@ -12,6 +13,7 @@ import {
 } from "@bg-maker/shared";
 import type { CSSProperties } from "react";
 import {
+  getProjectObjectNodeCounter,
   getProjectObjectNodeAppearance,
   getProjectObjectNodeDie,
   getProjectObjectNodeImage,
@@ -29,6 +31,10 @@ type ProjectObjectSurfaceProps = {
 export function ProjectObjectSurface({ imageAssetById, object }: ProjectObjectSurfaceProps) {
   if (object.kind === "card") {
     return <CardVisual object={object} />;
+  }
+
+  if (object.kind === "counter") {
+    return <CounterVisual object={object} />;
   }
 
   if (object.kind === "die") {
@@ -82,6 +88,23 @@ function CardVisual({ object }: ObjectVisualProps) {
       className="relative h-full w-full overflow-hidden shadow-[0_14px_30px_rgba(15,23,42,0.16)]"
       style={getAppearanceStyle(appearance)}
     />
+  );
+}
+
+function CounterVisual({ object }: ObjectVisualProps) {
+  const appearance = getProjectObjectNodeAppearance(object);
+  const counter = getProjectObjectNodeCounter(object);
+  const displayValue = getCounterDisplayValue(counter);
+
+  return (
+    <div
+      className="relative flex h-full w-full min-w-0 items-center justify-center overflow-hidden text-center shadow-[0_14px_30px_rgba(15,23,42,0.14)]"
+      style={getAppearanceStyle(appearance)}
+    >
+      <span className="min-w-0 max-w-full truncate text-3xl font-bold leading-none tracking-normal text-blue-950 tabular-nums">
+        {displayValue}
+      </span>
+    </div>
   );
 }
 
@@ -326,6 +349,12 @@ function getPolygonPointsAttribute(polygonPoints: readonly ProjectObjectShapePoi
     polygonPoints.length >= 3 ? polygonPoints : getDefaultProjectObjectShapePolygonPoints();
 
   return points.map((point) => `${point.x},${point.y}`).join(" ");
+}
+
+function getCounterDisplayValue(counter: ProjectObjectCounter) {
+  const maxValue = counter.displayMode === "valueAndMax" ? ` / ${counter.maxValue}` : "";
+
+  return `${counter.prefix}${counter.defaultValue}${maxValue}${counter.suffix}`;
 }
 
 function getAppearanceStyle(appearance: ProjectObjectAppearance): CSSProperties {

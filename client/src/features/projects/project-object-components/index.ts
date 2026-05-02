@@ -10,6 +10,10 @@ export {
   getProjectObjectDoubleSideComponent,
   withProjectObjectDoubleSideComponent
 } from "./double-side-component";
+export {
+  getProjectObjectCounterComponent,
+  withProjectObjectCounterComponent
+} from "./counter-component";
 export { getProjectObjectImageComponent, withProjectObjectImageComponent } from "./image-component";
 export { ProjectObjectComponentEngine } from "./project-object-component-engine";
 export {
