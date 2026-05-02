@@ -2,7 +2,7 @@ import type { Project, ProjectFileNode, ProjectObjectNode } from "@bg-maker/shar
 import { Alert, Button, Center, Loader } from "@mantine/core";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft } from "lucide-react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppHeaderContent } from "../../app/app-header-context";
 import { PanelResizeHandle } from "./PanelResizeHandle";
 import { ProjectFileTreePanel } from "./ProjectFileTreePanel";
@@ -34,6 +34,7 @@ const unconstrainedPanelMaxSize = Number.MAX_SAFE_INTEGER;
 const leftPanelWidthStorageKey = "bg-maker:workspace:left-panel-width";
 const rightPanelWidthStorageKey = "bg-maker:workspace:right-panel-width";
 const rightInspectorHeightStorageKey = "bg-maker:workspace:right-inspector-height";
+const projectFileTreeSaveDebounceMs = 350;
 
 type WorkspaceStyle = CSSProperties & {
   "--workspace-left-panel-width": string;
@@ -109,6 +110,7 @@ function LoadedProjectWorkspace({
   onSaveFileTree
 }: LoadedProjectWorkspaceProps) {
   const initialFileTree = useMemo(() => sortProjectFileTree(project.fileTree), [project.fileTree]);
+  const saveFileTree = useDebouncedProjectFileTreeSave(onSaveFileTree);
   const headerContent = useMemo(
     () => <ProjectWorkspaceHeader project={project} onBack={onBack} />,
     [onBack, project]
@@ -122,7 +124,7 @@ function LoadedProjectWorkspace({
     undo
   } = useEditorCommandHistory<ProjectFileNode[]>({
     initialState: initialFileTree,
-    onStateChange: onSaveFileTree
+    onStateChange: saveFileTree
   });
   useAppHeaderContent(headerContent);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
@@ -390,6 +392,53 @@ function LoadedProjectWorkspace({
       </div>
     </section>
   );
+}
+
+function useDebouncedProjectFileTreeSave(
+  onSaveFileTree: (fileTree: ProjectFileNode[]) => void
+) {
+  const onSaveFileTreeRef = useRef(onSaveFileTree);
+  const pendingFileTreeRef = useRef<ProjectFileNode[] | null>(null);
+  const saveTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    onSaveFileTreeRef.current = onSaveFileTree;
+  }, [onSaveFileTree]);
+
+  useEffect(
+    () => () => {
+      if (saveTimeoutRef.current !== null) {
+        window.clearTimeout(saveTimeoutRef.current);
+      }
+
+      const pendingFileTree = pendingFileTreeRef.current;
+      pendingFileTreeRef.current = null;
+      saveTimeoutRef.current = null;
+
+      if (pendingFileTree) {
+        onSaveFileTreeRef.current(pendingFileTree);
+      }
+    },
+    []
+  );
+
+  return useCallback((nextFileTree: ProjectFileNode[]) => {
+    pendingFileTreeRef.current = nextFileTree;
+
+    if (saveTimeoutRef.current !== null) {
+      window.clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = window.setTimeout(() => {
+      const pendingFileTree = pendingFileTreeRef.current;
+      pendingFileTreeRef.current = null;
+      saveTimeoutRef.current = null;
+
+      if (pendingFileTree) {
+        onSaveFileTreeRef.current(pendingFileTree);
+      }
+    }, projectFileTreeSaveDebounceMs);
+  }, []);
 }
 
 type ProjectWorkspaceHeaderProps = {

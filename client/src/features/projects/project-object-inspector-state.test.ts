@@ -14,12 +14,19 @@ import {
   createImageDraft,
   createLayoutDraft,
   createRectTransformDraft,
+  createShapePolygonPointDrafts,
   createTextDraft,
   getAppearanceWithDraftField,
   getCardWithDraftField,
   getImageWithDraftField,
   getLayoutWithDraftField,
   getRectTransformWithDraftField,
+  getShapePolygonPoints,
+  getShapeWithAddedPolygonPoint,
+  getShapeWithDefaultPolygonPoints,
+  getShapeWithPolygonPoint,
+  getShapeWithPolygonPointDraftField,
+  getShapeWithRemovedPolygonPoint,
   getShapeWithVariant,
   getTextFontStyleForItalic,
   getTextFontWeightForBold,
@@ -29,6 +36,7 @@ import {
   normalizeImageNumberValue,
   normalizeLayoutNumberValue,
   normalizeRectTransformValue,
+  normalizeShapePolygonPointValue,
   normalizeTextNumberValue,
   parseRectTransformDraftValue
 } from "./project-object-inspector-state";
@@ -224,7 +232,86 @@ describe("project object inspector state", () => {
     expect(getImageWithDraftField(image, "fit", "cover")).toMatchObject({ fit: "cover" });
     expect(getImageWithDraftField(image, "fit", "stretch")).toBeNull();
     expect(getShapeWithVariant(shape, "triangle")).toEqual({ variant: "triangle" });
-    expect(getShapeWithVariant(shape, "hexagon")).toBeNull();
+    expect(getShapeWithVariant(shape, "hexagon")).toEqual({ variant: "hexagon" });
+    expect(getShapeWithVariant(shape, "polygon")).toEqual({ variant: "polygon" });
+    expect(getShapeWithVariant(shape, "trapezoid")).toBeNull();
+  });
+
+  it("creates and updates custom shape polygon points", () => {
+    const polygonShape: ProjectObjectShape = {
+      polygonPoints: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ],
+      variant: "polygon"
+    };
+
+    expect(createShapePolygonPointDrafts(polygonShape)).toEqual([
+      { x: "0", y: "0" },
+      { x: "100", y: "0" },
+      { x: "100", y: "100" },
+      { x: "0", y: "100" }
+    ]);
+    expect(normalizeShapePolygonPointValue("x", 120)).toBe(100);
+    expect(normalizeShapePolygonPointValue("y", 12.34)).toBe(12.3);
+    expect(getShapePolygonPoints({ polygonPoints: [{ x: -1, y: 12.34 }], variant: "polygon" }))
+      .toHaveLength(4);
+    expect(getShapeWithPolygonPointDraftField(polygonShape, 1, "x", "24.56")).toMatchObject({
+      polygonPoints: [
+        { x: 0, y: 0 },
+        { x: 24.6, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 }
+      ]
+    });
+    expect(getShapeWithPolygonPointDraftField(polygonShape, 1, "x", "nope")).toBeNull();
+    expect(getShapeWithPolygonPoint(polygonShape, 2, { x: 120, y: -10 })).toMatchObject({
+      polygonPoints: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 0 },
+        { x: 0, y: 100 }
+      ]
+    });
+    expect(getShapeWithAddedPolygonPoint(polygonShape)).toMatchObject({
+      polygonPoints: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+        { x: 0, y: 50 }
+      ]
+    });
+    expect(getShapeWithRemovedPolygonPoint(polygonShape, 3)).toMatchObject({
+      polygonPoints: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 }
+      ]
+    });
+    expect(
+      getShapeWithRemovedPolygonPoint(
+        {
+          polygonPoints: [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+            { x: 100, y: 100 }
+          ],
+          variant: "polygon"
+        },
+        1
+      )
+    ).toBeNull();
+    expect(getShapeWithDefaultPolygonPoints(polygonShape)).toMatchObject({
+      polygonPoints: [
+        { x: 50, y: 4 },
+        { x: 96, y: 50 },
+        { x: 50, y: 96 },
+        { x: 4, y: 50 }
+      ]
+    });
   });
 
   it("creates and normalizes layout drafts", () => {

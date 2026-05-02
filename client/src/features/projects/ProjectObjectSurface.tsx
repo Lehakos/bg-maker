@@ -2,9 +2,11 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectBorderStyle,
   ProjectObjectNode,
+  ProjectObjectShapePoint,
   ProjectObjectShapeVariant,
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
+import { getDefaultProjectObjectShapePolygonPoints } from "@bg-maker/shared";
 import type { CSSProperties } from "react";
 import {
   getProjectObjectNodeAppearance,
@@ -158,6 +160,7 @@ function ShapeVisual({ object }: ObjectVisualProps) {
           stroke={appearance.borderColor}
           strokeDasharray={strokeDasharray}
           strokeWidth={strokeWidth}
+          polygonPoints={shape.polygonPoints}
           variant={shape.variant}
         />
       </svg>
@@ -178,6 +181,7 @@ type ShapeSvgElementProps = {
   stroke: string;
   strokeDasharray?: string;
   strokeWidth: number;
+  polygonPoints?: readonly ProjectObjectShapePoint[];
   variant: ProjectObjectShapeVariant;
 };
 
@@ -188,6 +192,7 @@ function ShapeSvgElement({
   stroke,
   strokeDasharray,
   strokeWidth,
+  polygonPoints,
   variant
 }: ShapeSvgElementProps) {
   const commonProps = {
@@ -211,6 +216,14 @@ function ShapeSvgElement({
     return <polygon {...commonProps} points="50,2 99,98 1,98" />;
   }
 
+  if (variant === "hexagon") {
+    return <polygon {...commonProps} points="50,2 92,25 92,75 50,98 8,75 8,25" />;
+  }
+
+  if (variant === "polygon") {
+    return <polygon {...commonProps} points={getPolygonPointsAttribute(polygonPoints)} />;
+  }
+
   return (
     <rect
       {...commonProps}
@@ -222,6 +235,13 @@ function ShapeSvgElement({
       y="1"
     />
   );
+}
+
+function getPolygonPointsAttribute(polygonPoints: readonly ProjectObjectShapePoint[] = []) {
+  const points =
+    polygonPoints.length >= 3 ? polygonPoints : getDefaultProjectObjectShapePolygonPoints();
+
+  return points.map((point) => `${point.x},${point.y}`).join(" ");
 }
 
 function getAppearanceStyle(appearance: ProjectObjectAppearance): CSSProperties {

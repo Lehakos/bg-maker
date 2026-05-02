@@ -127,11 +127,33 @@ export type ProjectObjectLayout = {
   mode: ProjectObjectLayoutMode;
 };
 
-export type ProjectObjectShapeVariant = "diamond" | "ellipse" | "rectangle" | "triangle";
+export type ProjectObjectShapeVariant =
+  | "diamond"
+  | "ellipse"
+  | "hexagon"
+  | "polygon"
+  | "rectangle"
+  | "triangle";
+
+export type ProjectObjectShapePoint = {
+  x: number;
+  y: number;
+};
 
 export type ProjectObjectShape = {
+  polygonPoints?: ProjectObjectShapePoint[];
   variant: ProjectObjectShapeVariant;
 };
+
+export const projectObjectShapePolygonPointCountLimits = {
+  max: 32,
+  min: 3
+} as const;
+
+export const projectObjectShapePolygonCoordinateLimits = {
+  max: 100,
+  min: 0
+} as const;
 
 export type ProjectObjectRectTransform = {
   height: number;
@@ -400,8 +422,20 @@ export function doesProjectObjectClipChildren(kind: ProjectObjectKind) {
   return kind === "card" || kind === "shape";
 }
 
+const defaultProjectObjectShapePolygonPoints: readonly ProjectObjectShapePoint[] = [
+  { x: 50, y: 4 },
+  { x: 96, y: 50 },
+  { x: 50, y: 96 },
+  { x: 4, y: 50 }
+];
+
+export function getDefaultProjectObjectShapePolygonPoints(): ProjectObjectShapePoint[] {
+  return defaultProjectObjectShapePolygonPoints.map((point) => ({ ...point }));
+}
+
 export function getDefaultProjectObjectShape(): ProjectObjectShape {
   return {
+    polygonPoints: getDefaultProjectObjectShapePolygonPoints(),
     variant: "rectangle"
   };
 }

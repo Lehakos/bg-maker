@@ -25,6 +25,7 @@ import type {
   ProjectObjectDoubleSide,
   ProjectObjectRectTransform,
   ProjectObjectShape,
+  ProjectObjectShapePoint,
   ProjectObjectShapeVariant,
   ProjectObjectSideComponents,
   ProjectObjectText,
@@ -42,6 +43,7 @@ import {
   getDefaultProjectObjectLayout,
   getDefaultProjectObjectRectTransform,
   getDefaultProjectObjectShape,
+  getDefaultProjectObjectShapePolygonPoints,
   getDefaultProjectObjectText,
   getProjectObjectCardSizePreset,
   getProjectObjectRectTransformWithCardSizePreset,
@@ -50,7 +52,9 @@ import {
   projectObjectCardCustomSizePresetId,
   projectObjectCardSides,
   projectImageAssetContentTypes,
-  projectObjectKinds as sharedProjectObjectKinds
+  projectObjectKinds as sharedProjectObjectKinds,
+  projectObjectShapePolygonCoordinateLimits,
+  projectObjectShapePolygonPointCountLimits
 } from "@bg-maker/shared";
 import sharp from "sharp";
 
@@ -142,6 +146,8 @@ const projectObjectLayoutModes = new Set<ProjectObjectLayoutMode>([
 const projectObjectShapeVariants = new Set<ProjectObjectShapeVariant>([
   "diamond",
   "ellipse",
+  "hexagon",
+  "polygon",
   "rectangle",
   "triangle"
 ]);
@@ -335,7 +341,7 @@ export class ProjectService {
   private async writeStore(store: ProjectStoreData): Promise<void> {
     await mkdir(dirname(this.storePath), { recursive: true });
 
-    const temporaryStorePath = `${this.storePath}.${process.pid}.${Date.now()}.tmp`;
+    const temporaryStorePath = `${this.storePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
     await writeFile(temporaryStorePath, `${JSON.stringify(store, null, 2)}\n`, "utf8");
     await rename(temporaryStorePath, this.storePath);
   }
@@ -1026,10 +1032,62 @@ function normalizeProjectObjectShape(value: unknown): ProjectObjectShape {
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
   return {
+    polygonPoints: normalizeProjectObjectShapePolygonPoints(
+      record.polygonPoints,
+      defaultShape.polygonPoints ?? getDefaultProjectObjectShapePolygonPoints()
+    ),
     variant: projectObjectShapeVariants.has(record.variant as ProjectObjectShapeVariant)
       ? (record.variant as ProjectObjectShapeVariant)
       : defaultShape.variant
   };
+}
+
+function normalizeProjectObjectShapePolygonPoints(
+  value: unknown,
+  fallback: readonly ProjectObjectShapePoint[]
+): ProjectObjectShapePoint[] {
+  if (!Array.isArray(value)) {
+    return cloneProjectObjectShapePolygonPoints(fallback);
+  }
+
+  const points = value
+    .slice(0, projectObjectShapePolygonPointCountLimits.max)
+    .map(normalizeProjectObjectShapePolygonPoint)
+    .filter((point): point is ProjectObjectShapePoint => Boolean(point));
+
+  return points.length >= projectObjectShapePolygonPointCountLimits.min
+    ? points
+    : cloneProjectObjectShapePolygonPoints(fallback);
+}
+
+function normalizeProjectObjectShapePolygonPoint(
+  value: unknown
+): ProjectObjectShapePoint | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if (
+    typeof record.x !== "number" ||
+    !Number.isFinite(record.x) ||
+    typeof record.y !== "number" ||
+    !Number.isFinite(record.y)
+  ) {
+    return undefined;
+  }
+
+  return {
+    x: normalizeFiniteNumber(record.x, 0, projectObjectShapePolygonCoordinateLimits),
+    y: normalizeFiniteNumber(record.y, 0, projectObjectShapePolygonCoordinateLimits)
+  };
+}
+
+function cloneProjectObjectShapePolygonPoints(
+  points: readonly ProjectObjectShapePoint[]
+): ProjectObjectShapePoint[] {
+  return points.map((point) => ({ ...point }));
 }
 
 function normalizeProjectImageAsset(value: unknown): ProjectImageAsset | undefined {

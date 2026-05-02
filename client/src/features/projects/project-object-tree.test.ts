@@ -375,6 +375,11 @@ describe("project object tree helpers", () => {
       mode: "horizontal"
     };
     const shape: ProjectObjectShape = {
+      polygonPoints: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 50, y: 100 }
+      ],
       variant: "triangle"
     };
 

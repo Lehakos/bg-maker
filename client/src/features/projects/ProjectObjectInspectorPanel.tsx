@@ -9,6 +9,8 @@ import type {
   ProjectObjectLayoutJustification,
   ProjectObjectLayoutMode,
   ProjectObjectNode,
+  ProjectObjectShape,
+  ProjectObjectShapePoint,
   ProjectObjectText,
   ProjectObjectTextAlign,
   ProjectObjectTextVerticalAlign
@@ -108,6 +110,12 @@ import {
   getImageWithDraftField,
   getLayoutWithDraftField,
   getRectTransformWithDraftField,
+  getShapePolygonPoints,
+  getShapeWithAddedPolygonPoint,
+  getShapeWithDefaultPolygonPoints,
+  getShapeWithPolygonPoint,
+  getShapeWithPolygonPointDraftField,
+  getShapeWithRemovedPolygonPoint,
   getShapeWithVariant,
   getTextFontStyleForItalic,
   getTextFontWeightForBold,
@@ -134,9 +142,11 @@ import {
   type LayoutFieldKey,
   type RectTransformDraft,
   type RectTransformFieldKey,
+  type ShapePolygonPointFieldKey,
   type TextDraft,
   type TextFieldKey
 } from "./project-object-inspector-state";
+import { ProjectObjectShapePolygonEditor } from "./ProjectObjectShapePolygonEditor";
 
 type ProjectObjectInspectorPanelProps = {
   className?: string;
@@ -363,7 +373,9 @@ const shapeVariantOptions = [
   { label: "Rectangle", value: "rectangle" },
   { label: "Ellipse", value: "ellipse" },
   { label: "Diamond", value: "diamond" },
-  { label: "Triangle", value: "triangle" }
+  { label: "Hexagon", value: "hexagon" },
+  { label: "Triangle", value: "triangle" },
+  { label: "Custom", value: "polygon" }
 ] as const;
 
 export function ProjectObjectInspectorPanel({
@@ -418,6 +430,7 @@ export function ProjectObjectInspectorPanel({
     () => (selectedObject?.kind === "shape" ? getProjectObjectNodeShape(selectedObject) : null),
     [selectedObject]
   );
+  const shapePolygonPoints = useMemo(() => (shape ? getShapePolygonPoints(shape) : []), [shape]);
   const [nameDraft, setNameDraft] = useState("");
   const [rectTransformDraft, setRectTransformDraft] = useState<RectTransformDraft>(() =>
     createRectTransformDraft(rectTransform)
@@ -933,13 +946,19 @@ export function ProjectObjectInspectorPanel({
   }
 
   function updateShapeVariant(value: string) {
-    if (!contentFileNode || !selectedObject || !shape) {
+    if (!shape) {
       return;
     }
 
-    const nextShape = getShapeWithVariant(shape, value);
+    updateShape(getShapeWithVariant(shape, value));
+  }
 
+  function updateShape(nextShape: ProjectObjectShape | null) {
     if (!nextShape) {
+      return;
+    }
+
+    if (!contentFileNode || !selectedObject) {
       return;
     }
 
@@ -948,6 +967,50 @@ export function ProjectObjectInspectorPanel({
     if (nextObjectTree !== objectTree) {
       onObjectTreeChange(contentFileNode.id, nextObjectTree);
     }
+  }
+
+  function updateShapePolygonPointDraftField(
+    pointIndex: number,
+    fieldKey: ShapePolygonPointFieldKey,
+    value: string
+  ) {
+    if (!shape) {
+      return;
+    }
+
+    updateShape(getShapeWithPolygonPointDraftField(shape, pointIndex, fieldKey, value));
+  }
+
+  function updateShapePolygonPoint(pointIndex: number, point: ProjectObjectShapePoint) {
+    if (!shape) {
+      return;
+    }
+
+    updateShape(getShapeWithPolygonPoint(shape, pointIndex, point));
+  }
+
+  function addShapePolygonPoint() {
+    if (!shape) {
+      return;
+    }
+
+    updateShape(getShapeWithAddedPolygonPoint(shape));
+  }
+
+  function removeShapePolygonPoint(pointIndex: number) {
+    if (!shape) {
+      return;
+    }
+
+    updateShape(getShapeWithRemovedPolygonPoint(shape, pointIndex));
+  }
+
+  function resetShapePolygonPoints() {
+    if (!shape) {
+      return;
+    }
+
+    updateShape(getShapeWithDefaultPolygonPoints(shape));
   }
 
   async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -1313,6 +1376,16 @@ export function ProjectObjectInspectorPanel({
                 options={shapeVariantOptions}
                 onChange={updateShapeVariant}
               />
+              {shape.variant === "polygon" ? (
+                <ProjectObjectShapePolygonEditor
+                  points={shapePolygonPoints}
+                  onAddPoint={addShapePolygonPoint}
+                  onPointChange={updateShapePolygonPoint}
+                  onPointDraftFieldChange={updateShapePolygonPointDraftField}
+                  onRemovePoint={removeShapePolygonPoint}
+                  onReset={resetShapePolygonPoints}
+                />
+              ) : null}
             </InspectorSection>
           ) : null}
         </div>

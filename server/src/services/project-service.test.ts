@@ -150,7 +150,14 @@ describe("ProjectService", () => {
                         y: Number.POSITIVE_INFINITY
                       },
                       shape: {
-                        variant: "triangle"
+                        polygonPoints: [
+                          { x: -1, y: 101 },
+                          { x: 50.5, y: 25.25 },
+                          "bad point",
+                          { x: 40, y: 40 },
+                          { x: Number.NaN, y: 0 }
+                        ],
+                        variant: "polygon"
                       }
                     },
                     visible: false
@@ -242,7 +249,12 @@ describe("ProjectService", () => {
                           y: 0
                         },
                         shape: {
-                          variant: "triangle"
+                          polygonPoints: [
+                            { x: 0, y: 100 },
+                            { x: 50.5, y: 25.25 },
+                            { x: 40, y: 40 }
+                          ],
+                          variant: "polygon"
                         }
                       },
                       visible: false

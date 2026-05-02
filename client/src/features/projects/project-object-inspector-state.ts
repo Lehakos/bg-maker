@@ -12,6 +12,7 @@ import type {
   ProjectObjectLayoutMode,
   ProjectObjectRectTransform,
   ProjectObjectShape,
+  ProjectObjectShapePoint,
   ProjectObjectShapeVariant,
   ProjectObjectText,
   ProjectObjectTextAlign,
@@ -19,9 +20,12 @@ import type {
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
 import {
+  getDefaultProjectObjectShapePolygonPoints,
   projectObjectCardCustomSizePresetId,
   projectObjectCardSides,
-  projectObjectCardSizePresets
+  projectObjectCardSizePresets,
+  projectObjectShapePolygonCoordinateLimits,
+  projectObjectShapePolygonPointCountLimits
 } from "@bg-maker/shared";
 
 export type RectTransformFieldKey = keyof ProjectObjectRectTransform;
@@ -65,6 +69,9 @@ export type ImageDraft = {
   positionX: string;
   positionY: string;
 };
+
+export type ShapePolygonPointFieldKey = keyof ProjectObjectShapePoint;
+export type ShapePolygonPointDraft = Record<ShapePolygonPointFieldKey, string>;
 
 export type LayoutFieldKey = keyof ProjectObjectLayout;
 export type LayoutDraft = {
@@ -129,6 +136,24 @@ export const layoutNumberFieldSettings = {
   { decimals: number; max: number; min: number; step: number }
 >;
 
+export const shapePolygonPointFieldSettings = {
+  x: {
+    decimals: 1,
+    max: projectObjectShapePolygonCoordinateLimits.max,
+    min: projectObjectShapePolygonCoordinateLimits.min,
+    step: 1
+  },
+  y: {
+    decimals: 1,
+    max: projectObjectShapePolygonCoordinateLimits.max,
+    min: projectObjectShapePolygonCoordinateLimits.min,
+    step: 1
+  }
+} as const satisfies Record<
+  ShapePolygonPointFieldKey,
+  { decimals: number; max: number; min: number; step: number }
+>;
+
 const borderStyles = new Set<ProjectObjectBorderStyle>(["none", "solid", "dashed", "dotted"]);
 const imageFits = new Set<ProjectObjectImageFit>(["contain", "cover", "fill", "scaleDown"]);
 const cardSizePresetValues = new Set<ProjectObjectCardSizePresetValue>([
@@ -147,6 +172,8 @@ const layoutModes = new Set<ProjectObjectLayoutMode>(["free", "grid", "horizonta
 const shapeVariants = new Set<ProjectObjectShapeVariant>([
   "diamond",
   "ellipse",
+  "hexagon",
+  "polygon",
   "rectangle",
   "triangle"
 ]);
@@ -381,6 +408,134 @@ export function getShapeWithVariant(shape: ProjectObjectShape, variant: string) 
   };
 
   return shape.variant === nextShape.variant ? null : nextShape;
+}
+
+export function getShapePolygonPoints(shape: ProjectObjectShape): ProjectObjectShapePoint[] {
+  const points = shape.polygonPoints ?? getDefaultProjectObjectShapePolygonPoints();
+  const normalizedPoints = points
+    .slice(0, projectObjectShapePolygonPointCountLimits.max)
+    .map((point) => ({
+      x: normalizeShapePolygonPointValue("x", point.x),
+      y: normalizeShapePolygonPointValue("y", point.y)
+    }));
+
+  return normalizedPoints.length >= projectObjectShapePolygonPointCountLimits.min
+    ? normalizedPoints
+    : getDefaultProjectObjectShapePolygonPoints();
+}
+
+export function createShapePolygonPointDrafts(
+  shape: ProjectObjectShape
+): ShapePolygonPointDraft[] {
+  return getShapePolygonPoints(shape).map((point) => ({
+    x: formatShapePolygonPointValue(point.x, "x"),
+    y: formatShapePolygonPointValue(point.y, "y")
+  }));
+}
+
+export function getShapeWithPolygonPointDraftField(
+  shape: ProjectObjectShape,
+  pointIndex: number,
+  fieldKey: ShapePolygonPointFieldKey,
+  value: string
+) {
+  const parsedValue = parseRectTransformDraftValue(value);
+
+  if (parsedValue === null) {
+    return null;
+  }
+
+  const points = getShapePolygonPoints(shape);
+  const point = points[pointIndex];
+
+  if (!point) {
+    return null;
+  }
+
+  return getShapeWithPolygonPoint(shape, pointIndex, {
+    ...point,
+    [fieldKey]: normalizeShapePolygonPointValue(fieldKey, parsedValue)
+  });
+}
+
+export function getShapeWithPolygonPoint(
+  shape: ProjectObjectShape,
+  pointIndex: number,
+  point: ProjectObjectShapePoint
+) {
+  const points = getShapePolygonPoints(shape);
+
+  if (!points[pointIndex]) {
+    return null;
+  }
+
+  const nextPoints = points.map((currentPoint, index) =>
+    index === pointIndex
+      ? {
+          x: normalizeShapePolygonPointValue("x", point.x),
+          y: normalizeShapePolygonPointValue("y", point.y)
+        }
+      : currentPoint
+  );
+
+  return getShapeWithPolygonPoints(shape, nextPoints);
+}
+
+export function getShapeWithAddedPolygonPoint(shape: ProjectObjectShape) {
+  const points = getShapePolygonPoints(shape);
+
+  if (points.length >= projectObjectShapePolygonPointCountLimits.max) {
+    return null;
+  }
+
+  const firstPoint = points[0] ?? { x: 50, y: 50 };
+  const lastPoint = points[points.length - 1] ?? firstPoint;
+  const nextPoint = {
+    x: normalizeShapePolygonPointValue("x", (firstPoint.x + lastPoint.x) / 2),
+    y: normalizeShapePolygonPointValue("y", (firstPoint.y + lastPoint.y) / 2)
+  };
+
+  return getShapeWithPolygonPoints(shape, [...points, nextPoint]);
+}
+
+export function getShapeWithRemovedPolygonPoint(shape: ProjectObjectShape, pointIndex: number) {
+  const points = getShapePolygonPoints(shape);
+
+  if (
+    points.length <= projectObjectShapePolygonPointCountLimits.min ||
+    pointIndex < 0 ||
+    pointIndex >= points.length
+  ) {
+    return null;
+  }
+
+  return getShapeWithPolygonPoints(
+    shape,
+    points.filter((_, index) => index !== pointIndex)
+  );
+}
+
+export function getShapeWithDefaultPolygonPoints(shape: ProjectObjectShape) {
+  return getShapeWithPolygonPoints(shape, getDefaultProjectObjectShapePolygonPoints());
+}
+
+export function normalizeShapePolygonPointValue(
+  fieldKey: ShapePolygonPointFieldKey,
+  value: number
+) {
+  const { decimals, max, min } = shapePolygonPointFieldSettings[fieldKey];
+  const numericValue = Number.isFinite(value) ? value : min;
+
+  return roundTo(clamp(numericValue, min, max), decimals);
+}
+
+export function formatShapePolygonPointValue(
+  value: number,
+  fieldKey: ShapePolygonPointFieldKey
+) {
+  const { decimals } = shapePolygonPointFieldSettings[fieldKey];
+
+  return String(roundTo(value, decimals));
 }
 
 export function normalizeAppearanceNumberValue(
@@ -673,6 +828,49 @@ function areLayoutsEqual(left: ProjectObjectLayout, right: ProjectObjectLayout) 
     left.gap === right.gap &&
     left.justifyContent === right.justifyContent &&
     left.mode === right.mode
+  );
+}
+
+function getShapeWithPolygonPoints(
+  shape: ProjectObjectShape,
+  polygonPoints: readonly ProjectObjectShapePoint[]
+): ProjectObjectShape | null {
+  const nextPolygonPoints = normalizeShapePolygonPoints(polygonPoints);
+
+  return areShapePolygonPointsEqual(getShapePolygonPoints(shape), nextPolygonPoints)
+    ? null
+    : {
+        ...shape,
+        polygonPoints: nextPolygonPoints
+      };
+}
+
+function normalizeShapePolygonPoints(
+  polygonPoints: readonly ProjectObjectShapePoint[]
+): ProjectObjectShapePoint[] {
+  const points = polygonPoints
+    .slice(0, projectObjectShapePolygonPointCountLimits.max)
+    .map((point) => ({
+      x: normalizeShapePolygonPointValue("x", point.x),
+      y: normalizeShapePolygonPointValue("y", point.y)
+    }));
+
+  return points.length >= projectObjectShapePolygonPointCountLimits.min
+    ? points
+    : getDefaultProjectObjectShapePolygonPoints();
+}
+
+function areShapePolygonPointsEqual(
+  left: readonly ProjectObjectShapePoint[],
+  right: readonly ProjectObjectShapePoint[]
+) {
+  return (
+    left.length === right.length &&
+    left.every((leftPoint, index) => {
+      const rightPoint = right[index];
+
+      return Boolean(rightPoint) && leftPoint.x === rightPoint.x && leftPoint.y === rightPoint.y;
+    })
   );
 }
 
