@@ -15,7 +15,8 @@ import type {
   ProjectObjectRectTransform,
   ProjectObjectShape,
   ProjectObjectStackDisplay,
-  ProjectObjectText
+  ProjectObjectText,
+  ProjectObjectZone
 } from "@bg-maker/shared";
 import { hasProjectObjectSides } from "@bg-maker/shared";
 import { projectObjectComponentEngine } from "./project-object-components";
@@ -234,6 +235,10 @@ export function getProjectObjectNodeStackDisplay(
   return projectObjectComponentEngine.getStackDisplay(object);
 }
 
+export function getProjectObjectNodeZone(object: ProjectObjectNode): ProjectObjectZone {
+  return projectObjectComponentEngine.getZone(object);
+}
+
 export function setProjectObjectNodeRectTransform(
   objectTree: ProjectObjectNode[],
   nodeId: string,
@@ -385,6 +390,18 @@ export function setProjectObjectNodeStackDisplay(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withStackDisplay(node, stackDisplay)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeZone(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  zone: ProjectObjectZone
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withZone(node, zone)
   );
 
   return result.changed ? result.nodes : objectTree;

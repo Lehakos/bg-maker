@@ -15,7 +15,8 @@ import {
   type ProjectObjectRectTransform,
   type ProjectObjectShape,
   type ProjectObjectStackDisplay,
-  type ProjectObjectText
+  type ProjectObjectText,
+  type ProjectObjectZone
 } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
@@ -39,6 +40,7 @@ import {
   getProjectObjectNodeShape,
   getProjectObjectNodeStackDisplay,
   getProjectObjectNodeText,
+  getProjectObjectNodeZone,
   moveProjectObjectNode,
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
@@ -55,6 +57,7 @@ import {
   setProjectObjectNodeStackDisplay,
   setProjectObjectNodeText,
   setProjectObjectNodeVisibility,
+  setProjectObjectNodeZone,
   updateProjectFileNodeObjectTree
 } from "./project-object-tree";
 
@@ -374,6 +377,7 @@ describe("project object tree helpers", () => {
     expect(doesProjectObjectClipChildren("group")).toBe(false);
     expect(doesProjectObjectClipChildren("label")).toBe(false);
     expect(doesProjectObjectClipChildren("image")).toBe(false);
+    expect(doesProjectObjectClipChildren("zone")).toBe(false);
   });
 
   it("stores double-sided card appearance on the active side", () => {
@@ -506,6 +510,10 @@ describe("project object tree helpers", () => {
       stackOffsetY: -3,
       visibleItemCount: 6
     };
+    const zone: ProjectObjectZone = {
+      capacity: 5,
+      referenceObjectFileId: "card-file-1"
+    };
 
     const appearanceTree = setProjectObjectNodeAppearance(objectTree, "shape-1", appearance);
     const textTree = setProjectObjectNodeText(objectTree, "label-1", text);
@@ -530,6 +538,11 @@ describe("project object tree helpers", () => {
       containerTree,
       "deck-1",
       stackDisplay
+    );
+    const zoneTree = setProjectObjectNodeZone(
+      [objectNode("zone-1", "Zone", "zone")],
+      "zone-1",
+      zone
     );
 
     expect(
@@ -557,6 +570,10 @@ describe("project object tree helpers", () => {
     expect(
       getProjectObjectNodeStackDisplay(findProjectObjectNode(stackDisplayTree, "deck-1")!)
     ).toEqual(stackDisplay);
+    expect(getProjectObjectNodeZone(findProjectObjectNode(zoneTree, "zone-1")!)).toEqual(zone);
+    expect(getProjectObjectNodeLayout(findProjectObjectNode(zoneTree, "zone-1")!)).toMatchObject({
+      mode: "grid"
+    });
     expect(findProjectObjectNode(objectTree, "image-1")?.components?.image).toBeUndefined();
     expect(setProjectObjectNodeCounter(objectTree, "missing-object", counter)).toBe(objectTree);
     expect(setProjectObjectNodeContainer(objectTree, "missing-object", container)).toBe(
@@ -569,6 +586,7 @@ describe("project object tree helpers", () => {
     expect(setProjectObjectNodeStackDisplay(objectTree, "missing-object", stackDisplay)).toBe(
       objectTree
     );
+    expect(setProjectObjectNodeZone(objectTree, "missing-object", zone)).toBe(objectTree);
     expect(setProjectObjectNodeDoubleSide(objectTree, "missing-object", doubleSide)).toBe(
       objectTree
     );

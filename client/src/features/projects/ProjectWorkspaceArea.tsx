@@ -59,6 +59,7 @@ import {
   setProjectObjectNodeDoubleSide
 } from "./project-object-tree";
 import { getProjectObjectLayoutRectTransformOverrides } from "./project-object-layout";
+import { getEffectiveProjectObjectRectTransform } from "./project-object-zone";
 import { ProjectObjectSurface } from "./ProjectObjectSurface";
 
 const workspaceTools = [
@@ -156,6 +157,7 @@ export function ProjectWorkspaceArea({
           activeTool={activeTool}
           canvasScale={canvasScale}
           contentFileNode={contentFileNode}
+          fileTree={fileTree}
           imageAssets={imageAssets}
           objectTree={objectTree}
           parentFolderName={parentFolder?.name}
@@ -281,6 +283,7 @@ type WorkspaceViewportProps = {
   activeTool: WorkspaceTool;
   canvasScale: number;
   contentFileNode: ProjectFileNode | null;
+  fileTree: ProjectFileNode[];
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
   parentFolderName?: string;
@@ -294,6 +297,7 @@ function WorkspaceViewport({
   activeTool,
   canvasScale,
   contentFileNode,
+  fileTree,
   imageAssets,
   objectTree,
   parentFolderName,
@@ -307,6 +311,7 @@ function WorkspaceViewport({
       <TableLayoutWorkspace
         activeTool={activeTool}
         canvasScale={canvasScale}
+        fileTree={fileTree}
         fileNode={contentFileNode}
         imageAssets={imageAssets}
         objectTree={objectTree}
@@ -322,6 +327,7 @@ function WorkspaceViewport({
       <ObjectFileWorkspace
         activeTool={activeTool}
         canvasScale={canvasScale}
+        fileTree={fileTree}
         fileNode={contentFileNode}
         imageAssets={imageAssets}
         objectTree={objectTree}
@@ -348,6 +354,7 @@ function WorkspaceViewport({
 type TableLayoutWorkspaceProps = {
   activeTool: WorkspaceTool;
   canvasScale: number;
+  fileTree: ProjectFileNode[];
   fileNode: ProjectFileNode;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
@@ -359,6 +366,7 @@ type TableLayoutWorkspaceProps = {
 function TableLayoutWorkspace({
   activeTool,
   canvasScale,
+  fileTree,
   fileNode,
   imageAssets,
   objectTree,
@@ -381,6 +389,7 @@ function TableLayoutWorkspace({
           <ObjectScene
             activeTool={activeTool}
             canvasScale={canvasScale}
+            fileTree={fileTree}
             fileNodeId={fileNode.id}
             imageAssets={imageAssets}
             objectTree={objectTree}
@@ -404,6 +413,7 @@ function TableLayoutWorkspace({
 type ObjectFileWorkspaceProps = {
   activeTool: WorkspaceTool;
   canvasScale: number;
+  fileTree: ProjectFileNode[];
   fileNode: ProjectFileNode;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
@@ -415,6 +425,7 @@ type ObjectFileWorkspaceProps = {
 function ObjectFileWorkspace({
   activeTool,
   canvasScale,
+  fileTree,
   fileNode,
   imageAssets,
   objectTree,
@@ -428,6 +439,7 @@ function ObjectFileWorkspace({
         <ObjectScene
           activeTool={activeTool}
           canvasScale={canvasScale}
+          fileTree={fileTree}
           fileNodeId={fileNode.id}
           imageAssets={imageAssets}
           objectTree={objectTree}
@@ -450,6 +462,7 @@ function ObjectFileWorkspace({
 type ObjectSceneProps = {
   activeTool: WorkspaceTool;
   canvasScale: number;
+  fileTree: ProjectFileNode[];
   fileNodeId: string;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
@@ -462,6 +475,7 @@ type ObjectSceneProps = {
 function ObjectScene({
   activeTool,
   canvasScale,
+  fileTree,
   fileNodeId,
   imageAssets,
   objectTree,
@@ -547,6 +561,7 @@ function ObjectScene({
           key={object.id}
           activeTool={activeTool}
           canvasScale={canvasScale}
+          fileTree={fileTree}
           fileNodeId={fileNodeId}
           imageAssetById={imageAssetById}
           object={object}
@@ -651,6 +666,7 @@ function ProjectWorkspacePlaceholder() {
 type SceneObjectFrameProps = {
   activeTool: WorkspaceTool;
   canvasScale: number;
+  fileTree: ProjectFileNode[];
   fileNodeId: string;
   imageAssetById: Map<string, ProjectImageAssetOption>;
   object: ProjectObjectNode;
@@ -685,6 +701,7 @@ type TransformDragState = {
 function SceneObjectFrame({
   activeTool,
   canvasScale,
+  fileTree,
   fileNodeId,
   imageAssetById,
   object,
@@ -699,7 +716,8 @@ function SceneObjectFrame({
   size
 }: SceneObjectFrameProps) {
   const objectRectTransform = getProjectObjectNodeRectTransform(object);
-  const baseVisibleRectTransform = rectTransformOverride ?? objectRectTransform;
+  const effectiveObjectRectTransform = getEffectiveProjectObjectRectTransform(object, fileTree);
+  const baseVisibleRectTransform = rectTransformOverride ?? effectiveObjectRectTransform;
   const [dragState, setDragState] = useState<TransformDragState | null>(null);
   const visibleRectTransform = dragState?.current ?? baseVisibleRectTransform;
   const selected = selectedObjectId === object.id;
@@ -717,7 +735,8 @@ function SceneObjectFrame({
   );
   const clipsChildren = doesProjectObjectClipChildren(object.kind);
   const sizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
-  const resizeLocked = activeTool === "resize" && sizePresetLocked;
+  const zoneSizeLocked = object.kind === "zone";
+  const resizeLocked = activeTool === "resize" && (sizePresetLocked || zoneSizeLocked);
   const interactive =
     selected && activeTool !== "select" && Boolean(fileNodeId) && !layoutManaged && !resizeLocked;
   const children = getProjectObjectNodeVisibleChildren(object);
@@ -726,7 +745,8 @@ function SceneObjectFrame({
         visibleRectTransform,
         children,
         getProjectObjectNodeLayout(object),
-        appearance.padding
+        appearance.padding,
+        (child) => getEffectiveProjectObjectRectTransform(child, fileTree)
       )
     : new Map<string, ProjectObjectRectTransform>();
 
@@ -850,7 +870,7 @@ function SceneObjectFrame({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
-      <ProjectObjectSurface imageAssetById={imageAssetById} object={object} />
+      <ProjectObjectSurface fileTree={fileTree} imageAssetById={imageAssetById} object={object} />
       <div
         className={cx("absolute inset-0", clipsChildren ? "overflow-hidden" : "overflow-visible")}
         style={{ borderRadius: `${appearance.borderRadius}px` }}
@@ -860,6 +880,7 @@ function SceneObjectFrame({
             key={child.id}
             activeTool={activeTool}
             canvasScale={canvasScale}
+            fileTree={fileTree}
             fileNodeId={fileNodeId}
             imageAssetById={imageAssetById}
             object={child}

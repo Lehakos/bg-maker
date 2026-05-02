@@ -9,7 +9,9 @@ export function getProjectObjectLayoutRectTransformOverrides(
   parentRectTransform: ProjectObjectRectTransform,
   children: readonly ProjectObjectNode[],
   layout: ProjectObjectLayout,
-  layoutPadding: number
+  layoutPadding: number,
+  getChildRectTransform: (child: ProjectObjectNode) => ProjectObjectRectTransform =
+    getProjectObjectNodeRectTransform
 ) {
   const overrides = new Map<string, ProjectObjectRectTransform>();
 
@@ -25,7 +27,7 @@ export function getProjectObjectLayoutRectTransformOverrides(
 
   const childRectTransforms = visibleChildren.map((child) => ({
     child,
-    rectTransform: getProjectObjectNodeRectTransform(child)
+    rectTransform: getChildRectTransform(child)
   }));
 
   if (layout.mode === "grid") {

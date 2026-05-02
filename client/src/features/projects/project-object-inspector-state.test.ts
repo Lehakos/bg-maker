@@ -10,7 +10,8 @@ import type {
   ProjectObjectRectTransform,
   ProjectObjectShape,
   ProjectObjectStackDisplay,
-  ProjectObjectText
+  ProjectObjectText,
+  ProjectObjectZone
 } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
@@ -25,6 +26,7 @@ import {
   createShapePolygonPointDrafts,
   createStackDisplayDraft,
   createTextDraft,
+  createZoneDraft,
   getAppearanceWithDraftField,
   getCardWithDraftField,
   getContainerWithAddedEntry,
@@ -52,6 +54,7 @@ import {
   getTextFontStyleForItalic,
   getTextFontWeightForBold,
   getTextWithDraftField,
+  getZoneWithDraftField,
   isTextFontWeightBold,
   normalizeAppearanceNumberValue,
   normalizeContainerEntryQuantityValue,
@@ -63,6 +66,7 @@ import {
   normalizeShapePolygonPointValue,
   normalizeStackDisplayNumberValue,
   normalizeTextNumberValue,
+  normalizeZoneNumberValue,
   parseRectTransformDraftValue
 } from "./project-object-inspector-state";
 
@@ -120,6 +124,11 @@ const stackDisplay: ProjectObjectStackDisplay = {
   stackOffsetX: 2,
   stackOffsetY: -2,
   visibleItemCount: 4
+};
+
+const zone: ProjectObjectZone = {
+  capacity: 4,
+  referenceObjectFileId: "card-file-1"
 };
 
 const die: ProjectObjectDie = {
@@ -301,6 +310,27 @@ describe("project object inspector state", () => {
     expect(getStackDisplayWithDraftField(stackDisplay, "visibleItemCount", "0")).toMatchObject({
       visibleItemCount: 1
     });
+  });
+
+  it("creates and updates zone drafts", () => {
+    expect(createZoneDraft(zone)).toEqual({
+      capacity: "4",
+      referenceObjectFileId: "card-file-1"
+    });
+    expect(normalizeZoneNumberValue("capacity", 0)).toBe(1);
+    expect(normalizeZoneNumberValue("capacity", 1200)).toBe(999);
+    expect(getZoneWithDraftField(zone, "capacity", "8")).toMatchObject({
+      capacity: 8
+    });
+    expect(getZoneWithDraftField(zone, "capacity", "0")).toMatchObject({
+      capacity: 1
+    });
+    expect(getZoneWithDraftField(zone, "referenceObjectFileId", " object-file-2 ")).toEqual({
+      capacity: 4,
+      referenceObjectFileId: "object-file-2"
+    });
+    expect(getZoneWithDraftField(zone, "capacity", "nope")).toBeNull();
+    expect(getZoneWithDraftField(zone, "referenceObjectFileId", "card-file-1")).toBeNull();
   });
 
   it("updates generic container entries", () => {

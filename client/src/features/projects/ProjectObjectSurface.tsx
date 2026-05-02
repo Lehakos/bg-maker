@@ -1,4 +1,5 @@
 import type {
+  ProjectFileNode,
   ProjectObjectAppearance,
   ProjectObjectBorderStyle,
   ProjectObjectCounter,
@@ -23,15 +24,21 @@ import {
   getProjectObjectNodeStackDisplay,
   getProjectObjectNodeText
 } from "./project-object-tree";
+import { getProjectObjectZoneSlotRects } from "./project-object-zone";
 import { ProjectObjectKindIcon } from "./project-object-tree-ui";
 import type { ProjectImageAssetOption } from "./project-image-assets";
 
 type ProjectObjectSurfaceProps = {
+  fileTree: ProjectFileNode[];
   imageAssetById: Map<string, ProjectImageAssetOption>;
   object: ProjectObjectNode;
 };
 
-export function ProjectObjectSurface({ imageAssetById, object }: ProjectObjectSurfaceProps) {
+export function ProjectObjectSurface({
+  fileTree,
+  imageAssetById,
+  object
+}: ProjectObjectSurfaceProps) {
   if (object.kind === "card") {
     return <CardVisual object={object} />;
   }
@@ -42,6 +49,10 @@ export function ProjectObjectSurface({ imageAssetById, object }: ProjectObjectSu
 
   if (object.kind === "deck") {
     return <DeckVisual object={object} />;
+  }
+
+  if (object.kind === "zone") {
+    return <ZoneVisual fileTree={fileTree} object={object} />;
   }
 
   if (object.kind === "die") {
@@ -69,6 +80,10 @@ export function ProjectObjectSurface({ imageAssetById, object }: ProjectObjectSu
 
 type ObjectVisualProps = {
   object: ProjectObjectNode;
+};
+
+type ZoneVisualProps = ObjectVisualProps & {
+  fileTree: ProjectFileNode[];
 };
 
 function GroupVisual({ object }: ObjectVisualProps) {
@@ -153,6 +168,36 @@ function DeckVisual({ object }: ObjectVisualProps) {
           {totalCount}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+function ZoneVisual({ fileTree, object }: ZoneVisualProps) {
+  const appearance = getProjectObjectNodeAppearance(object);
+  const slotRects = getProjectObjectZoneSlotRects(fileTree, object);
+
+  return (
+    <div
+      className="relative h-full w-full overflow-visible shadow-[inset_0_0_0_1px_rgba(255,255,255,0.65)]"
+      style={{ ...getAppearanceStyle(appearance), padding: 0 }}
+    >
+      {slotRects.map((slotRect, index) => (
+        <span
+          key={index}
+          aria-hidden
+          className="pointer-events-none absolute rounded border border-cyan-500/35 bg-cyan-200/20"
+          style={{
+            height: `${slotRect.height}px`,
+            left: `${slotRect.x}px`,
+            top: `${slotRect.y}px`,
+            width: `${slotRect.width}px`
+          }}
+        />
+      ))}
+      <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md border border-cyan-500/30 bg-white/85 px-2 py-1 text-xs font-semibold text-cyan-800 shadow-sm">
+        <ProjectObjectKindIcon className="shrink-0" kind={object.kind} size={14} />
+        <span className="truncate">{object.name}</span>
+      </div>
     </div>
   );
 }

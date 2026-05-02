@@ -8,6 +8,7 @@ import {
   Image,
   MirrorRectangular,
   Rows3,
+  Scan,
   Square,
   Type,
   type LucideProps
@@ -52,6 +53,10 @@ export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindI
 
   if (kind === "image") {
     return <Image {...iconProps} />;
+  }
+
+  if (kind === "zone") {
+    return <Scan {...iconProps} />;
   }
 
   if (kind === "shape") {

@@ -35,5 +35,6 @@ export {
 } from "./layout-component";
 export { getProjectObjectShapeComponent, withProjectObjectShapeComponent } from "./shape-component";
 export { getProjectObjectTextComponent, withProjectObjectTextComponent } from "./text-component";
+export { getProjectObjectZoneComponent, withProjectObjectZoneComponent } from "./zone-component";
 
 export const projectObjectComponentEngine = new ProjectObjectComponentEngine();

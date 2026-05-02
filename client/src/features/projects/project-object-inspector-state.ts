@@ -25,14 +25,17 @@ import type {
   ProjectObjectText,
   ProjectObjectTextAlign,
   ProjectObjectTextFontStyle,
-  ProjectObjectTextVerticalAlign
+  ProjectObjectTextVerticalAlign,
+  ProjectObjectZone
 } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectShapePolygonPoints,
   getDefaultProjectObjectDieFace,
   getDefaultProjectObjectStackDisplay,
+  getDefaultProjectObjectZone,
   normalizeProjectObjectDieActiveFace,
   normalizeProjectObjectDieFaceCount,
+  normalizeProjectObjectZoneCapacity,
   projectObjectCardCustomSizePresetId,
   projectObjectCardSizePresets,
   projectObjectCounterAffixMaxLength,
@@ -47,7 +50,8 @@ import {
   projectObjectShapePolygonCoordinateLimits,
   projectObjectShapePolygonPointCountLimits,
   projectObjectStackDisplayOffsetLimits,
-  projectObjectStackDisplayVisibleItemCountLimits
+  projectObjectStackDisplayVisibleItemCountLimits,
+  projectObjectZoneCapacityLimits
 } from "@bg-maker/shared";
 
 export type RectTransformFieldKey = keyof ProjectObjectRectTransform;
@@ -91,6 +95,14 @@ export type DeckFieldKey = keyof ProjectObjectDeck;
 export type DeckDraft = {
   sizePreset: ProjectObjectCardSizePresetValue;
 };
+
+export type ZoneFieldKey = keyof ProjectObjectZone;
+export type ZoneNumberFieldKey = Extract<ZoneFieldKey, "capacity">;
+export type ZoneDraft = {
+  capacity: string;
+  referenceObjectFileId: string;
+};
+
 export type StackDisplayFieldKey = keyof ProjectObjectStackDisplay;
 export type StackDisplayNumberFieldKey = Extract<
   StackDisplayFieldKey,
@@ -231,6 +243,18 @@ export const stackDisplayNumberFieldSettings = {
   }
 } as const satisfies Record<
   StackDisplayNumberFieldKey,
+  { decimals: number; max: number; min: number; step: number }
+>;
+
+export const zoneNumberFieldSettings = {
+  capacity: {
+    decimals: 0,
+    max: projectObjectZoneCapacityLimits.max,
+    min: projectObjectZoneCapacityLimits.min,
+    step: 1
+  }
+} as const satisfies Record<
+  ZoneNumberFieldKey,
   { decimals: number; max: number; min: number; step: number }
 >;
 
@@ -443,6 +467,13 @@ export function createDeckDraft(deck: ProjectObjectDeck): DeckDraft {
   };
 }
 
+export function createZoneDraft(zone: ProjectObjectZone): ZoneDraft {
+  return {
+    capacity: formatZoneNumberValue(zone.capacity, "capacity"),
+    referenceObjectFileId: zone.referenceObjectFileId
+  };
+}
+
 export function createStackDisplayDraft(
   stackDisplay: ProjectObjectStackDisplay
 ): StackDisplayDraft {
@@ -550,6 +581,20 @@ export function getDeckWithDraftField(
   }
 
   return areDecksEqual(deck, nextDeck) ? null : nextDeck;
+}
+
+export function getZoneWithDraftField(
+  zone: ProjectObjectZone,
+  fieldKey: ZoneFieldKey,
+  value: string
+) {
+  const nextZone = createNextZone(zone, fieldKey, value);
+
+  if (!nextZone) {
+    return null;
+  }
+
+  return areZonesEqual(zone, nextZone) ? null : nextZone;
 }
 
 export function getStackDisplayWithDraftField(
@@ -979,6 +1024,17 @@ export function normalizeContainerEntryQuantityValue(value: number) {
   );
 }
 
+export function normalizeZoneNumberValue(
+  fieldKey: keyof typeof zoneNumberFieldSettings,
+  value: number
+) {
+  if (fieldKey === "capacity") {
+    return normalizeProjectObjectZoneCapacity(value);
+  }
+
+  return value;
+}
+
 export function normalizeDieNumberValue(
   fieldKey: keyof typeof dieNumberFieldSettings,
   value: number
@@ -1044,6 +1100,15 @@ export function formatStackDisplayNumberValue(
 
 export function formatContainerEntryQuantityValue(value: number) {
   return String(normalizeContainerEntryQuantityValue(value));
+}
+
+export function formatZoneNumberValue(
+  value: number,
+  fieldKey: keyof typeof zoneNumberFieldSettings
+) {
+  const { decimals } = zoneNumberFieldSettings[fieldKey];
+
+  return String(roundTo(normalizeZoneNumberValue(fieldKey, value), decimals));
 }
 
 export function formatDieNumberValue(value: number, fieldKey: keyof typeof dieNumberFieldSettings) {
@@ -1174,6 +1239,30 @@ function createNextDeck(
   }
 
   return null;
+}
+
+function createNextZone(
+  zone: ProjectObjectZone,
+  fieldKey: ZoneFieldKey,
+  value: string
+): ProjectObjectZone | null {
+  if (fieldKey === "referenceObjectFileId") {
+    return {
+      ...zone,
+      referenceObjectFileId: value.trim()
+    };
+  }
+
+  const parsedValue = parseRectTransformDraftValue(value);
+
+  if (parsedValue === null) {
+    return null;
+  }
+
+  return normalizeZone({
+    ...zone,
+    [fieldKey]: normalizeZoneNumberValue(fieldKey, parsedValue)
+  });
 }
 
 function createNextStackDisplay(
@@ -1403,6 +1492,13 @@ function areDecksEqual(left: ProjectObjectDeck, right: ProjectObjectDeck) {
   return left.sizePreset === right.sizePreset;
 }
 
+function areZonesEqual(left: ProjectObjectZone, right: ProjectObjectZone) {
+  return (
+    left.capacity === right.capacity &&
+    left.referenceObjectFileId === right.referenceObjectFileId
+  );
+}
+
 function areStackDisplaysEqual(
   left: ProjectObjectStackDisplay,
   right: ProjectObjectStackDisplay
@@ -1558,6 +1654,19 @@ function normalizeStackDisplay(
       "visibleItemCount",
       stackDisplay.visibleItemCount
     )
+  };
+}
+
+function normalizeZone(zone: ProjectObjectZone): ProjectObjectZone {
+  const defaultZone = getDefaultProjectObjectZone();
+
+  return {
+    ...zone,
+    capacity: normalizeProjectObjectZoneCapacity(zone.capacity),
+    referenceObjectFileId:
+      typeof zone.referenceObjectFileId === "string"
+        ? zone.referenceObjectFileId.trim()
+        : defaultZone.referenceObjectFileId
   };
 }
 

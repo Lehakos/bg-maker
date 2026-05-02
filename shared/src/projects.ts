@@ -20,6 +20,7 @@ export const projectObjectKinds = [
   "group",
   "card",
   "deck",
+  "zone",
   "token",
   "counter",
   "die",
@@ -146,6 +147,16 @@ export type ProjectObjectStackDisplay = {
 
 export type ProjectObjectDeck = {
   sizePreset: ProjectObjectCardSizePresetValue;
+};
+
+export const projectObjectZoneCapacityLimits = {
+  max: 999,
+  min: 1
+} as const;
+
+export type ProjectObjectZone = {
+  capacity: number;
+  referenceObjectFileId: string;
 };
 
 export const projectObjectCounterBoundsModes = ["clamp", "none", "wrap"] as const;
@@ -286,6 +297,7 @@ export type ProjectObjectComponents = {
   shape?: ProjectObjectShape;
   stackDisplay?: ProjectObjectStackDisplay;
   text?: ProjectObjectText;
+  zone?: ProjectObjectZone;
 };
 
 export type ProjectObjectNode = {
@@ -355,7 +367,8 @@ const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; wid
   image: { height: 180, width: 240 },
   label: { height: 32, width: 160 },
   shape: { height: 120, width: 120 },
-  token: { height: 80, width: 80 }
+  token: { height: 80, width: 80 },
+  zone: { height: 120, width: 180 }
 };
 
 const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
@@ -367,7 +380,8 @@ const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
   image: "New image",
   label: "New label",
   shape: "New shape",
-  token: "New token"
+  token: "New token",
+  zone: "New zone"
 };
 
 const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAppearance> = {
@@ -460,6 +474,16 @@ const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAp
     borderWidth: 2,
     opacity: 1,
     padding: 6
+  },
+  zone: {
+    backgroundColor: "#ecfeff",
+    backgroundOpacity: 0.45,
+    borderColor: "#0891b2",
+    borderRadius: 6,
+    borderStyle: "dashed",
+    borderWidth: 2,
+    opacity: 1,
+    padding: 8
   }
 };
 
@@ -559,6 +583,13 @@ export function getDefaultProjectObjectDeck(): ProjectObjectDeck {
   };
 }
 
+export function getDefaultProjectObjectZone(): ProjectObjectZone {
+  return {
+    capacity: 1,
+    referenceObjectFileId: ""
+  };
+}
+
 export function getDefaultProjectObjectCounter(): ProjectObjectCounter {
   return {
     boundsMode: "clamp",
@@ -612,13 +643,15 @@ export function getDefaultProjectObjectDoubleSide(
   };
 }
 
-export function getDefaultProjectObjectLayout(): ProjectObjectLayout {
+export function getDefaultProjectObjectLayout(
+  kind: ProjectObjectKind = "group"
+): ProjectObjectLayout {
   return {
     alignItems: "start",
     columns: 3,
     gap: 8,
     justifyContent: "start",
-    mode: "free"
+    mode: kind === "zone" ? "grid" : "free"
   };
 }
 
@@ -689,8 +722,20 @@ export function normalizeProjectObjectDieActiveFace(
   return Math.min(normalizedFaceCount, Math.max(1, activeFace));
 }
 
+export function normalizeProjectObjectZoneCapacity(
+  value: number,
+  fallback = getDefaultProjectObjectZone().capacity
+) {
+  const capacity = Number.isFinite(value) ? Math.round(value) : fallback;
+
+  return Math.min(
+    projectObjectZoneCapacityLimits.max,
+    Math.max(projectObjectZoneCapacityLimits.min, capacity)
+  );
+}
+
 export function hasProjectObjectLayout(kind: ProjectObjectKind) {
-  return kind === "group" || kind === "card";
+  return kind === "group" || kind === "card" || kind === "zone";
 }
 
 export function hasProjectObjectSides(kind: ProjectObjectKind) {
@@ -744,13 +789,18 @@ export function createDefaultProjectObjectComponents(
   if (kind === "card") {
     components.card = getDefaultProjectObjectCard();
     components.doubleSide = getDefaultProjectObjectDoubleSide(kind);
-    components.layout = getDefaultProjectObjectLayout();
+    components.layout = getDefaultProjectObjectLayout(kind);
   }
 
   if (kind === "deck") {
     components.container = getDefaultProjectObjectContainer(kind);
     components.deck = getDefaultProjectObjectDeck();
     components.stackDisplay = getDefaultProjectObjectStackDisplay();
+  }
+
+  if (kind === "zone") {
+    components.layout = getDefaultProjectObjectLayout(kind);
+    components.zone = getDefaultProjectObjectZone();
   }
 
   if (kind === "counter") {

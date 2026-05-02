@@ -9,7 +9,8 @@ const projectObjectKindIconClassNames: Record<ProjectObjectKind, string> = {
   image: "text-sky-600",
   label: "text-slate-600",
   shape: "text-emerald-600",
-  token: "text-orange-600"
+  token: "text-orange-600",
+  zone: "text-cyan-600"
 };
 
 const projectObjectKindLabels: Record<ProjectObjectKind, string> = {
@@ -21,7 +22,8 @@ const projectObjectKindLabels: Record<ProjectObjectKind, string> = {
   image: "Image",
   label: "Label",
   shape: "Shape",
-  token: "Token"
+  token: "Token",
+  zone: "Zone"
 };
 
 export function getProjectObjectKindIconClassName(kind: ProjectObjectKind) {

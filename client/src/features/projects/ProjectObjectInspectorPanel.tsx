@@ -22,13 +22,15 @@ import type {
   ProjectObjectStackDisplay,
   ProjectObjectText,
   ProjectObjectTextAlign,
-  ProjectObjectTextVerticalAlign
+  ProjectObjectTextVerticalAlign,
+  ProjectObjectZone
 } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectCounter,
   getDefaultProjectObjectDeck,
   getDefaultProjectObjectDie,
   getDefaultProjectObjectStackDisplay,
+  getDefaultProjectObjectZone,
   getProjectObjectContainerAcceptedObjectKinds,
   getProjectObjectContainerTotalCount,
   hasProjectObjectLayout,
@@ -68,6 +70,7 @@ import {
   Palette,
   Plus,
   Rows3,
+  Scan,
   Shapes,
   SlidersHorizontal,
   Trash2,
@@ -106,6 +109,7 @@ import {
   getProjectObjectNodeShape,
   getProjectObjectNodeStackDisplay,
   getProjectObjectNodeText,
+  getProjectObjectNodeZone,
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
   setProjectObjectNodeCard,
@@ -121,6 +125,7 @@ import {
   setProjectObjectNodeStackDisplay,
   setProjectObjectNodeText,
   setProjectObjectNodeVisibility,
+  setProjectObjectNodeZone,
   updateProjectFileNodeObjectTree
 } from "./project-object-tree";
 import { ProjectObjectKindIcon } from "./project-object-tree-ui";
@@ -139,6 +144,7 @@ import {
   createLayoutDraft,
   createStackDisplayDraft,
   createTextDraft,
+  createZoneDraft,
   formatAppearanceNumberValue,
   formatContainerEntryQuantityValue,
   formatCounterNumberValue,
@@ -148,6 +154,7 @@ import {
   formatRectTransformValue,
   formatStackDisplayNumberValue,
   formatTextNumberValue,
+  formatZoneNumberValue,
   getAppearanceWithDraftField,
   getCardWithDraftField,
   getContainerWithAddedEntry,
@@ -174,6 +181,7 @@ import {
   getTextFontStyleForItalic,
   getTextFontWeightForBold,
   getTextWithDraftField,
+  getZoneWithDraftField,
   imageNumberFieldSettings,
   isTextFontWeightBold,
   normalizeRectTransformValue,
@@ -185,6 +193,7 @@ import {
   normalizeLayoutNumberValue,
   normalizeStackDisplayNumberValue,
   normalizeTextNumberValue,
+  normalizeZoneNumberValue,
   parseRectTransformDraftValue,
   appearanceNumberFieldSettings,
   counterNumberFieldSettings,
@@ -193,6 +202,7 @@ import {
   rectTransformFieldSettings,
   stackDisplayNumberFieldSettings,
   textNumberFieldSettings,
+  zoneNumberFieldSettings,
   type AppearanceDraft,
   type AppearanceFieldKey,
   type CardDraft,
@@ -216,7 +226,10 @@ import {
   type StackDisplayFieldKey,
   type StackDisplayNumberFieldKey,
   type TextDraft,
-  type TextFieldKey
+  type TextFieldKey,
+  type ZoneDraft,
+  type ZoneFieldKey,
+  type ZoneNumberFieldKey
 } from "./project-object-inspector-state";
 import { ProjectObjectShapePolygonEditor } from "./ProjectObjectShapePolygonEditor";
 
@@ -252,6 +265,8 @@ const cardPresetLockedRectTransformFields = new Set<RectTransformFieldKey>([
   "width"
 ]);
 
+const zoneLockedRectTransformFields = new Set<RectTransformFieldKey>(["height", "width"]);
+
 const rotationFields: readonly RectTransformFieldDefinition[] = [
   { key: "rotation", label: "Rotation" }
 ];
@@ -283,6 +298,11 @@ type CounterNumberFieldDefinition = {
 
 type StackDisplayNumberFieldDefinition = {
   key: keyof typeof stackDisplayNumberFieldSettings;
+  label: string;
+};
+
+type ZoneNumberFieldDefinition = {
+  key: keyof typeof zoneNumberFieldSettings;
   label: string;
 };
 
@@ -341,6 +361,11 @@ const stackDisplayOffsetFields: readonly StackDisplayNumberFieldDefinition[] = [
   { key: "stackOffsetX", label: "Offset X" },
   { key: "stackOffsetY", label: "Offset Y" }
 ];
+
+const zoneCapacityField = {
+  key: "capacity",
+  label: "Capacity"
+} as const satisfies ZoneNumberFieldDefinition;
 
 const imageNumberFields: readonly ImageNumberFieldDefinition[] = [
   { key: "positionX", label: "Pos X" },
@@ -427,6 +452,14 @@ const layoutModeOptions = [
   { icon: Rows3, label: "Vertical layout", value: "vertical" },
   { icon: Grid3x3, label: "Grid layout", value: "grid" }
 ] as const satisfies readonly {
+  icon: LucideIcon;
+  label: string;
+  value: ProjectObjectLayoutMode;
+}[];
+
+const zoneLayoutModeOptions = layoutModeOptions.filter(
+  (option) => option.value !== "free"
+) as readonly {
   icon: LucideIcon;
   label: string;
   value: ProjectObjectLayoutMode;
@@ -574,6 +607,10 @@ export function ProjectObjectInspectorPanel({
       selectedObject?.kind === "deck" ? getProjectObjectNodeStackDisplay(selectedObject) : null,
     [selectedObject]
   );
+  const zone = useMemo(
+    () => (selectedObject?.kind === "zone" ? getProjectObjectNodeZone(selectedObject) : null),
+    [selectedObject]
+  );
   const die = useMemo(
     () => (selectedObject?.kind === "die" ? getProjectObjectNodeDie(selectedObject) : null),
     [selectedObject]
@@ -630,6 +667,9 @@ export function ProjectObjectInspectorPanel({
     stackDisplay
       ? createStackDisplayDraft(stackDisplay)
       : createStackDisplayDraft(getFallbackStackDisplayDraftValue())
+  );
+  const [zoneDraft, setZoneDraft] = useState<ZoneDraft>(() =>
+    zone ? createZoneDraft(zone) : createZoneDraft(getFallbackZoneDraftValue())
   );
   const [containerEntryQuantityDrafts, setContainerEntryQuantityDrafts] = useState<string[]>(() =>
     container
@@ -693,6 +733,12 @@ export function ProjectObjectInspectorPanel({
       setStackDisplayDraft(createStackDisplayDraft(stackDisplay));
     }
   }, [selectedObject?.id, stackDisplay]);
+
+  useEffect(() => {
+    if (zone) {
+      setZoneDraft(createZoneDraft(zone));
+    }
+  }, [selectedObject?.id, zone]);
 
   useEffect(() => {
     if (container) {
@@ -788,18 +834,20 @@ export function ProjectObjectInspectorPanel({
     }
   }
 
-  function isRectTransformFieldPresetLocked(fieldKey: RectTransformFieldKey) {
+  function isRectTransformFieldLocked(fieldKey: RectTransformFieldKey) {
     const sizedObject = card ?? deck;
 
-    return Boolean(
+    const presetLocked = Boolean(
       sizedObject &&
       isProjectObjectCardSizePresetLocked(sizedObject) &&
       cardPresetLockedRectTransformFields.has(fieldKey)
     );
+
+    return presetLocked || Boolean(zone && zoneLockedRectTransformFields.has(fieldKey));
   }
 
   function updateRectTransformDraft(fieldKey: RectTransformFieldKey, value: string) {
-    if (isRectTransformFieldPresetLocked(fieldKey)) {
+    if (isRectTransformFieldLocked(fieldKey)) {
       return;
     }
 
@@ -826,7 +874,7 @@ export function ProjectObjectInspectorPanel({
       !contentFileNode ||
       !selectedObject ||
       !rectTransform ||
-      isRectTransformFieldPresetLocked(fieldKey)
+      isRectTransformFieldLocked(fieldKey)
     ) {
       return;
     }
@@ -856,7 +904,7 @@ export function ProjectObjectInspectorPanel({
       !contentFileNode ||
       !selectedObject ||
       !rectTransform ||
-      isRectTransformFieldPresetLocked(fieldKey)
+      isRectTransformFieldLocked(fieldKey)
     ) {
       return;
     }
@@ -1144,6 +1192,64 @@ export function ProjectObjectInspectorPanel({
         normalizeStackDisplayNumberValue(fieldKey, parsedValue),
         fieldKey
       )
+    }));
+  }
+
+  function updateZoneDraft(fieldKey: ZoneFieldKey, value: string) {
+    setZoneDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    updateObjectTreeZoneField(fieldKey, value);
+  }
+
+  function resetZoneDraft(fieldKey: ZoneFieldKey) {
+    if (!zone) {
+      return;
+    }
+
+    const nextDraft = createZoneDraft(zone);
+
+    setZoneDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: nextDraft[fieldKey]
+    }));
+  }
+
+  function updateObjectTreeZoneField(fieldKey: ZoneFieldKey, value: string) {
+    if (!contentFileNode || !selectedObject || !zone) {
+      return;
+    }
+
+    const nextZone = getZoneWithDraftField(zone, fieldKey, value);
+
+    if (!nextZone) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeZone(objectTree, selectedObject.id, nextZone);
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
+  function commitZoneNumberField(fieldKey: ZoneNumberFieldKey, value = zoneDraft[fieldKey]) {
+    if (!zone) {
+      return;
+    }
+
+    const parsedValue = parseRectTransformDraftValue(value);
+
+    if (parsedValue === null) {
+      resetZoneDraft(fieldKey);
+      return;
+    }
+
+    updateObjectTreeZoneField(fieldKey, value);
+    setZoneDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: formatZoneNumberValue(normalizeZoneNumberValue(fieldKey, parsedValue), fieldKey)
     }));
   }
 
@@ -1718,6 +1824,19 @@ export function ProjectObjectInspectorPanel({
     containerObjectFileOptions.map((option) => [option.value, option])
   );
   const containerTotalCount = container ? getProjectObjectContainerTotalCount(container) : 0;
+  const zoneReferenceObjectFileOptions = zone ? getZoneReferenceObjectFileOptions(fileTree) : [];
+  const zoneReferenceObjectFileOptionById = new Map(
+    zoneReferenceObjectFileOptions.map((option) => [option.value, option])
+  );
+  const zoneReferenceObjectFileSelectOptions =
+    zone?.referenceObjectFileId &&
+    !zoneReferenceObjectFileOptionById.has(zone.referenceObjectFileId)
+      ? [
+          { label: "No reference", value: "" },
+          { label: `${zone.referenceObjectFileId} (missing)`, value: zone.referenceObjectFileId },
+          ...zoneReferenceObjectFileOptions
+        ]
+      : [{ label: "No reference", value: "" }, ...zoneReferenceObjectFileOptions];
   const activeSizePresetObject = card ?? deck;
   const sizePresetLocked = activeSizePresetObject
     ? isProjectObjectCardSizePresetLocked(activeSizePresetObject)
@@ -1729,7 +1848,17 @@ export function ProjectObjectInspectorPanel({
   const layoutCrossAxisLabel = getLayoutCrossAxisLabel(layoutDraft.mode);
   const layoutJustifyOptions = getLayoutJustifyOptions(layoutDraft.mode);
   const layoutAlignOptions = getLayoutAlignOptions(layoutDraft.mode);
-  const layoutNumberFields = getLayoutNumberFields(layoutDraft);
+  const layoutNumberFields = getLayoutNumberFields(layoutDraft, Boolean(zone));
+  const activeLayoutModeOptions = zone ? zoneLayoutModeOptions : layoutModeOptions;
+  const showLayoutAlignmentControls = layoutAuto && !zone;
+  const sizeLockedRectTransformFields = zone
+    ? zoneLockedRectTransformFields
+    : sizePresetLocked
+      ? cardPresetLockedRectTransformFields
+      : undefined;
+  const sizeLockedTitle = zone
+    ? "Size is controlled by the selected zone reference, capacity, layout, gap, and padding"
+    : "Size is controlled by the selected card preset";
 
   return (
     <aside
@@ -1896,6 +2025,31 @@ export function ProjectObjectInspectorPanel({
                 onCommit={commitStackDisplayNumberField}
                 onDraftChange={updateStackDisplayDraft}
                 onReset={resetStackDisplayDraft}
+              />
+            </InspectorSection>
+          ) : null}
+
+          {zone ? (
+            <InspectorSection icon={<Scan size={15} />} title="Zone">
+              <InspectorSelectField
+                label="Reference"
+                value={zoneDraft.referenceObjectFileId}
+                options={zoneReferenceObjectFileSelectOptions}
+                onChange={(value) => updateZoneDraft("referenceObjectFileId", value)}
+              />
+              {zone.referenceObjectFileId &&
+              !zoneReferenceObjectFileOptionById.has(zone.referenceObjectFileId) ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                  Selected object file is missing or uses an unsupported zone root.
+                </p>
+              ) : null}
+              <InspectorBehaviorNumberField
+                field={zoneCapacityField}
+                settings={zoneNumberFieldSettings.capacity}
+                value={zoneDraft.capacity}
+                onCommit={commitZoneNumberField}
+                onDraftChange={updateZoneDraft}
+                onReset={resetZoneDraft}
               />
             </InspectorSection>
           ) : null}
@@ -2076,25 +2230,27 @@ export function ProjectObjectInspectorPanel({
               <InspectorIconSegmentedField
                 label="Mode"
                 value={layoutDraft.mode}
-                options={layoutModeOptions}
+                options={activeLayoutModeOptions}
                 onChange={(value) => updateLayoutDraft("mode", value)}
               />
               {layoutAuto ? (
                 <>
-                  <div className="grid grid-cols-2 gap-2">
-                    <InspectorIconSegmentedField
-                      label={layoutMainAxisLabel}
-                      value={layoutDraft.justifyContent}
-                      options={layoutJustifyOptions}
-                      onChange={(value) => updateLayoutDraft("justifyContent", value)}
-                    />
-                    <InspectorIconSegmentedField
-                      label={layoutCrossAxisLabel}
-                      value={layoutDraft.alignItems}
-                      options={layoutAlignOptions}
-                      onChange={(value) => updateLayoutDraft("alignItems", value)}
-                    />
-                  </div>
+                  {showLayoutAlignmentControls ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <InspectorIconSegmentedField
+                        label={layoutMainAxisLabel}
+                        value={layoutDraft.justifyContent}
+                        options={layoutJustifyOptions}
+                        onChange={(value) => updateLayoutDraft("justifyContent", value)}
+                      />
+                      <InspectorIconSegmentedField
+                        label={layoutCrossAxisLabel}
+                        value={layoutDraft.alignItems}
+                        options={layoutAlignOptions}
+                        onChange={(value) => updateLayoutDraft("alignItems", value)}
+                      />
+                    </div>
+                  ) : null}
                   {layoutNumberFields.length ? (
                     <LayoutNumberGrid
                       fields={layoutNumberFields}
@@ -2120,10 +2276,8 @@ export function ProjectObjectInspectorPanel({
             <InspectorNumberGrid
               fields={sizeFields}
               rectTransformDraft={rectTransformDraft}
-              disabledFields={
-                sizePresetLocked ? cardPresetLockedRectTransformFields : undefined
-              }
-              disabledTitle="Size is controlled by the selected card preset"
+              disabledFields={sizeLockedRectTransformFields}
+              disabledTitle={sizeLockedTitle}
               onCommit={commitRectTransformField}
               onDraftChange={updateRectTransformDraft}
               onReset={resetRectTransformDraft}
@@ -3203,6 +3357,10 @@ function getFallbackStackDisplayDraftValue(): ProjectObjectStackDisplay {
   return getDefaultProjectObjectStackDisplay();
 }
 
+function getFallbackZoneDraftValue(): ProjectObjectZone {
+  return getDefaultProjectObjectZone();
+}
+
 function getFallbackDieDraftValue(): ProjectObjectDie {
   return getDefaultProjectObjectDie();
 }
@@ -3239,7 +3397,10 @@ function getFallbackLayoutDraftValue(): ProjectObjectLayout {
   };
 }
 
-function getLayoutNumberFields(layoutDraft: LayoutDraft): readonly LayoutNumberFieldDefinition[] {
+function getLayoutNumberFields(
+  layoutDraft: LayoutDraft,
+  forceGapField = false
+): readonly LayoutNumberFieldDefinition[] {
   if (layoutDraft.mode === "free") {
     return [];
   }
@@ -3248,7 +3409,7 @@ function getLayoutNumberFields(layoutDraft: LayoutDraft): readonly LayoutNumberF
     return [layoutColumnsField, layoutGapField];
   }
 
-  if (layoutDraft.justifyContent === "spaceBetween") {
+  if (!forceGapField && layoutDraft.justifyContent === "spaceBetween") {
     return [];
   }
 
@@ -3281,6 +3442,41 @@ function getContainerObjectFileOptions(
   collectContainerObjectFileOptions(fileTree, acceptedKindSet, options);
 
   return options;
+}
+
+function getZoneReferenceObjectFileOptions(fileTree: readonly ProjectFileNode[]) {
+  const options: { label: string; value: string }[] = [];
+
+  collectZoneReferenceObjectFileOptions(fileTree, options);
+
+  return options;
+}
+
+function collectZoneReferenceObjectFileOptions(
+  fileTree: readonly ProjectFileNode[],
+  options: { label: string; value: string }[]
+) {
+  for (const node of fileTree) {
+    if (node.type === "folder") {
+      collectZoneReferenceObjectFileOptions(node.children ?? [], options);
+      continue;
+    }
+
+    if (node.kind !== "object") {
+      continue;
+    }
+
+    const rootObject = node.objectTree?.[0];
+
+    if (!rootObject || rootObject.kind === "zone") {
+      continue;
+    }
+
+    options.push({
+      label: node.name,
+      value: node.id
+    });
+  }
 }
 
 function collectContainerObjectFileOptions(

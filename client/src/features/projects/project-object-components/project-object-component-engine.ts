@@ -13,7 +13,8 @@ import type {
   ProjectObjectRectTransform,
   ProjectObjectShape,
   ProjectObjectStackDisplay,
-  ProjectObjectText
+  ProjectObjectText,
+  ProjectObjectZone
 } from "@bg-maker/shared";
 import { createDefaultProjectObjectNode, getDefaultProjectObjectName } from "@bg-maker/shared";
 import {
@@ -50,6 +51,7 @@ import {
   withProjectObjectStackDisplayComponent
 } from "./stack-display-component";
 import { getProjectObjectTextComponent, withProjectObjectTextComponent } from "./text-component";
+import { getProjectObjectZoneComponent, withProjectObjectZoneComponent } from "./zone-component";
 
 export class ProjectObjectComponentEngine {
   createNode(
@@ -109,6 +111,10 @@ export class ProjectObjectComponentEngine {
 
   getStackDisplay(object: ProjectObjectNode): ProjectObjectStackDisplay {
     return getProjectObjectStackDisplayComponent(object);
+  }
+
+  getZone(object: ProjectObjectNode): ProjectObjectZone {
+    return getProjectObjectZoneComponent(object);
   }
 
   withRectTransform(
@@ -176,6 +182,10 @@ export class ProjectObjectComponentEngine {
     stackDisplay: ProjectObjectStackDisplay
   ): ProjectObjectNode {
     return withProjectObjectStackDisplayComponent(object, stackDisplay);
+  }
+
+  withZone(object: ProjectObjectNode, zone: ProjectObjectZone): ProjectObjectNode {
+    return withProjectObjectZoneComponent(object, zone);
   }
 
   private getDefaultObjectName(kind: ProjectObjectKind) {
