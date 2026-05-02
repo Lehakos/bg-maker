@@ -13,6 +13,9 @@ import type {
   ProjectObjectCard,
   ProjectObjectCardSide,
   ProjectObjectCardSizePresetValue,
+  ProjectObjectDie,
+  ProjectObjectDieFace,
+  ProjectObjectDieFaceMode,
   ProjectObjectImage,
   ProjectObjectImageFit,
   ProjectObjectKind,
@@ -38,6 +41,8 @@ import {
   createDefaultProjectObjectNode,
   getDefaultProjectObjectAppearance,
   getDefaultProjectObjectCard,
+  getDefaultProjectObjectDie,
+  getDefaultProjectObjectDieFace,
   getDefaultProjectObjectDoubleSide,
   getDefaultProjectObjectImage,
   getDefaultProjectObjectLayout,
@@ -51,6 +56,9 @@ import {
   projectAssetsFolderName,
   projectObjectCardCustomSizePresetId,
   projectObjectCardSides,
+  projectObjectDieFaceCountLimits,
+  projectObjectDieFaceLabelMaxLength,
+  projectObjectDieFaceModes,
   projectImageAssetContentTypes,
   projectObjectKinds as sharedProjectObjectKinds,
   projectObjectShapePolygonCoordinateLimits,
@@ -123,6 +131,7 @@ const projectObjectImageFits = new Set<ProjectObjectImageFit>([
   "fill",
   "scaleDown"
 ]);
+const projectObjectDieFaceModeSet = new Set<ProjectObjectDieFaceMode>(projectObjectDieFaceModes);
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
 const projectObjectKinds = new Set<ProjectObjectKind>(sharedProjectObjectKinds);
 const projectObjectCardSideSet = new Set<ProjectObjectCardSide>(projectObjectCardSides);
@@ -727,6 +736,13 @@ function normalizeProjectObjectComponents(value: unknown, kind: ProjectObjectKin
     };
   }
 
+  if (kind === "die") {
+    return {
+      ...components,
+      die: normalizeProjectObjectDie(record.die)
+    };
+  }
+
   if (kind === "label") {
     return {
       ...components,
@@ -968,6 +984,48 @@ function normalizeProjectObjectSideComponents(
   return components;
 }
 
+function normalizeProjectObjectDie(value: unknown): ProjectObjectDie {
+  const defaultDie = getDefaultProjectObjectDie();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const faceCount = normalizeIntegerNumber(record.faceCount, defaultDie.faceCount, {
+    max: projectObjectDieFaceCountLimits.max,
+    min: projectObjectDieFaceCountLimits.min
+  });
+  const activeFace = normalizeIntegerNumber(record.activeFace, defaultDie.activeFace, {
+    max: faceCount,
+    min: 1
+  });
+
+  return {
+    activeFace,
+    faceCount,
+    faces: normalizeProjectObjectDieFaces(record.faces, faceCount)
+  };
+}
+
+function normalizeProjectObjectDieFaces(value: unknown, faceCount: number): ProjectObjectDieFace[] {
+  const faces = Array.isArray(value) ? value : [];
+
+  return Array.from({ length: faceCount }, (_, index) =>
+    normalizeProjectObjectDieFace(faces[index], index + 1)
+  );
+}
+
+function normalizeProjectObjectDieFace(value: unknown, faceNumber: number): ProjectObjectDieFace {
+  const defaultFace = getDefaultProjectObjectDieFace(faceNumber);
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const imageAssetId = typeof record.imageAssetId === "string" ? record.imageAssetId.trim() : "";
+  const label = typeof record.label === "string" ? record.label : defaultFace.label;
+
+  return {
+    imageAssetId: isSafeProjectImageAssetId(imageAssetId) ? imageAssetId : "",
+    label: label.slice(0, projectObjectDieFaceLabelMaxLength),
+    mode: projectObjectDieFaceModeSet.has(record.mode as ProjectObjectDieFaceMode)
+      ? (record.mode as ProjectObjectDieFaceMode)
+      : defaultFace.mode
+  };
+}
+
 function normalizeProjectObjectText(
   value: unknown,
   kind: ProjectObjectKind,
@@ -1193,6 +1251,14 @@ function normalizeFiniteNumber(
   }
 
   return Math.min(bounds.max, Math.max(bounds.min, value));
+}
+
+function normalizeIntegerNumber(
+  value: unknown,
+  fallback: number,
+  bounds: { max: number; min: number }
+) {
+  return Math.round(normalizeFiniteNumber(value, fallback, bounds));
 }
 
 function normalizeHexColor(value: unknown, fallback: string) {

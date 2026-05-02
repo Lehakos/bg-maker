@@ -16,7 +16,7 @@ export type ProjectFileKind = "tableSetup" | "object" | "image" | "document";
 export const projectAssetsFolderId = "assets";
 export const projectAssetsFolderName = "Assets";
 
-export const projectObjectKinds = ["group", "card", "label", "image", "shape"] as const;
+export const projectObjectKinds = ["group", "card", "die", "label", "image", "shape"] as const;
 
 export type ProjectObjectKind = (typeof projectObjectKinds)[number];
 
@@ -100,6 +100,31 @@ export type ProjectObjectCard = {
   sizePreset: ProjectObjectCardSizePresetValue;
 };
 
+export const projectObjectDieDefaultFaceCount = 6;
+
+export const projectObjectDieFaceCountLimits = {
+  max: 100,
+  min: 2
+} as const;
+
+export const projectObjectDieFaceLabelMaxLength = 120;
+
+export const projectObjectDieFaceModes = ["text", "image"] as const;
+
+export type ProjectObjectDieFaceMode = (typeof projectObjectDieFaceModes)[number];
+
+export type ProjectObjectDieFace = {
+  imageAssetId: string;
+  label: string;
+  mode: ProjectObjectDieFaceMode;
+};
+
+export type ProjectObjectDie = {
+  activeFace: number;
+  faceCount: number;
+  faces: ProjectObjectDieFace[];
+};
+
 export type ProjectObjectSideComponents = {
   appearance?: ProjectObjectAppearance;
   image?: ProjectObjectImage;
@@ -170,6 +195,7 @@ export type ProjectObjectRectTransform = {
 export type ProjectObjectComponents = {
   appearance?: ProjectObjectAppearance;
   card?: ProjectObjectCard;
+  die?: ProjectObjectDie;
   doubleSide?: ProjectObjectDoubleSide;
   image?: ProjectObjectImage;
   layout?: ProjectObjectLayout;
@@ -238,6 +264,7 @@ export type ApiErrorResponse = {
 
 const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; width: number }> = {
   card: { height: 88, width: 63 },
+  die: { height: 120, width: 120 },
   group: { height: 240, width: 320 },
   image: { height: 180, width: 240 },
   label: { height: 32, width: 160 },
@@ -246,6 +273,7 @@ const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; wid
 
 const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
   card: "New card",
+  die: "New die",
   group: "New group",
   image: "New image",
   label: "New label",
@@ -262,6 +290,16 @@ const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAp
     borderWidth: 1,
     opacity: 1,
     padding: 0
+  },
+  die: {
+    backgroundColor: "#ffffff",
+    backgroundOpacity: 1,
+    borderColor: "#f59e0b",
+    borderRadius: 14,
+    borderStyle: "solid",
+    borderWidth: 2,
+    opacity: 1,
+    padding: 8
   },
   group: {
     backgroundColor: "#f0fdfa",
@@ -367,6 +405,37 @@ export function getDefaultProjectObjectCard(): ProjectObjectCard {
   };
 }
 
+export function getDefaultProjectObjectDieFace(faceNumber: number): ProjectObjectDieFace {
+  const normalizedFaceNumber = Math.max(
+    1,
+    Math.round(Number.isFinite(faceNumber) ? faceNumber : 1)
+  );
+
+  return {
+    imageAssetId: "",
+    label: String(normalizedFaceNumber),
+    mode: "text"
+  };
+}
+
+export function getDefaultProjectObjectDieFaces(
+  faceCount = projectObjectDieDefaultFaceCount
+): ProjectObjectDieFace[] {
+  const normalizedFaceCount = normalizeProjectObjectDieFaceCount(faceCount);
+
+  return Array.from({ length: normalizedFaceCount }, (_, index) =>
+    getDefaultProjectObjectDieFace(index + 1)
+  );
+}
+
+export function getDefaultProjectObjectDie(): ProjectObjectDie {
+  return {
+    activeFace: 1,
+    faceCount: projectObjectDieDefaultFaceCount,
+    faces: getDefaultProjectObjectDieFaces(projectObjectDieDefaultFaceCount)
+  };
+}
+
 export function getDefaultProjectObjectDoubleSide(
   kind: ProjectObjectKind = "card"
 ): ProjectObjectDoubleSide {
@@ -414,12 +483,35 @@ export function getProjectObjectRectTransformWithCardSizePreset(
   };
 }
 
+export function normalizeProjectObjectDieFaceCount(
+  value: number,
+  fallback = projectObjectDieDefaultFaceCount
+) {
+  const faceCount = Number.isFinite(value) ? Math.round(value) : fallback;
+
+  return Math.min(
+    projectObjectDieFaceCountLimits.max,
+    Math.max(projectObjectDieFaceCountLimits.min, faceCount)
+  );
+}
+
+export function normalizeProjectObjectDieActiveFace(
+  value: number,
+  faceCount: number,
+  fallback = 1
+) {
+  const normalizedFaceCount = normalizeProjectObjectDieFaceCount(faceCount);
+  const activeFace = Number.isFinite(value) ? Math.round(value) : fallback;
+
+  return Math.min(normalizedFaceCount, Math.max(1, activeFace));
+}
+
 export function hasProjectObjectLayout(kind: ProjectObjectKind) {
   return kind === "group" || kind === "card";
 }
 
 export function doesProjectObjectClipChildren(kind: ProjectObjectKind) {
-  return kind === "card" || kind === "shape";
+  return kind === "card" || kind === "die" || kind === "shape";
 }
 
 const defaultProjectObjectShapePolygonPoints: readonly ProjectObjectShapePoint[] = [
@@ -457,6 +549,10 @@ export function createDefaultProjectObjectComponents(
     components.card = getDefaultProjectObjectCard();
     components.doubleSide = getDefaultProjectObjectDoubleSide(kind);
     components.layout = getDefaultProjectObjectLayout();
+  }
+
+  if (kind === "die") {
+    components.die = getDefaultProjectObjectDie();
   }
 
   if (kind === "label") {

@@ -3,6 +3,8 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectCard,
   ProjectObjectCardSizePresetValue,
+  ProjectObjectDie,
+  ProjectObjectDieFaceMode,
   ProjectObjectImage,
   ProjectObjectLayout,
   ProjectObjectLayoutAlignment,
@@ -16,6 +18,7 @@ import type {
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
 import {
+  getDefaultProjectObjectDie,
   hasProjectObjectLayout,
   isProjectObjectCardSizePresetLocked,
   projectObjectCardCustomSizePresetId,
@@ -37,6 +40,7 @@ import {
   Bold,
   Columns3,
   CreditCard,
+  Dices,
   Eye,
   EyeOff,
   Grid3x3,
@@ -70,6 +74,7 @@ import {
 import {
   getProjectObjectNodeAppearance,
   getProjectObjectNodeCard,
+  getProjectObjectNodeDie,
   getProjectObjectNodeDoubleSide,
   getProjectObjectNodeImage,
   getProjectObjectNodeLayout,
@@ -79,6 +84,7 @@ import {
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
   setProjectObjectNodeCard,
+  setProjectObjectNodeDie,
   setProjectObjectNodeDoubleSide,
   setProjectObjectNodeImage,
   setProjectObjectNodeLayout,
@@ -97,16 +103,21 @@ import {
   createRectTransformDraft,
   createAppearanceDraft,
   createCardDraft,
+  createDieDraft,
   createImageDraft,
   createLayoutDraft,
   createTextDraft,
   formatAppearanceNumberValue,
+  formatDieNumberValue,
   formatImageNumberValue,
   formatLayoutNumberValue,
   formatRectTransformValue,
   formatTextNumberValue,
   getAppearanceWithDraftField,
   getCardWithDraftField,
+  getDieFace,
+  getDieWithDraftField,
+  getDieWithFaceField,
   getImageWithDraftField,
   getLayoutWithDraftField,
   getRectTransformWithDraftField,
@@ -124,11 +135,13 @@ import {
   isTextFontWeightBold,
   normalizeRectTransformValue,
   normalizeAppearanceNumberValue,
+  normalizeDieNumberValue,
   normalizeImageNumberValue,
   normalizeLayoutNumberValue,
   normalizeTextNumberValue,
   parseRectTransformDraftValue,
   appearanceNumberFieldSettings,
+  dieNumberFieldSettings,
   layoutNumberFieldSettings,
   rectTransformFieldSettings,
   textNumberFieldSettings,
@@ -136,6 +149,9 @@ import {
   type AppearanceFieldKey,
   type CardDraft,
   type CardFieldKey,
+  type DieDraft,
+  type DieFaceFieldKey,
+  type DieFieldKey,
   type ImageDraft,
   type ImageFieldKey,
   type LayoutDraft,
@@ -209,6 +225,11 @@ type ImageNumberFieldDefinition = {
   label: string;
 };
 
+type DieNumberFieldDefinition = {
+  key: keyof typeof dieNumberFieldSettings;
+  label: string;
+};
+
 type LayoutNumberFieldDefinition = {
   key: keyof typeof layoutNumberFieldSettings;
   label: string;
@@ -239,6 +260,11 @@ const imageNumberFields: readonly ImageNumberFieldDefinition[] = [
   { key: "positionX", label: "Pos X" },
   { key: "positionY", label: "Pos Y" }
 ];
+
+const dieFaceCountField = {
+  key: "faceCount",
+  label: "Faces"
+} as const satisfies DieNumberFieldDefinition;
 
 const cardSizePresetOptions: readonly {
   label: string;
@@ -369,6 +395,14 @@ const imageFitOptions = [
   { label: "Scale down", value: "scaleDown" }
 ] as const;
 
+const dieFaceModeOptions = [
+  { label: "Text", value: "text" },
+  { label: "Image", value: "image" }
+] as const satisfies readonly {
+  label: string;
+  value: ProjectObjectDieFaceMode;
+}[];
+
 const shapeVariantOptions = [
   { label: "Rectangle", value: "rectangle" },
   { label: "Ellipse", value: "ellipse" },
@@ -407,6 +441,10 @@ export function ProjectObjectInspectorPanel({
     () => (selectedObject?.kind === "card" ? getProjectObjectNodeCard(selectedObject) : null),
     [selectedObject]
   );
+  const die = useMemo(
+    () => (selectedObject?.kind === "die" ? getProjectObjectNodeDie(selectedObject) : null),
+    [selectedObject]
+  );
   const doubleSide = useMemo(
     () => (selectedObject?.kind === "card" ? getProjectObjectNodeDoubleSide(selectedObject) : null),
     [selectedObject]
@@ -443,6 +481,9 @@ export function ProjectObjectInspectorPanel({
   const [cardDraft, setCardDraft] = useState<CardDraft>(() =>
     card ? createCardDraft(card) : createCardDraft(getFallbackCardDraftValue())
   );
+  const [dieDraft, setDieDraft] = useState<DieDraft>(() =>
+    die ? createDieDraft(die) : createDieDraft(getFallbackDieDraftValue())
+  );
   const [textDraft, setTextDraft] = useState<TextDraft>(() =>
     text ? createTextDraft(text) : createTextDraft(getFallbackTextDraftValue())
   );
@@ -454,6 +495,8 @@ export function ProjectObjectInspectorPanel({
   );
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  const [uploadingDieFaceImage, setUploadingDieFaceImage] = useState(false);
+  const [dieFaceImageUploadError, setDieFaceImageUploadError] = useState<string | null>(null);
 
   /* eslint-disable react-hooks/set-state-in-effect -- Draft fields must reset when the selected object changes. */
   useEffect(() => {
@@ -475,6 +518,13 @@ export function ProjectObjectInspectorPanel({
       setCardDraft(createCardDraft(card));
     }
   }, [card, selectedObject?.id]);
+
+  useEffect(() => {
+    if (die) {
+      setDieDraft(createDieDraft(die));
+      setDieFaceImageUploadError(null);
+    }
+  }, [die, selectedObject?.id]);
 
   useEffect(() => {
     if (text) {
@@ -730,6 +780,79 @@ export function ProjectObjectInspectorPanel({
     }
 
     const nextObjectTree = setProjectObjectNodeCard(objectTree, selectedObject.id, nextCard);
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
+  function updateDieDraft(fieldKey: DieFieldKey, value: string) {
+    setDieDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    updateObjectTreeDieField(fieldKey, value);
+  }
+
+  function resetDieDraft(fieldKey: DieFieldKey) {
+    if (!die) {
+      return;
+    }
+
+    const nextDraft = createDieDraft(die);
+
+    setDieDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: nextDraft[fieldKey]
+    }));
+  }
+
+  function updateObjectTreeDieField(fieldKey: DieFieldKey, value: string) {
+    if (!contentFileNode || !selectedObject || !die) {
+      return;
+    }
+
+    const nextDie = getDieWithDraftField(die, fieldKey, value);
+
+    updateDie(nextDie);
+  }
+
+  function commitDieNumberField(
+    fieldKey: keyof typeof dieNumberFieldSettings,
+    value = dieDraft[fieldKey]
+  ) {
+    if (!die) {
+      return;
+    }
+
+    const parsedValue = parseRectTransformDraftValue(value);
+
+    if (parsedValue === null) {
+      resetDieDraft(fieldKey);
+      return;
+    }
+
+    updateObjectTreeDieField(fieldKey, value);
+    setDieDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: formatDieNumberValue(normalizeDieNumberValue(fieldKey, parsedValue), fieldKey)
+    }));
+  }
+
+  function updateDieFaceField(fieldKey: DieFaceFieldKey, value: string) {
+    if (!die) {
+      return;
+    }
+
+    updateDie(getDieWithFaceField(die, die.activeFace, fieldKey, value));
+  }
+
+  function updateDie(nextDie: ProjectObjectDie | null) {
+    if (!nextDie || !contentFileNode || !selectedObject) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeDie(objectTree, selectedObject.id, nextDie);
 
     if (nextObjectTree !== objectTree) {
       onObjectTreeChange(contentFileNode.id, nextObjectTree);
@@ -1050,9 +1173,53 @@ export function ProjectObjectInspectorPanel({
     }
   }
 
+  async function handleDieFaceImageUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0] ?? null;
+    event.currentTarget.value = "";
+
+    if (!file || !contentFileNode || !selectedObject || !die) {
+      return;
+    }
+
+    setUploadingDieFaceImage(true);
+    setDieFaceImageUploadError(null);
+
+    try {
+      const imageAsset = await uploadProjectImageAsset(projectId, file);
+      rememberTemporaryProjectImageAssetUrl(imageAsset.id, file);
+      const nextDie = getDieWithFaceField(die, die.activeFace, "imageAssetId", imageAsset.id);
+
+      if (!nextDie) {
+        return;
+      }
+
+      const nextObjectTree = setProjectObjectNodeDie(objectTree, selectedObject.id, nextDie);
+      const fileTreeWithObject = updateProjectFileNodeObjectTree(
+        fileTree,
+        contentFileNode.id,
+        nextObjectTree
+      );
+      const { fileTree: fileTreeWithImageAsset } = appendProjectImageAssetFileNode(
+        fileTreeWithObject,
+        imageAsset
+      );
+
+      onFileTreeChange(fileTreeWithImageAsset);
+    } catch (error) {
+      setDieFaceImageUploadError(error instanceof Error ? error.message : "Image upload failed");
+    } finally {
+      setUploadingDieFaceImage(false);
+    }
+  }
+
   const selectedImageAsset = image?.assetId
     ? getProjectImageAssetOptionById(imageAssets, image.assetId)
     : undefined;
+  const activeDieFace = die ? getDieFace(die, die.activeFace) : null;
+  const activeDieFaceImageAsset =
+    activeDieFace?.imageAssetId && activeDieFace.mode === "image"
+      ? getProjectImageAssetOptionById(imageAssets, activeDieFace.imageAssetId)
+      : undefined;
   const cardSizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
   const textDraftBold = isTextFontWeightBold(textDraft.fontWeight);
   const textDraftItalic = textDraft.fontStyle === "italic";
@@ -1135,6 +1302,71 @@ export function ProjectObjectInspectorPanel({
                 label="Double-sided"
                 onChange={(event) => updateDoubleSideEnabled(event.currentTarget.checked)}
               />
+            </InspectorSection>
+          ) : null}
+
+          {die ? (
+            <InspectorSection icon={<Dices size={15} />} title="Die">
+              <InspectorBehaviorNumberField
+                field={dieFaceCountField}
+                settings={dieNumberFieldSettings.faceCount}
+                value={dieDraft.faceCount}
+                onCommit={commitDieNumberField}
+                onDraftChange={updateDieDraft}
+                onReset={resetDieDraft}
+              />
+              {activeDieFace ? (
+                <>
+                  <InspectorSelectField
+                    label="Face content"
+                    value={activeDieFace.mode}
+                    options={dieFaceModeOptions}
+                    onChange={(value) => updateDieFaceField("mode", value)}
+                  />
+                  {activeDieFace.mode === "image" ? (
+                    <>
+                      <InspectorSelectField
+                        label="Asset"
+                        value={activeDieFace.imageAssetId}
+                        options={[
+                          { label: "No image", value: "" },
+                          ...imageAssets.map((imageAsset) => ({
+                            label: imageAsset.name,
+                            value: imageAsset.asset.id
+                          }))
+                        ]}
+                        onChange={(value) => updateDieFaceField("imageAssetId", value)}
+                      />
+                      {activeDieFace.imageAssetId && !activeDieFaceImageAsset ? (
+                        <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                          Selected image is no longer in the file tree.
+                        </p>
+                      ) : null}
+                      <label className="flex h-9 cursor-pointer items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 text-sm font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50">
+                        <input
+                          accept="image/jpeg,image/png,image/webp"
+                          className="sr-only"
+                          disabled={uploadingDieFaceImage}
+                          type="file"
+                          onChange={handleDieFaceImageUpload}
+                        />
+                        {uploadingDieFaceImage ? "Uploading..." : "Upload image"}
+                      </label>
+                      {dieFaceImageUploadError ? (
+                        <p className="rounded-md border border-red-100 bg-red-50 px-2 py-1.5 text-xs text-red-700">
+                          {dieFaceImageUploadError}
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <InspectorInlineTextField
+                      label="Face text"
+                      value={activeDieFace.label}
+                      onChange={(value) => updateDieFaceField("label", value)}
+                    />
+                  )}
+                </>
+              ) : null}
             </InspectorSection>
           ) : null}
 
@@ -1442,6 +1674,25 @@ function InspectorTextField({
         onBlur={(event) => onBlur(event.currentTarget.value)}
         onChange={(event) => onChange(event.currentTarget.value)}
         onKeyDown={onKeyDown}
+      />
+    </label>
+  );
+}
+
+type InspectorInlineTextFieldProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+};
+
+function InspectorInlineTextField({ label, value, onChange }: InspectorInlineTextFieldProps) {
+  return (
+    <label className="block text-xs font-medium text-slate-500">
+      <span>{label}</span>
+      <input
+        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
       />
     </label>
   );
@@ -2000,6 +2251,10 @@ function getFallbackCardDraftValue(): ProjectObjectCard {
     activeSide: "front",
     sizePreset: "poker"
   };
+}
+
+function getFallbackDieDraftValue(): ProjectObjectDie {
+  return getDefaultProjectObjectDie();
 }
 
 function getFallbackTextDraftValue(): ProjectObjectText {

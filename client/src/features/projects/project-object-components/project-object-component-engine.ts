@@ -1,6 +1,7 @@
 import type {
   ProjectObjectAppearance,
   ProjectObjectCard,
+  ProjectObjectDie,
   ProjectObjectDoubleSide,
   ProjectObjectImage,
   ProjectObjectKind,
@@ -16,6 +17,7 @@ import {
   withProjectObjectAppearanceComponent
 } from "./appearance-component";
 import { getProjectObjectCardComponent, withProjectObjectCardComponent } from "./card-component";
+import { getProjectObjectDieComponent, withProjectObjectDieComponent } from "./die-component";
 import {
   getProjectObjectDoubleSideComponent,
   withProjectObjectDoubleSideComponent
@@ -50,6 +52,10 @@ export class ProjectObjectComponentEngine {
 
   getCard(object: ProjectObjectNode): ProjectObjectCard {
     return getProjectObjectCardComponent(object);
+  }
+
+  getDie(object: ProjectObjectNode): ProjectObjectDie {
+    return getProjectObjectDieComponent(object);
   }
 
   getDoubleSide(object: ProjectObjectNode): ProjectObjectDoubleSide {
@@ -88,6 +94,10 @@ export class ProjectObjectComponentEngine {
 
   withCard(object: ProjectObjectNode, card: ProjectObjectCard): ProjectObjectNode {
     return withProjectObjectCardComponent(object, card);
+  }
+
+  withDie(object: ProjectObjectNode, die: ProjectObjectDie): ProjectObjectNode {
+    return withProjectObjectDieComponent(object, die);
   }
 
   withDoubleSide(

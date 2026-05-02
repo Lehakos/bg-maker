@@ -4,6 +4,9 @@ import type {
   ProjectObjectCard,
   ProjectObjectCardSide,
   ProjectObjectCardSizePresetValue,
+  ProjectObjectDie,
+  ProjectObjectDieFace,
+  ProjectObjectDieFaceMode,
   ProjectObjectImage,
   ProjectObjectImageFit,
   ProjectObjectLayout,
@@ -21,9 +24,15 @@ import type {
 } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectShapePolygonPoints,
+  getDefaultProjectObjectDieFace,
+  normalizeProjectObjectDieActiveFace,
+  normalizeProjectObjectDieFaceCount,
   projectObjectCardCustomSizePresetId,
   projectObjectCardSides,
   projectObjectCardSizePresets,
+  projectObjectDieFaceCountLimits,
+  projectObjectDieFaceLabelMaxLength,
+  projectObjectDieFaceModes,
   projectObjectShapePolygonCoordinateLimits,
   projectObjectShapePolygonPointCountLimits
 } from "@bg-maker/shared";
@@ -48,6 +57,13 @@ export type CardFieldKey = keyof ProjectObjectCard;
 export type CardDraft = {
   activeSide: ProjectObjectCardSide;
   sizePreset: ProjectObjectCardSizePresetValue;
+};
+
+export type DieFieldKey = "activeFace" | "faceCount";
+export type DieFaceFieldKey = keyof ProjectObjectDieFace;
+export type DieDraft = {
+  activeFace: string;
+  faceCount: string;
 };
 
 export type TextFieldKey = keyof ProjectObjectText;
@@ -120,6 +136,18 @@ export const textNumberFieldSettings = {
   { decimals: number; max: number; min: number; step: number }
 >;
 
+export const dieNumberFieldSettings = {
+  faceCount: {
+    decimals: 0,
+    max: projectObjectDieFaceCountLimits.max,
+    min: projectObjectDieFaceCountLimits.min,
+    step: 1
+  }
+} as const satisfies Record<
+  Extract<DieFieldKey, "faceCount">,
+  { decimals: number; max: number; min: number; step: number }
+>;
+
 export const imageNumberFieldSettings = {
   positionX: { decimals: 0, max: 100, min: 0, step: 1 },
   positionY: { decimals: 0, max: 100, min: 0, step: 1 }
@@ -161,6 +189,7 @@ const cardSizePresetValues = new Set<ProjectObjectCardSizePresetValue>([
   ...projectObjectCardSizePresets.map((preset) => preset.id)
 ]);
 const cardSides = new Set<ProjectObjectCardSide>(projectObjectCardSides);
+const dieFaceModes = new Set<ProjectObjectDieFaceMode>(projectObjectDieFaceModes);
 const layoutAlignments = new Set<ProjectObjectLayoutAlignment>(["center", "end", "start"]);
 const layoutJustifications = new Set<ProjectObjectLayoutJustification>([
   "center",
@@ -295,6 +324,13 @@ export function createCardDraft(card: ProjectObjectCard): CardDraft {
   };
 }
 
+export function createDieDraft(die: ProjectObjectDie): DieDraft {
+  return {
+    activeFace: String(normalizeProjectObjectDieActiveFace(die.activeFace, die.faceCount)),
+    faceCount: formatDieNumberValue(die.faceCount, "faceCount")
+  };
+}
+
 export function createTextDraft(text: ProjectObjectText): TextDraft {
   return {
     color: text.color,
@@ -353,6 +389,59 @@ export function getCardWithDraftField(
   }
 
   return areCardsEqual(card, nextCard) ? null : nextCard;
+}
+
+export function getDieWithDraftField(die: ProjectObjectDie, fieldKey: DieFieldKey, value: string) {
+  const nextDie = createNextDie(die, fieldKey, value);
+
+  if (!nextDie) {
+    return null;
+  }
+
+  return areDiesEqual(die, nextDie) ? null : nextDie;
+}
+
+export function getDieFaces(die: ProjectObjectDie): ProjectObjectDieFace[] {
+  const faceCount = normalizeProjectObjectDieFaceCount(die.faceCount);
+
+  return Array.from({ length: faceCount }, (_, index) =>
+    normalizeDieFace(die.faces[index], index + 1)
+  );
+}
+
+export function getDieFace(die: ProjectObjectDie, faceNumber: number) {
+  const faces = getDieFaces(die);
+  const normalizedFaceNumber = normalizeProjectObjectDieActiveFace(faceNumber, faces.length);
+
+  return faces[normalizedFaceNumber - 1] ?? getDefaultProjectObjectDieFace(normalizedFaceNumber);
+}
+
+export function getDieWithFaceField(
+  die: ProjectObjectDie,
+  faceNumber: number,
+  fieldKey: DieFaceFieldKey,
+  value: string
+) {
+  const normalizedDie = normalizeDie(die);
+  const normalizedFaceNumber = normalizeProjectObjectDieActiveFace(
+    faceNumber,
+    normalizedDie.faceCount
+  );
+  const faceIndex = normalizedFaceNumber - 1;
+  const currentFace = normalizedDie.faces[faceIndex] ?? getDefaultProjectObjectDieFace(faceNumber);
+  const nextFace = createNextDieFace(currentFace, fieldKey, value);
+
+  if (!nextFace) {
+    return null;
+  }
+
+  const nextDie = {
+    ...normalizedDie,
+    activeFace: normalizedFaceNumber,
+    faces: normalizedDie.faces.map((face, index) => (index === faceIndex ? nextFace : face))
+  };
+
+  return areDiesEqual(normalizedDie, nextDie) ? null : nextDie;
 }
 
 export function getTextWithDraftField(
@@ -424,9 +513,7 @@ export function getShapePolygonPoints(shape: ProjectObjectShape): ProjectObjectS
     : getDefaultProjectObjectShapePolygonPoints();
 }
 
-export function createShapePolygonPointDrafts(
-  shape: ProjectObjectShape
-): ShapePolygonPointDraft[] {
+export function createShapePolygonPointDrafts(shape: ProjectObjectShape): ShapePolygonPointDraft[] {
   return getShapePolygonPoints(shape).map((point) => ({
     x: formatShapePolygonPointValue(point.x, "x"),
     y: formatShapePolygonPointValue(point.y, "y")
@@ -529,10 +616,7 @@ export function normalizeShapePolygonPointValue(
   return roundTo(clamp(numericValue, min, max), decimals);
 }
 
-export function formatShapePolygonPointValue(
-  value: number,
-  fieldKey: ShapePolygonPointFieldKey
-) {
+export function formatShapePolygonPointValue(value: number, fieldKey: ShapePolygonPointFieldKey) {
   const { decimals } = shapePolygonPointFieldSettings[fieldKey];
 
   return String(roundTo(value, decimals));
@@ -552,6 +636,15 @@ export function normalizeTextNumberValue(
   value: number
 ) {
   const { decimals, max, min } = textNumberFieldSettings[fieldKey];
+
+  return roundTo(clamp(value, min, max), decimals);
+}
+
+export function normalizeDieNumberValue(
+  fieldKey: keyof typeof dieNumberFieldSettings,
+  value: number
+) {
+  const { decimals, max, min } = dieNumberFieldSettings[fieldKey];
 
   return roundTo(clamp(value, min, max), decimals);
 }
@@ -588,6 +681,12 @@ export function formatTextNumberValue(
   fieldKey: keyof typeof textNumberFieldSettings
 ) {
   const { decimals } = textNumberFieldSettings[fieldKey];
+
+  return String(roundTo(value, decimals));
+}
+
+export function formatDieNumberValue(value: number, fieldKey: keyof typeof dieNumberFieldSettings) {
+  const { decimals } = dieNumberFieldSettings[fieldKey];
 
   return String(roundTo(value, decimals));
 }
@@ -666,6 +765,67 @@ function createNextCard(
     return cardSizePresetValues.has(value as ProjectObjectCardSizePresetValue)
       ? { ...card, sizePreset: value as ProjectObjectCardSizePresetValue }
       : null;
+  }
+
+  return null;
+}
+
+function createNextDie(
+  die: ProjectObjectDie,
+  fieldKey: DieFieldKey,
+  value: string
+): ProjectObjectDie | null {
+  const parsedValue = parseRectTransformDraftValue(value);
+
+  if (parsedValue === null) {
+    return null;
+  }
+
+  if (fieldKey === "faceCount") {
+    const faceCount = normalizeProjectObjectDieFaceCount(parsedValue);
+    const faces = resizeDieFaces(die, faceCount);
+
+    return {
+      ...die,
+      activeFace: normalizeProjectObjectDieActiveFace(die.activeFace, faceCount),
+      faceCount,
+      faces
+    };
+  }
+
+  if (fieldKey === "activeFace") {
+    return {
+      ...die,
+      activeFace: normalizeProjectObjectDieActiveFace(parsedValue, die.faceCount)
+    };
+  }
+
+  return null;
+}
+
+function createNextDieFace(
+  face: ProjectObjectDieFace,
+  fieldKey: DieFaceFieldKey,
+  value: string
+): ProjectObjectDieFace | null {
+  if (fieldKey === "mode") {
+    return dieFaceModes.has(value as ProjectObjectDieFaceMode)
+      ? { ...face, mode: value as ProjectObjectDieFaceMode }
+      : null;
+  }
+
+  if (fieldKey === "label") {
+    return {
+      ...face,
+      label: value.slice(0, projectObjectDieFaceLabelMaxLength)
+    };
+  }
+
+  if (fieldKey === "imageAssetId") {
+    return {
+      ...face,
+      imageAssetId: value
+    };
   }
 
   return null;
@@ -799,6 +959,33 @@ function areCardsEqual(left: ProjectObjectCard, right: ProjectObjectCard) {
   return left.activeSide === right.activeSide && left.sizePreset === right.sizePreset;
 }
 
+function areDiesEqual(left: ProjectObjectDie, right: ProjectObjectDie) {
+  return (
+    left.activeFace === right.activeFace &&
+    left.faceCount === right.faceCount &&
+    areDieFacesEqual(getDieFaces(left), getDieFaces(right))
+  );
+}
+
+function areDieFacesEqual(
+  left: readonly ProjectObjectDieFace[],
+  right: readonly ProjectObjectDieFace[]
+) {
+  return (
+    left.length === right.length &&
+    left.every((leftFace, index) => {
+      const rightFace = right[index];
+
+      return (
+        Boolean(rightFace) &&
+        leftFace.imageAssetId === rightFace.imageAssetId &&
+        leftFace.label === rightFace.label &&
+        leftFace.mode === rightFace.mode
+      );
+    })
+  );
+}
+
 function areTextsEqual(left: ProjectObjectText, right: ProjectObjectText) {
   return (
     left.color === right.color &&
@@ -843,6 +1030,43 @@ function getShapeWithPolygonPoints(
         ...shape,
         polygonPoints: nextPolygonPoints
       };
+}
+
+function normalizeDie(die: ProjectObjectDie): ProjectObjectDie {
+  const faceCount = normalizeProjectObjectDieFaceCount(die.faceCount);
+
+  return {
+    activeFace: normalizeProjectObjectDieActiveFace(die.activeFace, faceCount),
+    faceCount,
+    faces: getDieFaces({ ...die, faceCount })
+  };
+}
+
+function resizeDieFaces(die: ProjectObjectDie, faceCount: number) {
+  const currentFaces = getDieFaces(die);
+
+  return Array.from({ length: faceCount }, (_, index) =>
+    normalizeDieFace(currentFaces[index], index + 1)
+  );
+}
+
+function normalizeDieFace(
+  face: ProjectObjectDieFace | undefined,
+  faceNumber: number
+): ProjectObjectDieFace {
+  const defaultFace = getDefaultProjectObjectDieFace(faceNumber);
+  const mode = dieFaceModes.has(face?.mode as ProjectObjectDieFaceMode)
+    ? (face?.mode as ProjectObjectDieFaceMode)
+    : defaultFace.mode;
+
+  return {
+    imageAssetId: typeof face?.imageAssetId === "string" ? face.imageAssetId : "",
+    label:
+      typeof face?.label === "string"
+        ? face.label.slice(0, projectObjectDieFaceLabelMaxLength)
+        : defaultFace.label,
+    mode
+  };
 }
 
 function normalizeShapePolygonPoints(

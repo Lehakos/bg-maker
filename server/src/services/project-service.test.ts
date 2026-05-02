@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Project } from "@bg-maker/shared";
+import { projectObjectDieFaceLabelMaxLength, type Project } from "@bg-maker/shared";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -462,6 +462,58 @@ describe("ProjectService", () => {
         }
       }
     ]);
+  });
+
+  it("normalizes die components and face customization", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "object-file",
+        kind: "object",
+        name: "Object file",
+        objectTree: [
+          {
+            id: "die-1",
+            kind: "die",
+            name: "Die 1",
+            components: {
+              die: {
+                activeFace: 99,
+                faceCount: 3.7,
+                faces: [
+                  {
+                    imageAssetId: " asset-1 ",
+                    label: "A".repeat(projectObjectDieFaceLabelMaxLength + 10),
+                    mode: "image"
+                  },
+                  {
+                    imageAssetId: "bad/asset",
+                    label: "Two",
+                    mode: "symbol"
+                  }
+                ]
+              }
+            },
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ]);
+    const normalizedDie = updatedProject?.fileTree[0]?.objectTree?.[0]?.components?.die;
+
+    expect(normalizedDie).toMatchObject({
+      activeFace: 4,
+      faceCount: 4,
+      faces: [
+        { imageAssetId: "asset-1", mode: "image" },
+        { imageAssetId: "", label: "Two", mode: "text" },
+        { imageAssetId: "", label: "3", mode: "text" },
+        { imageAssetId: "", label: "4", mode: "text" }
+      ]
+    });
+    expect(normalizedDie?.faces[0]?.label).toHaveLength(projectObjectDieFaceLabelMaxLength);
   });
 
   it("restores the protected Assets folder as a root folder", async () => {

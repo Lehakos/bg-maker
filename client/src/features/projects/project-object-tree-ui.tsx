@@ -3,6 +3,7 @@ import {
   Boxes,
   Component,
   CreditCard,
+  Dices,
   Image,
   Rows3,
   Square,
@@ -25,6 +26,10 @@ type ProjectObjectTreeRootIconProps = LucideProps & {
 export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindIconProps) {
   if (kind === "card") {
     return <CreditCard {...iconProps} />;
+  }
+
+  if (kind === "die") {
+    return <Dices {...iconProps} />;
   }
 
   if (kind === "label") {

@@ -3,13 +3,15 @@ import type {
   ProjectFileNode,
   ProjectObjectCard,
   ProjectObjectCardSide,
+  ProjectObjectDie,
   ProjectObjectNode,
   ProjectObjectRectTransform
 } from "@bg-maker/shared";
 import {
   doesProjectObjectClipChildren,
   hasProjectObjectLayout,
-  isProjectObjectCardSizePresetLocked
+  isProjectObjectCardSizePresetLocked,
+  normalizeProjectObjectDieActiveFace
 } from "@bg-maker/shared";
 import {
   Maximize2,
@@ -48,11 +50,13 @@ import {
 import {
   getProjectObjectNodeAppearance,
   getProjectObjectNodeCard,
+  getProjectObjectNodeDie,
   getProjectObjectNodeDoubleSide,
   getProjectObjectNodeVisibleChildren,
   getProjectObjectNodeLayout,
   getProjectObjectNodeRectTransform,
-  setProjectObjectNodeCard
+  setProjectObjectNodeCard,
+  setProjectObjectNodeDie
 } from "./project-object-tree";
 import { getProjectObjectLayoutRectTransformOverrides } from "./project-object-layout";
 import { ProjectObjectSurface } from "./ProjectObjectSurface";
@@ -499,6 +503,32 @@ function ObjectScene({
     );
   }
 
+  function handleDieFaceChange(objectId: string, die: ProjectObjectDie, activeFace: number) {
+    const nextActiveFace = normalizeProjectObjectDieActiveFace(activeFace, die.faceCount);
+
+    if (die.activeFace === nextActiveFace) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeDie(objectTree, objectId, {
+      ...die,
+      activeFace: nextActiveFace
+    });
+
+    if (nextObjectTree === objectTree) {
+      return;
+    }
+
+    onExecuteCommand(
+      createUpdateProjectObjectTreeCommand({
+        after: nextObjectTree,
+        before: objectTree,
+        fileNodeId,
+        label: `Show die face ${nextActiveFace}`
+      })
+    );
+  }
+
   return (
     <div
       className={cx(
@@ -524,6 +554,7 @@ function ObjectScene({
           siblingIndex={index}
           size={size}
           onCardSideChange={handleCardSideChange}
+          onDieFaceChange={handleDieFaceChange}
           onExecuteCommand={onExecuteCommand}
           onSelectObject={onSelectObject}
         />
@@ -632,6 +663,7 @@ type SceneObjectFrameProps = {
     card: ProjectObjectCard,
     activeSide: ProjectObjectCardSide
   ) => void;
+  onDieFaceChange: (objectId: string, die: ProjectObjectDie, activeFace: number) => void;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onSelectObject: (objectId: string | null) => void;
 };
@@ -659,6 +691,7 @@ function SceneObjectFrame({
   selectedObjectId,
   siblingIndex,
   onCardSideChange,
+  onDieFaceChange,
   onExecuteCommand,
   onSelectObject,
   size
@@ -671,7 +704,9 @@ function SceneObjectFrame({
   const layoutManaged = Boolean(rectTransformOverride);
   const appearance = getProjectObjectNodeAppearance(object);
   const card = object.kind === "card" ? getProjectObjectNodeCard(object) : null;
+  const die = object.kind === "die" ? getProjectObjectNodeDie(object) : null;
   const doubleSide = object.kind === "card" ? getProjectObjectNodeDoubleSide(object) : null;
+  const hasTopObjectControls = Boolean((card && doubleSide?.enabled) || die);
   const clipsChildren = doesProjectObjectClipChildren(object.kind);
   const sizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
   const resizeLocked = activeTool === "resize" && sizePresetLocked;
@@ -809,10 +844,7 @@ function SceneObjectFrame({
     >
       <ProjectObjectSurface imageAssetById={imageAssetById} object={object} />
       <div
-        className={cx(
-          "absolute inset-0",
-          clipsChildren ? "overflow-hidden" : "overflow-visible"
-        )}
+        className={cx("absolute inset-0", clipsChildren ? "overflow-hidden" : "overflow-visible")}
         style={{ borderRadius: `${appearance.borderRadius}px` }}
       >
         {children.map((child, index) => (
@@ -828,6 +860,7 @@ function SceneObjectFrame({
             siblingIndex={index}
             size={size}
             onCardSideChange={onCardSideChange}
+            onDieFaceChange={onDieFaceChange}
             onExecuteCommand={onExecuteCommand}
             onSelectObject={onSelectObject}
           />
@@ -840,11 +873,19 @@ function SceneObjectFrame({
           onSideChange={(activeSide) => onCardSideChange(object.id, card, activeSide)}
         />
       ) : null}
+      {selected && die ? (
+        <DieFaceSwitcher
+          activeFace={die.activeFace}
+          canvasScale={canvasScale}
+          die={die}
+          onFaceChange={(activeFace) => onDieFaceChange(object.id, die, activeFace)}
+        />
+      ) : null}
       {selected ? (
         <ObjectSelectionOverlay
           activeTool={layoutManaged || resizeLocked ? "select" : activeTool}
           canvasScale={canvasScale}
-          topControlsOffset={card && doubleSide?.enabled ? 44 : 0}
+          topControlsOffset={hasTopObjectControls ? 44 : 0}
         />
       ) : null}
     </div>
@@ -894,6 +935,52 @@ function CardSideSwitcher({ activeSide, canvasScale, onSideChange }: CardSideSwi
         );
       })}
     </div>
+  );
+}
+
+type DieFaceSwitcherProps = {
+  activeFace: number;
+  canvasScale: number;
+  die: ProjectObjectDie;
+  onFaceChange: (face: number) => void;
+};
+
+function DieFaceSwitcher({ activeFace, canvasScale, die, onFaceChange }: DieFaceSwitcherProps) {
+  return (
+    <label
+      aria-label="Die face"
+      className="absolute left-1/2 z-[60] flex h-8 items-center gap-1 rounded-md border border-amber-200 bg-white px-1.5 text-xs font-semibold text-slate-600 shadow-lg shadow-slate-900/10"
+      style={{
+        bottom: `calc(100% + ${10 / canvasScale}px)`,
+        transform: `translateX(-50%) scale(${1 / canvasScale})`,
+        transformOrigin: "bottom center"
+      }}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <span className="shrink-0 text-amber-700">Face</span>
+      <select
+        className="h-6 min-w-16 rounded border border-transparent bg-amber-50 px-1 text-xs font-bold tabular-nums text-amber-800 outline-none hover:border-amber-200 focus:border-amber-300 focus:bg-white"
+        value={String(activeFace)}
+        onChange={(event) => onFaceChange(Number(event.currentTarget.value))}
+      >
+        {Array.from({ length: die.faceCount }, (_, index) => {
+          const faceNumber = index + 1;
+          const face = die.faces[index];
+          const label =
+            face?.mode === "image"
+              ? `${faceNumber}: Image`
+              : `${faceNumber}: ${face?.label || faceNumber}`;
+
+          return (
+            <option key={faceNumber} value={faceNumber}>
+              {label}
+            </option>
+          );
+        })}
+      </select>
+    </label>
   );
 }
 

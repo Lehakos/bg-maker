@@ -6,10 +6,14 @@ import type {
   ProjectObjectShapeVariant,
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
-import { getDefaultProjectObjectShapePolygonPoints } from "@bg-maker/shared";
+import {
+  getDefaultProjectObjectDieFace,
+  getDefaultProjectObjectShapePolygonPoints
+} from "@bg-maker/shared";
 import type { CSSProperties } from "react";
 import {
   getProjectObjectNodeAppearance,
+  getProjectObjectNodeDie,
   getProjectObjectNodeImage,
   getProjectObjectNodeShape,
   getProjectObjectNodeText
@@ -25,6 +29,10 @@ type ProjectObjectSurfaceProps = {
 export function ProjectObjectSurface({ imageAssetById, object }: ProjectObjectSurfaceProps) {
   if (object.kind === "card") {
     return <CardVisual object={object} />;
+  }
+
+  if (object.kind === "die") {
+    return <DieVisual imageAssetById={imageAssetById} object={object} />;
   }
 
   if (object.kind === "group") {
@@ -70,6 +78,46 @@ function CardVisual({ object }: ObjectVisualProps) {
       className="relative h-full w-full overflow-hidden shadow-[0_14px_30px_rgba(15,23,42,0.16)]"
       style={getAppearanceStyle(appearance)}
     />
+  );
+}
+
+function DieVisual({ imageAssetById, object }: ImageVisualProps) {
+  const appearance = getProjectObjectNodeAppearance(object);
+  const die = getProjectObjectNodeDie(object);
+  const face = die.faces[die.activeFace - 1] ?? getDefaultProjectObjectDieFace(die.activeFace);
+  const imageAsset =
+    face.mode === "image" && face.imageAssetId ? imageAssetById.get(face.imageAssetId) : undefined;
+
+  return (
+    <div
+      className="relative flex h-full w-full min-w-0 items-center justify-center overflow-hidden text-center shadow-[0_16px_32px_rgba(15,23,42,0.16)]"
+      style={getAppearanceStyle(appearance)}
+    >
+      {face.mode === "image" ? (
+        imageAsset ? (
+          <img
+            alt={imageAsset.name}
+            className="h-full w-full select-none object-contain"
+            draggable={false}
+            src={imageAsset.url}
+          />
+        ) : (
+          <div className="flex min-w-0 flex-col items-center px-2 text-amber-700">
+            <ProjectObjectKindIcon kind="die" size={24} />
+            <span className="mt-2 max-w-full truncate text-xs font-semibold">
+              {face.imageAssetId ? "Missing image" : "No image"}
+            </span>
+          </div>
+        )
+      ) : (
+        <span className="min-w-0 max-w-full truncate text-4xl font-bold leading-none text-slate-950">
+          {face.label || die.activeFace}
+        </span>
+      )}
+      <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded border border-amber-200 bg-white/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-amber-700 shadow-sm">
+        D{die.faceCount}
+      </span>
+    </div>
   );
 }
 

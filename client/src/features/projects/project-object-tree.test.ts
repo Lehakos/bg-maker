@@ -4,6 +4,7 @@ import {
   type ProjectFileNode,
   type ProjectObjectAppearance,
   type ProjectObjectCard,
+  type ProjectObjectDie,
   type ProjectObjectImage,
   type ProjectObjectKind,
   type ProjectObjectLayout,
@@ -21,6 +22,7 @@ import {
   getExpandableProjectObjectNodeIds,
   getProjectObjectNodeAppearance,
   getProjectObjectNodeCard,
+  getProjectObjectNodeDie,
   getProjectObjectNodeChildren,
   getProjectObjectNodeDoubleSide,
   getProjectObjectNodeVisibleChildren,
@@ -33,6 +35,7 @@ import {
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
   setProjectObjectNodeCard,
+  setProjectObjectNodeDie,
   setProjectObjectNodeDoubleSide,
   setProjectObjectNodeImage,
   setProjectObjectNodeLayout,
@@ -281,8 +284,9 @@ describe("project object tree helpers", () => {
     expect(findProjectObjectNode(movedOutTree, "back-label")?.cardSide).toBeUndefined();
   });
 
-  it("clips card and shape children by object kind", () => {
+  it("clips card, die, and shape children by object kind", () => {
     expect(doesProjectObjectClipChildren("card")).toBe(true);
+    expect(doesProjectObjectClipChildren("die")).toBe(true);
     expect(doesProjectObjectClipChildren("shape")).toBe(true);
     expect(doesProjectObjectClipChildren("group")).toBe(false);
     expect(doesProjectObjectClipChildren("label")).toBe(false);
@@ -334,9 +338,7 @@ describe("project object tree helpers", () => {
       back: { appearance: backAppearance },
       front: { appearance: frontAppearance }
     });
-    expect(
-      findProjectObjectNode(frontAgainTree, "card-1")?.components?.appearance
-    ).toBeUndefined();
+    expect(findProjectObjectNode(frontAgainTree, "card-1")?.components?.appearance).toBeUndefined();
   });
 
   it("merges and updates behavior components without mutating the original tree", () => {
@@ -367,6 +369,16 @@ describe("project object tree helpers", () => {
       positionX: 40,
       positionY: 60
     };
+    const die: ProjectObjectDie = {
+      activeFace: 2,
+      faceCount: 4,
+      faces: [
+        { imageAssetId: "", label: "1", mode: "text" },
+        { imageAssetId: "asset-1", label: "Skull", mode: "image" },
+        { imageAssetId: "", label: "3", mode: "text" },
+        { imageAssetId: "", label: "4", mode: "text" }
+      ]
+    };
     const layout: ProjectObjectLayout = {
       alignItems: "center",
       columns: 3,
@@ -386,6 +398,7 @@ describe("project object tree helpers", () => {
     const appearanceTree = setProjectObjectNodeAppearance(objectTree, "shape-1", appearance);
     const textTree = setProjectObjectNodeText(objectTree, "label-1", text);
     const imageTree = setProjectObjectNodeImage(objectTree, "image-1", image);
+    const dieTree = setProjectObjectNodeDie([objectNode("die-1", "Die", "die")], "die-1", die);
     const layoutTree = setProjectObjectNodeLayout(objectTree, "group-1", layout);
     const shapeTree = setProjectObjectNodeShape(objectTree, "shape-1", shape);
 
@@ -394,12 +407,14 @@ describe("project object tree helpers", () => {
     ).toEqual(appearance);
     expect(getProjectObjectNodeText(findProjectObjectNode(textTree, "label-1")!)).toEqual(text);
     expect(getProjectObjectNodeImage(findProjectObjectNode(imageTree, "image-1")!)).toEqual(image);
+    expect(getProjectObjectNodeDie(findProjectObjectNode(dieTree, "die-1")!)).toEqual(die);
     expect(getProjectObjectNodeLayout(findProjectObjectNode(layoutTree, "group-1")!)).toEqual(
       layout
     );
     expect(getProjectObjectNodeShape(findProjectObjectNode(shapeTree, "shape-1")!)).toEqual(shape);
     expect(findProjectObjectNode(objectTree, "image-1")?.components?.image).toBeUndefined();
     expect(setProjectObjectNodeImage(objectTree, "missing-object", image)).toBe(objectTree);
+    expect(setProjectObjectNodeDie(objectTree, "missing-object", die)).toBe(objectTree);
     expect(setProjectObjectNodeLayout(objectTree, "missing-object", layout)).toBe(objectTree);
   });
 

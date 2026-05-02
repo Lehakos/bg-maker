@@ -14,6 +14,11 @@
 - Keep shared fields such as names, descriptions, tags, notes, and quantities separate from type-specific state so switching type does not unexpectedly wipe common input.
 - Prefer reusable hooks, helpers, and small shared components for form-state transitions instead of duplicating branching logic in individual form sections.
 
+## Prototype Compatibility
+
+- While the project is still in prototype stage, do not spend effort preserving backwards compatibility when changing data models, APIs, persisted formats, or UI behavior unless the user explicitly asks for it.
+- Prefer clean current-state implementations over migration layers, aliases, legacy fallbacks, or compatibility shims.
+
 ## Business Logic Placement
 
 - Do not keep business logic in UI components or controllers; keep those layers focused on rendering, input handling, request/response orchestration, and wiring.

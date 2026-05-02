@@ -5,6 +5,7 @@ export {
   withProjectObjectAppearanceComponent
 } from "./appearance-component";
 export { getProjectObjectCardComponent, withProjectObjectCardComponent } from "./card-component";
+export { getProjectObjectDieComponent, withProjectObjectDieComponent } from "./die-component";
 export {
   getProjectObjectDoubleSideComponent,
   withProjectObjectDoubleSideComponent

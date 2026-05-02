@@ -4,6 +4,7 @@ import type {
   ProjectFileKind,
   ProjectFileNode,
   ProjectObjectCard,
+  ProjectObjectDie,
   ProjectObjectDoubleSide,
   ProjectObjectKind,
   ProjectObjectLayout,
@@ -186,6 +187,10 @@ export function getProjectObjectNodeCard(object: ProjectObjectNode): ProjectObje
   return projectObjectComponentEngine.getCard(object);
 }
 
+export function getProjectObjectNodeDie(object: ProjectObjectNode): ProjectObjectDie {
+  return projectObjectComponentEngine.getDie(object);
+}
+
 export function getProjectObjectNodeDoubleSide(object: ProjectObjectNode): ProjectObjectDoubleSide {
   return projectObjectComponentEngine.getDoubleSide(object);
 }
@@ -237,6 +242,18 @@ export function setProjectObjectNodeCard(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withCard(node, card)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeDie(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  die: ProjectObjectDie
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withDie(node, die)
   );
 
   return result.changed ? result.nodes : objectTree;

@@ -1,6 +1,7 @@
 import type {
   ProjectObjectAppearance,
   ProjectObjectCard,
+  ProjectObjectDie,
   ProjectObjectImage,
   ProjectObjectLayout,
   ProjectObjectRectTransform,
@@ -11,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   createAppearanceDraft,
   createCardDraft,
+  createDieDraft,
   createImageDraft,
   createLayoutDraft,
   createRectTransformDraft,
@@ -18,6 +20,10 @@ import {
   createTextDraft,
   getAppearanceWithDraftField,
   getCardWithDraftField,
+  getDieFace,
+  getDieFaces,
+  getDieWithDraftField,
+  getDieWithFaceField,
   getImageWithDraftField,
   getLayoutWithDraftField,
   getRectTransformWithDraftField,
@@ -33,6 +39,7 @@ import {
   getTextWithDraftField,
   isTextFontWeightBold,
   normalizeAppearanceNumberValue,
+  normalizeDieNumberValue,
   normalizeImageNumberValue,
   normalizeLayoutNumberValue,
   normalizeRectTransformValue,
@@ -67,6 +74,17 @@ const appearance: ProjectObjectAppearance = {
 const card: ProjectObjectCard = {
   activeSide: "front",
   sizePreset: "poker"
+};
+
+const die: ProjectObjectDie = {
+  activeFace: 3,
+  faceCount: 4,
+  faces: [
+    { imageAssetId: "", label: "1", mode: "text" },
+    { imageAssetId: "", label: "2", mode: "text" },
+    { imageAssetId: "asset-1", label: "Skull", mode: "image" },
+    { imageAssetId: "", label: "4", mode: "text" }
+  ]
 };
 
 const text: ProjectObjectText = {
@@ -190,6 +208,50 @@ describe("project object inspector state", () => {
     expect(getCardWithDraftField(card, "sizePreset", "poker")).toBeNull();
   });
 
+  it("creates and updates die drafts and faces", () => {
+    expect(createDieDraft(die)).toEqual({
+      activeFace: "3",
+      faceCount: "4"
+    });
+    expect(normalizeDieNumberValue("faceCount", 120)).toBe(100);
+    expect(getDieFaces({ ...die, faceCount: 2 })).toHaveLength(2);
+    expect(getDieFace(die, 3)).toEqual({
+      imageAssetId: "asset-1",
+      label: "Skull",
+      mode: "image"
+    });
+    expect(getDieWithDraftField(die, "activeFace", "2")).toMatchObject({
+      activeFace: 2
+    });
+    expect(getDieWithDraftField(die, "faceCount", "2")).toMatchObject({
+      activeFace: 2,
+      faceCount: 2,
+      faces: [
+        { imageAssetId: "", label: "1", mode: "text" },
+        { imageAssetId: "", label: "2", mode: "text" }
+      ]
+    });
+    expect(getDieWithDraftField(die, "faceCount", "nope")).toBeNull();
+    expect(getDieWithFaceField(die, 2, "mode", "image")).toMatchObject({
+      activeFace: 2,
+      faces: [
+        { imageAssetId: "", label: "1", mode: "text" },
+        { imageAssetId: "", label: "2", mode: "image" },
+        { imageAssetId: "asset-1", label: "Skull", mode: "image" },
+        { imageAssetId: "", label: "4", mode: "text" }
+      ]
+    });
+    expect(getDieWithFaceField(die, 3, "imageAssetId", "asset-2")).toMatchObject({
+      faces: [
+        { imageAssetId: "", label: "1", mode: "text" },
+        { imageAssetId: "", label: "2", mode: "text" },
+        { imageAssetId: "asset-2", label: "Skull", mode: "image" },
+        { imageAssetId: "", label: "4", mode: "text" }
+      ]
+    });
+    expect(getDieWithFaceField(die, 3, "mode", "symbol")).toBeNull();
+  });
+
   it("creates and normalizes text drafts", () => {
     expect(createTextDraft(text)).toEqual({
       color: "#0f172a",
@@ -256,8 +318,9 @@ describe("project object inspector state", () => {
     ]);
     expect(normalizeShapePolygonPointValue("x", 120)).toBe(100);
     expect(normalizeShapePolygonPointValue("y", 12.34)).toBe(12.3);
-    expect(getShapePolygonPoints({ polygonPoints: [{ x: -1, y: 12.34 }], variant: "polygon" }))
-      .toHaveLength(4);
+    expect(
+      getShapePolygonPoints({ polygonPoints: [{ x: -1, y: 12.34 }], variant: "polygon" })
+    ).toHaveLength(4);
     expect(getShapeWithPolygonPointDraftField(polygonShape, 1, "x", "24.56")).toMatchObject({
       polygonPoints: [
         { x: 0, y: 0 },
