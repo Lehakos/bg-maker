@@ -3,12 +3,15 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectCard,
   ProjectObjectCardSizePresetValue,
+  ProjectObjectContainer,
   ProjectObjectCounter,
   ProjectObjectCounterBoundsMode,
   ProjectObjectCounterDisplayMode,
+  ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectDieFaceMode,
   ProjectObjectImage,
+  ProjectObjectKind,
   ProjectObjectLayout,
   ProjectObjectLayoutAlignment,
   ProjectObjectLayoutJustification,
@@ -16,13 +19,18 @@ import type {
   ProjectObjectNode,
   ProjectObjectShape,
   ProjectObjectShapePoint,
+  ProjectObjectStackDisplay,
   ProjectObjectText,
   ProjectObjectTextAlign,
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectCounter,
+  getDefaultProjectObjectDeck,
   getDefaultProjectObjectDie,
+  getDefaultProjectObjectStackDisplay,
+  getProjectObjectContainerAcceptedObjectKinds,
+  getProjectObjectContainerTotalCount,
   hasProjectObjectLayout,
   isProjectObjectCardSizePresetLocked,
   projectObjectCardCustomSizePresetId,
@@ -40,7 +48,10 @@ import {
   AlignVerticalJustifyEnd,
   AlignVerticalJustifyStart,
   AlignVerticalSpaceBetween,
+  ArrowDown,
+  ArrowUp,
   Box,
+  Boxes,
   Bold,
   Columns3,
   Copy,
@@ -55,9 +66,11 @@ import {
   MirrorRectangular,
   Move,
   Palette,
+  Plus,
   Rows3,
   Shapes,
   SlidersHorizontal,
+  Trash2,
   Type,
   type LucideIcon
 } from "lucide-react";
@@ -82,24 +95,30 @@ import {
 import {
   getProjectObjectNodeAppearance,
   getProjectObjectNodeCard,
+  getProjectObjectNodeContainer,
   getProjectObjectNodeCounter,
+  getProjectObjectNodeDeck,
   getProjectObjectNodeDie,
   getProjectObjectNodeDoubleSide,
   getProjectObjectNodeImage,
   getProjectObjectNodeLayout,
   getProjectObjectNodeRectTransform,
   getProjectObjectNodeShape,
+  getProjectObjectNodeStackDisplay,
   getProjectObjectNodeText,
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
   setProjectObjectNodeCard,
+  setProjectObjectNodeContainer,
   setProjectObjectNodeCounter,
+  setProjectObjectNodeDeck,
   setProjectObjectNodeDie,
   setProjectObjectNodeDoubleSide,
   setProjectObjectNodeImage,
   setProjectObjectNodeLayout,
   setProjectObjectNodeRectTransform,
   setProjectObjectNodeShape,
+  setProjectObjectNodeStackDisplay,
   setProjectObjectNodeText,
   setProjectObjectNodeVisibility,
   updateProjectFileNodeObjectTree
@@ -114,20 +133,30 @@ import {
   createAppearanceDraft,
   createCardDraft,
   createCounterDraft,
+  createDeckDraft,
   createDieDraft,
   createImageDraft,
   createLayoutDraft,
+  createStackDisplayDraft,
   createTextDraft,
   formatAppearanceNumberValue,
+  formatContainerEntryQuantityValue,
   formatCounterNumberValue,
   formatDieNumberValue,
   formatImageNumberValue,
   formatLayoutNumberValue,
   formatRectTransformValue,
+  formatStackDisplayNumberValue,
   formatTextNumberValue,
   getAppearanceWithDraftField,
   getCardWithDraftField,
+  getContainerWithAddedEntry,
+  getContainerWithEntryObjectFileNodeId,
+  getContainerWithEntryQuantityDraftField,
+  getContainerWithMovedEntry,
+  getContainerWithRemovedEntry,
   getCounterWithDraftField,
+  getDeckWithDraftField,
   getDieFace,
   getDieWithDraftField,
   getDieWithFaceField,
@@ -141,6 +170,7 @@ import {
   getShapeWithPolygonPointDraftField,
   getShapeWithRemovedPolygonPoint,
   getShapeWithVariant,
+  getStackDisplayWithDraftField,
   getTextFontStyleForItalic,
   getTextFontWeightForBold,
   getTextWithDraftField,
@@ -148,10 +178,12 @@ import {
   isTextFontWeightBold,
   normalizeRectTransformValue,
   normalizeAppearanceNumberValue,
+  normalizeContainerEntryQuantityValue,
   normalizeCounterNumberValue,
   normalizeDieNumberValue,
   normalizeImageNumberValue,
   normalizeLayoutNumberValue,
+  normalizeStackDisplayNumberValue,
   normalizeTextNumberValue,
   parseRectTransformDraftValue,
   appearanceNumberFieldSettings,
@@ -159,6 +191,7 @@ import {
   dieNumberFieldSettings,
   layoutNumberFieldSettings,
   rectTransformFieldSettings,
+  stackDisplayNumberFieldSettings,
   textNumberFieldSettings,
   type AppearanceDraft,
   type AppearanceFieldKey,
@@ -167,6 +200,8 @@ import {
   type CounterDraft,
   type CounterFieldKey,
   type CounterNumberFieldKey,
+  type DeckDraft,
+  type DeckFieldKey,
   type DieDraft,
   type DieFaceFieldKey,
   type DieFieldKey,
@@ -177,6 +212,9 @@ import {
   type RectTransformDraft,
   type RectTransformFieldKey,
   type ShapePolygonPointFieldKey,
+  type StackDisplayDraft,
+  type StackDisplayFieldKey,
+  type StackDisplayNumberFieldKey,
   type TextDraft,
   type TextFieldKey
 } from "./project-object-inspector-state";
@@ -243,6 +281,11 @@ type CounterNumberFieldDefinition = {
   label: string;
 };
 
+type StackDisplayNumberFieldDefinition = {
+  key: keyof typeof stackDisplayNumberFieldSettings;
+  label: string;
+};
+
 type ImageNumberFieldDefinition = {
   key: keyof typeof imageNumberFieldSettings;
   label: string;
@@ -287,6 +330,16 @@ const counterValueFields: readonly CounterNumberFieldDefinition[] = [
 const counterBoundsFields: readonly CounterNumberFieldDefinition[] = [
   { key: "minValue", label: "Min" },
   { key: "maxValue", label: "Max" }
+];
+
+const stackDisplayLayerField = {
+  key: "visibleItemCount",
+  label: "Visible"
+} as const satisfies StackDisplayNumberFieldDefinition;
+
+const stackDisplayOffsetFields: readonly StackDisplayNumberFieldDefinition[] = [
+  { key: "stackOffsetX", label: "Offset X" },
+  { key: "stackOffsetY", label: "Offset Y" }
 ];
 
 const imageNumberFields: readonly ImageNumberFieldDefinition[] = [
@@ -507,6 +560,20 @@ export function ProjectObjectInspectorPanel({
       selectedObject?.kind === "counter" ? getProjectObjectNodeCounter(selectedObject) : null,
     [selectedObject]
   );
+  const deck = useMemo(
+    () => (selectedObject?.kind === "deck" ? getProjectObjectNodeDeck(selectedObject) : null),
+    [selectedObject]
+  );
+  const container = useMemo(
+    () =>
+      selectedObject?.kind === "deck" ? getProjectObjectNodeContainer(selectedObject) : null,
+    [selectedObject]
+  );
+  const stackDisplay = useMemo(
+    () =>
+      selectedObject?.kind === "deck" ? getProjectObjectNodeStackDisplay(selectedObject) : null,
+    [selectedObject]
+  );
   const die = useMemo(
     () => (selectedObject?.kind === "die" ? getProjectObjectNodeDie(selectedObject) : null),
     [selectedObject]
@@ -556,6 +623,21 @@ export function ProjectObjectInspectorPanel({
   const [counterDraft, setCounterDraft] = useState<CounterDraft>(() =>
     counter ? createCounterDraft(counter) : createCounterDraft(getFallbackCounterDraftValue())
   );
+  const [deckDraft, setDeckDraft] = useState<DeckDraft>(() =>
+    deck ? createDeckDraft(deck) : createDeckDraft(getFallbackDeckDraftValue())
+  );
+  const [stackDisplayDraft, setStackDisplayDraft] = useState<StackDisplayDraft>(() =>
+    stackDisplay
+      ? createStackDisplayDraft(stackDisplay)
+      : createStackDisplayDraft(getFallbackStackDisplayDraftValue())
+  );
+  const [containerEntryQuantityDrafts, setContainerEntryQuantityDrafts] = useState<string[]>(() =>
+    container
+      ? container.entries.map((entry) => formatContainerEntryQuantityValue(entry.quantity))
+      : []
+  );
+  const [containerDraftRowIds, setContainerDraftRowIds] = useState<number[]>([]);
+  const [nextContainerDraftRowId, setNextContainerDraftRowId] = useState(1);
   const [dieDraft, setDieDraft] = useState<DieDraft>(() =>
     die ? createDieDraft(die) : createDieDraft(getFallbackDieDraftValue())
   );
@@ -599,6 +681,31 @@ export function ProjectObjectInspectorPanel({
       setCounterDraft(createCounterDraft(counter));
     }
   }, [counter, selectedObject?.id]);
+
+  useEffect(() => {
+    if (deck) {
+      setDeckDraft(createDeckDraft(deck));
+    }
+  }, [deck, selectedObject?.id]);
+
+  useEffect(() => {
+    if (stackDisplay) {
+      setStackDisplayDraft(createStackDisplayDraft(stackDisplay));
+    }
+  }, [selectedObject?.id, stackDisplay]);
+
+  useEffect(() => {
+    if (container) {
+      setContainerEntryQuantityDrafts(
+        container.entries.map((entry) => formatContainerEntryQuantityValue(entry.quantity))
+      );
+    }
+  }, [container, selectedObject?.id]);
+
+  useEffect(() => {
+    setContainerDraftRowIds([]);
+    setNextContainerDraftRowId(1);
+  }, [selectedObject?.id]);
 
   useEffect(() => {
     if (die) {
@@ -682,9 +789,11 @@ export function ProjectObjectInspectorPanel({
   }
 
   function isRectTransformFieldPresetLocked(fieldKey: RectTransformFieldKey) {
+    const sizedObject = card ?? deck;
+
     return Boolean(
-      card &&
-      isProjectObjectCardSizePresetLocked(card) &&
+      sizedObject &&
+      isProjectObjectCardSizePresetLocked(sizedObject) &&
       cardPresetLockedRectTransformFields.has(fieldKey)
     );
   }
@@ -933,6 +1042,228 @@ export function ProjectObjectInspectorPanel({
         fieldKey
       )
     }));
+  }
+
+  function updateDeckDraft<TFieldKey extends DeckFieldKey>(
+    fieldKey: TFieldKey,
+    value: ProjectObjectDeck[TFieldKey]
+  ) {
+    setDeckDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    updateObjectTreeDeckField(fieldKey, value);
+  }
+
+  function updateObjectTreeDeckField<TFieldKey extends DeckFieldKey>(
+    fieldKey: TFieldKey,
+    value: ProjectObjectDeck[TFieldKey]
+  ) {
+    if (!contentFileNode || !selectedObject || !deck) {
+      return;
+    }
+
+    const nextDeck = getDeckWithDraftField(deck, fieldKey, value);
+
+    if (!nextDeck) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeDeck(objectTree, selectedObject.id, nextDeck);
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
+  function updateStackDisplayDraft(fieldKey: StackDisplayFieldKey, value: string | boolean) {
+    setStackDisplayDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    updateObjectTreeStackDisplayField(fieldKey, value);
+  }
+
+  function resetStackDisplayDraft(fieldKey: StackDisplayFieldKey) {
+    if (!stackDisplay) {
+      return;
+    }
+
+    const nextDraft = createStackDisplayDraft(stackDisplay);
+
+    setStackDisplayDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: nextDraft[fieldKey]
+    }));
+  }
+
+  function updateObjectTreeStackDisplayField(
+    fieldKey: StackDisplayFieldKey,
+    value: string | boolean
+  ) {
+    if (!contentFileNode || !selectedObject || !stackDisplay) {
+      return;
+    }
+
+    const nextStackDisplay = getStackDisplayWithDraftField(stackDisplay, fieldKey, value);
+
+    if (!nextStackDisplay) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeStackDisplay(
+      objectTree,
+      selectedObject.id,
+      nextStackDisplay
+    );
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
+  function commitStackDisplayNumberField(
+    fieldKey: StackDisplayNumberFieldKey,
+    value = stackDisplayDraft[fieldKey]
+  ) {
+    if (!stackDisplay) {
+      return;
+    }
+
+    const parsedValue = parseRectTransformDraftValue(value);
+
+    if (parsedValue === null) {
+      resetStackDisplayDraft(fieldKey);
+      return;
+    }
+
+    updateObjectTreeStackDisplayField(fieldKey, value);
+    setStackDisplayDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: formatStackDisplayNumberValue(
+        normalizeStackDisplayNumberValue(fieldKey, parsedValue),
+        fieldKey
+      )
+    }));
+  }
+
+  function addContainerEntry() {
+    if (!container || !canAddContainerDraftRow) {
+      return;
+    }
+
+    setContainerDraftRowIds((currentDraftRowIds) => [
+      ...currentDraftRowIds,
+      nextContainerDraftRowId
+    ]);
+    setNextContainerDraftRowId((currentId) => currentId + 1);
+  }
+
+  function removeContainerDraftEntry(rowId: number) {
+    setContainerDraftRowIds((currentDraftRowIds) =>
+      currentDraftRowIds.filter((currentRowId) => currentRowId !== rowId)
+    );
+  }
+
+  function commitContainerDraftEntry(rowId: number, objectFileNodeId: string) {
+    if (!container || !objectFileNodeId) {
+      return;
+    }
+
+    updateContainer(getContainerWithAddedEntry(container, objectFileNodeId));
+    removeContainerDraftEntry(rowId);
+  }
+
+  function removeContainerEntry(entryIndex: number) {
+    if (!container) {
+      return;
+    }
+
+    updateContainer(getContainerWithRemovedEntry(container, entryIndex));
+  }
+
+  function moveContainerEntry(entryIndex: number, direction: -1 | 1) {
+    if (!container) {
+      return;
+    }
+
+    updateContainer(getContainerWithMovedEntry(container, entryIndex, direction));
+  }
+
+  function updateContainerEntryObjectFile(entryIndex: number, objectFileNodeId: string) {
+    if (!container) {
+      return;
+    }
+
+    updateContainer(getContainerWithEntryObjectFileNodeId(container, entryIndex, objectFileNodeId));
+  }
+
+  function updateContainerEntryQuantityDraft(entryIndex: number, value: string) {
+    setContainerEntryQuantityDrafts((currentDrafts) =>
+      currentDrafts.map((draft, index) => (index === entryIndex ? value : draft))
+    );
+
+    if (!container) {
+      return;
+    }
+
+    updateContainer(getContainerWithEntryQuantityDraftField(container, entryIndex, value));
+  }
+
+  function resetContainerEntryQuantityDraft(entryIndex: number) {
+    if (!container) {
+      return;
+    }
+
+    const entry = container.entries[entryIndex];
+
+    if (!entry) {
+      return;
+    }
+
+    setContainerEntryQuantityDrafts((currentDrafts) =>
+      currentDrafts.map((draft, index) =>
+        index === entryIndex ? formatContainerEntryQuantityValue(entry.quantity) : draft
+      )
+    );
+  }
+
+  function commitContainerEntryQuantity(entryIndex: number, value: string) {
+    if (!container) {
+      return;
+    }
+
+    const parsedValue = parseRectTransformDraftValue(value);
+
+    if (parsedValue === null) {
+      resetContainerEntryQuantityDraft(entryIndex);
+      return;
+    }
+
+    updateContainer(getContainerWithEntryQuantityDraftField(container, entryIndex, value));
+    setContainerEntryQuantityDrafts((currentDrafts) =>
+      currentDrafts.map((draft, index) =>
+        index === entryIndex
+          ? formatContainerEntryQuantityValue(normalizeContainerEntryQuantityValue(parsedValue))
+          : draft
+      )
+    );
+  }
+
+  function updateContainer(nextContainer: ProjectObjectContainer | null) {
+    if (!nextContainer || !contentFileNode || !selectedObject) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeContainer(
+      objectTree,
+      selectedObject.id,
+      nextContainer
+    );
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
   }
 
   function updateDieDraft(fieldKey: DieFieldKey, value: string) {
@@ -1369,7 +1700,28 @@ export function ProjectObjectInspectorPanel({
     activeDieFace?.imageAssetId && activeDieFace.mode === "image"
       ? getProjectImageAssetOptionById(imageAssets, activeDieFace.imageAssetId)
       : undefined;
-  const cardSizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
+  const containerObjectFileOptions = container
+    ? getContainerObjectFileOptions(
+        fileTree,
+        getProjectObjectContainerAcceptedObjectKinds(selectedObject?.kind)
+      )
+    : [];
+  const usedContainerObjectFileIds = new Set(
+    container?.entries.map((entry) => entry.objectFileNodeId) ?? []
+  );
+  const unusedContainerObjectFileOptions = containerObjectFileOptions.filter(
+    (option) => !usedContainerObjectFileIds.has(option.value)
+  );
+  const canAddContainerDraftRow =
+    containerDraftRowIds.length < unusedContainerObjectFileOptions.length;
+  const containerObjectFileOptionById = new Map(
+    containerObjectFileOptions.map((option) => [option.value, option])
+  );
+  const containerTotalCount = container ? getProjectObjectContainerTotalCount(container) : 0;
+  const activeSizePresetObject = card ?? deck;
+  const sizePresetLocked = activeSizePresetObject
+    ? isProjectObjectCardSizePresetLocked(activeSizePresetObject)
+    : false;
   const textDraftBold = isTextFontWeightBold(textDraft.fontWeight);
   const textDraftItalic = textDraft.fontStyle === "italic";
   const layoutAuto = layoutDraft.mode !== "free";
@@ -1444,6 +1796,106 @@ export function ProjectObjectInspectorPanel({
                 value={cardDraft.sizePreset}
                 options={cardSizePresetOptions}
                 onChange={(value) => updateCardDraft("sizePreset", value)}
+              />
+            </InspectorSection>
+          ) : null}
+
+          {deck ? (
+            <InspectorSection icon={<Boxes size={15} />} title="Deck">
+              <InspectorSelectField
+                label="Size preset"
+                value={deckDraft.sizePreset}
+                options={cardSizePresetOptions}
+                onChange={(value) => updateDeckDraft("sizePreset", value)}
+              />
+            </InspectorSection>
+          ) : null}
+
+          {container ? (
+            <InspectorSection icon={<Boxes size={15} />} title="Container">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs font-semibold text-slate-600">
+                  {containerTotalCount} item{containerTotalCount === 1 ? "" : "s"}
+                </div>
+                <button
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={!canAddContainerDraftRow}
+                  title="Add object"
+                  type="button"
+                  onClick={addContainerEntry}
+                >
+                  <Plus size={15} />
+                </button>
+              </div>
+              {container.entries.length || containerDraftRowIds.length ? (
+                <div className="space-y-1.5">
+                  {container.entries.map((entry, index) => (
+                    <ContainerEntryRow
+                      key={`${entry.objectFileNodeId}:${index}`}
+                      canMoveDown={index < container.entries.length - 1}
+                      canMoveUp={index > 0}
+                      index={index}
+                      entry={entry}
+                      objectFileOptions={getContainerEntryObjectFileOptions(
+                        containerObjectFileOptions,
+                        usedContainerObjectFileIds,
+                        entry.objectFileNodeId
+                      )}
+                      quantityDraft={
+                        containerEntryQuantityDrafts[index] ??
+                        formatContainerEntryQuantityValue(entry.quantity)
+                      }
+                      valid={containerObjectFileOptionById.has(entry.objectFileNodeId)}
+                      onCommitQuantity={commitContainerEntryQuantity}
+                      onMove={moveContainerEntry}
+                      onObjectFileChange={updateContainerEntryObjectFile}
+                      onQuantityDraftChange={updateContainerEntryQuantityDraft}
+                      onRemove={removeContainerEntry}
+                      onResetQuantity={resetContainerEntryQuantityDraft}
+                    />
+                  ))}
+                  {containerDraftRowIds.map((rowId) => (
+                    <ContainerDraftEntryRow
+                      key={rowId}
+                      objectFileOptions={unusedContainerObjectFileOptions}
+                      onObjectFileChange={(objectFileNodeId) =>
+                        commitContainerDraftEntry(rowId, objectFileNodeId)
+                      }
+                      onRemove={() => removeContainerDraftEntry(rowId)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-500">
+                  No objects assigned.
+                </p>
+              )}
+            </InspectorSection>
+          ) : null}
+
+          {stackDisplay ? (
+            <InspectorSection icon={<Rows3 size={15} />} title="Stack">
+              <InspectorSwitchField
+                checked={stackDisplayDraft.showCount}
+                label="Show count"
+                onChange={(event) =>
+                  updateStackDisplayDraft("showCount", event.currentTarget.checked)
+                }
+              />
+              <InspectorBehaviorNumberField
+                field={stackDisplayLayerField}
+                settings={stackDisplayNumberFieldSettings.visibleItemCount}
+                value={stackDisplayDraft.visibleItemCount}
+                onCommit={commitStackDisplayNumberField}
+                onDraftChange={updateStackDisplayDraft}
+                onReset={resetStackDisplayDraft}
+              />
+              <StackDisplayNumberGrid
+                fields={stackDisplayOffsetFields}
+                value={stackDisplayDraft}
+                onCommit={commitStackDisplayNumberField}
+                onDraftChange={updateStackDisplayDraft}
+                onReset={resetStackDisplayDraft}
               />
             </InspectorSection>
           ) : null}
@@ -1669,7 +2121,7 @@ export function ProjectObjectInspectorPanel({
               fields={sizeFields}
               rectTransformDraft={rectTransformDraft}
               disabledFields={
-                cardSizePresetLocked ? cardPresetLockedRectTransformFields : undefined
+                sizePresetLocked ? cardPresetLockedRectTransformFields : undefined
               }
               disabledTitle="Size is controlled by the selected card preset"
               onCommit={commitRectTransformField}
@@ -1690,7 +2142,7 @@ export function ProjectObjectInspectorPanel({
               fields={scaleFields}
               rectTransformDraft={rectTransformDraft}
               disabledFields={
-                cardSizePresetLocked ? cardPresetLockedRectTransformFields : undefined
+                sizePresetLocked ? cardPresetLockedRectTransformFields : undefined
               }
               disabledTitle="Scale is controlled by the selected card preset"
               onCommit={commitRectTransformField}
@@ -1953,6 +2405,176 @@ function InspectorDoubleSidedControls({
       label="Enabled"
       onChange={(event) => onEnabledChange(event.currentTarget.checked)}
     />
+  );
+}
+
+type ContainerEntryRowProps = {
+  canMoveDown: boolean;
+  canMoveUp: boolean;
+  entry: ProjectObjectContainer["entries"][number];
+  index: number;
+  objectFileOptions: readonly { label: string; value: string }[];
+  quantityDraft: string;
+  valid: boolean;
+  onCommitQuantity: (entryIndex: number, value: string) => void;
+  onMove: (entryIndex: number, direction: -1 | 1) => void;
+  onObjectFileChange: (entryIndex: number, objectFileNodeId: string) => void;
+  onQuantityDraftChange: (entryIndex: number, value: string) => void;
+  onRemove: (entryIndex: number) => void;
+  onResetQuantity: (entryIndex: number) => void;
+};
+
+function ContainerEntryRow({
+  canMoveDown,
+  canMoveUp,
+  entry,
+  index,
+  objectFileOptions,
+  quantityDraft,
+  valid,
+  onCommitQuantity,
+  onMove,
+  onObjectFileChange,
+  onQuantityDraftChange,
+  onRemove,
+  onResetQuantity
+}: ContainerEntryRowProps) {
+  const options = valid
+    ? objectFileOptions
+    : [
+        {
+          label: `${entry.objectFileNodeId} (missing)`,
+          value: entry.objectFileNodeId
+        },
+        ...objectFileOptions
+      ];
+
+  function handleQuantityKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      event.currentTarget.blur();
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onResetQuantity(index);
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-1.5">
+      <div className="flex items-center gap-1.5">
+        <select
+          aria-label="Object"
+          className={cx(
+            "h-8 min-w-0 flex-1 rounded-md border bg-white px-2 text-sm text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100",
+            valid ? "border-slate-200" : "border-amber-300 text-amber-900"
+          )}
+          title="Object"
+          value={entry.objectFileNodeId}
+          onChange={(event) => onObjectFileChange(index, event.currentTarget.value)}
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <input
+          className="h-8 w-14 shrink-0 rounded-md border border-slate-200 bg-white px-2 text-sm tabular-nums text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          inputMode="numeric"
+          max={999}
+          min={1}
+          step={1}
+          title="Quantity"
+          type="number"
+          value={quantityDraft}
+          onBlur={(event) => onCommitQuantity(index, event.currentTarget.value)}
+          onChange={(event) => onQuantityDraftChange(index, event.currentTarget.value)}
+          onKeyDown={handleQuantityKeyDown}
+        />
+        <button
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={!canMoveUp}
+          title="Move up"
+          type="button"
+          onClick={() => onMove(index, -1)}
+        >
+          <ArrowUp size={14} />
+        </button>
+        <button
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={!canMoveDown}
+          title="Move down"
+          type="button"
+          onClick={() => onMove(index, 1)}
+        >
+          <ArrowDown size={14} />
+        </button>
+        <button
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-red-100 text-red-500 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+          title="Remove"
+          type="button"
+          onClick={() => onRemove(index)}
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+      {!valid ? (
+        <p className="mt-1 truncate px-1 text-xs text-amber-700">
+          Missing or unsupported object file.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+type ContainerDraftEntryRowProps = {
+  objectFileOptions: readonly { label: string; value: string }[];
+  onObjectFileChange: (objectFileNodeId: string) => void;
+  onRemove: () => void;
+};
+
+function ContainerDraftEntryRow({
+  objectFileOptions,
+  onObjectFileChange,
+  onRemove
+}: ContainerDraftEntryRowProps) {
+  return (
+    <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 p-1.5">
+      <div className="flex items-center gap-1.5">
+        <select
+          aria-label="Object"
+          className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-500 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          title="Object"
+          value=""
+          onChange={(event) => onObjectFileChange(event.currentTarget.value)}
+        >
+          <option value="">Select object</option>
+          {objectFileOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <input
+          className="h-8 w-14 shrink-0 rounded-md border border-slate-200 bg-white px-2 text-sm tabular-nums text-slate-400"
+          disabled
+          inputMode="numeric"
+          title="Quantity"
+          type="number"
+          value="1"
+          readOnly
+        />
+        <button
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-red-100 bg-white text-red-500 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+          title="Remove"
+          type="button"
+          onClick={onRemove}
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -2299,6 +2921,38 @@ function CounterNumberGrid({
   );
 }
 
+type StackDisplayNumberGridProps = {
+  fields: readonly StackDisplayNumberFieldDefinition[];
+  value: StackDisplayDraft;
+  onCommit: (fieldKey: StackDisplayNumberFieldKey, value: string) => void;
+  onDraftChange: (fieldKey: StackDisplayFieldKey, value: string) => void;
+  onReset: (fieldKey: StackDisplayFieldKey) => void;
+};
+
+function StackDisplayNumberGrid({
+  fields,
+  value,
+  onCommit,
+  onDraftChange,
+  onReset
+}: StackDisplayNumberGridProps) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {fields.map((field) => (
+        <InspectorBehaviorNumberField
+          key={field.key}
+          field={field}
+          settings={stackDisplayNumberFieldSettings[field.key]}
+          value={value[field.key]}
+          onCommit={onCommit}
+          onDraftChange={onDraftChange}
+          onReset={onReset}
+        />
+      ))}
+    </div>
+  );
+}
+
 type ImageNumberGridProps = {
   fields: readonly ImageNumberFieldDefinition[];
   value: ImageDraft;
@@ -2541,6 +3195,14 @@ function getFallbackCounterDraftValue(): ProjectObjectCounter {
   return getDefaultProjectObjectCounter();
 }
 
+function getFallbackDeckDraftValue(): ProjectObjectDeck {
+  return getDefaultProjectObjectDeck();
+}
+
+function getFallbackStackDisplayDraftValue(): ProjectObjectStackDisplay {
+  return getDefaultProjectObjectStackDisplay();
+}
+
 function getFallbackDieDraftValue(): ProjectObjectDie {
   return getDefaultProjectObjectDie();
 }
@@ -2607,6 +3269,57 @@ function getLayoutMainAxisLabel(mode: ProjectObjectLayoutMode) {
 
 function getLayoutCrossAxisLabel(mode: ProjectObjectLayoutMode) {
   return mode === "vertical" ? "Horizontal" : "Vertical";
+}
+
+function getContainerObjectFileOptions(
+  fileTree: readonly ProjectFileNode[],
+  acceptedObjectKinds: readonly ProjectObjectKind[]
+) {
+  const acceptedKindSet = new Set(acceptedObjectKinds);
+  const options: { label: string; value: string }[] = [];
+
+  collectContainerObjectFileOptions(fileTree, acceptedKindSet, options);
+
+  return options;
+}
+
+function collectContainerObjectFileOptions(
+  fileTree: readonly ProjectFileNode[],
+  acceptedObjectKinds: ReadonlySet<ProjectObjectKind>,
+  options: { label: string; value: string }[]
+) {
+  for (const node of fileTree) {
+    if (node.type === "folder") {
+      collectContainerObjectFileOptions(node.children ?? [], acceptedObjectKinds, options);
+      continue;
+    }
+
+    if (node.kind !== "object") {
+      continue;
+    }
+
+    const rootObject = node.objectTree?.[0];
+
+    if (!rootObject || !acceptedObjectKinds.has(rootObject.kind)) {
+      continue;
+    }
+
+    options.push({
+      label: node.name,
+      value: node.id
+    });
+  }
+}
+
+function getContainerEntryObjectFileOptions(
+  objectFileOptions: readonly { label: string; value: string }[],
+  usedObjectFileNodeIds: ReadonlySet<string>,
+  currentObjectFileNodeId: string
+) {
+  return objectFileOptions.filter(
+    (option) =>
+      option.value === currentObjectFileNodeId || !usedObjectFileNodeIds.has(option.value)
+  );
 }
 
 function cx(...classes: Array<string | false | null | undefined>) {

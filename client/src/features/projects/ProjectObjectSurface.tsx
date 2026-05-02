@@ -9,15 +9,18 @@ import type {
 } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectDieFace,
-  getDefaultProjectObjectShapePolygonPoints
+  getDefaultProjectObjectShapePolygonPoints,
+  getProjectObjectContainerTotalCount
 } from "@bg-maker/shared";
 import type { CSSProperties } from "react";
 import {
   getProjectObjectNodeCounter,
   getProjectObjectNodeAppearance,
+  getProjectObjectNodeContainer,
   getProjectObjectNodeDie,
   getProjectObjectNodeImage,
   getProjectObjectNodeShape,
+  getProjectObjectNodeStackDisplay,
   getProjectObjectNodeText
 } from "./project-object-tree";
 import { ProjectObjectKindIcon } from "./project-object-tree-ui";
@@ -35,6 +38,10 @@ export function ProjectObjectSurface({ imageAssetById, object }: ProjectObjectSu
 
   if (object.kind === "counter") {
     return <CounterVisual object={object} />;
+  }
+
+  if (object.kind === "deck") {
+    return <DeckVisual object={object} />;
   }
 
   if (object.kind === "die") {
@@ -104,6 +111,48 @@ function CounterVisual({ object }: ObjectVisualProps) {
       <span className="min-w-0 max-w-full truncate text-3xl font-bold leading-none tracking-normal text-blue-950 tabular-nums">
         {displayValue}
       </span>
+    </div>
+  );
+}
+
+function DeckVisual({ object }: ObjectVisualProps) {
+  const appearance = getProjectObjectNodeAppearance(object);
+  const container = getProjectObjectNodeContainer(object);
+  const stackDisplay = getProjectObjectNodeStackDisplay(object);
+  const totalCount = getProjectObjectContainerTotalCount(container);
+  const visibleLayerCount = Math.max(
+    1,
+    Math.min(totalCount || 1, stackDisplay.visibleItemCount)
+  );
+
+  return (
+    <div className="relative h-full w-full overflow-visible">
+      {Array.from({ length: visibleLayerCount }, (_, index) => {
+        const reverseIndex = visibleLayerCount - index - 1;
+
+        return (
+          <div
+            key={index}
+            aria-hidden={index > 0}
+            className="absolute inset-0 overflow-hidden shadow-[0_14px_30px_rgba(15,23,42,0.16)]"
+            style={{
+              ...getAppearanceStyle(appearance),
+              transform: `translate(${reverseIndex * stackDisplay.stackOffsetX}px, ${reverseIndex * stackDisplay.stackOffsetY}px)`
+            }}
+          />
+        );
+      })}
+      {totalCount === 0 ? (
+        <div className="absolute inset-0 flex min-w-0 flex-col items-center justify-center px-2 text-sky-800">
+          <ProjectObjectKindIcon kind="deck" size={24} />
+          <span className="mt-2 max-w-full truncate text-xs font-semibold">Empty deck</span>
+        </div>
+      ) : null}
+      {stackDisplay.showCount ? (
+        <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded border border-sky-200 bg-white/90 px-1.5 py-0.5 text-[10px] font-bold leading-none text-sky-700 shadow-sm">
+          {totalCount}
+        </span>
+      ) : null}
     </div>
   );
 }

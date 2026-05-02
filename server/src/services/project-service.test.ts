@@ -2,8 +2,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  projectObjectContainerEntryQuantityLimits,
   projectObjectCounterAffixMaxLength,
   projectObjectDieFaceLabelMaxLength,
+  projectObjectStackDisplayVisibleItemCountLimits,
   type Project
 } from "@bg-maker/shared";
 import sharp from "sharp";
@@ -464,6 +466,83 @@ describe("ProjectService", () => {
             scaleX: 2,
             scaleY: 3,
             width: 77
+          }
+        }
+      }
+    ]);
+  });
+
+  it("normalizes deck components as a card-only container stack", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "object-file",
+        kind: "object",
+        name: "Object file",
+        objectTree: [
+          {
+            id: "deck-1",
+            kind: "deck",
+            name: "Deck 1",
+            components: {
+              container: {
+                entries: [
+                  { objectFileNodeId: " card-file-1 ", quantity: 2 },
+                  { objectFileNodeId: "card-file-1", quantity: 9999 },
+                  { objectFileNodeId: "", quantity: 4 }
+                ]
+              },
+              deck: {
+                sizePreset: "bridge"
+              },
+              rectTransform: {
+                height: 200,
+                scaleX: 2,
+                scaleY: 3,
+                width: 200
+              },
+              stackDisplay: {
+                showCount: false,
+                stackOffsetX: 99,
+                stackOffsetY: -99,
+                visibleItemCount: 99
+              }
+            },
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ]);
+
+    expect(updatedProject?.fileTree[0]?.objectTree).toMatchObject([
+      {
+        id: "deck-1",
+        kind: "deck",
+        components: {
+          container: {
+            entries: [
+              {
+                objectFileNodeId: "card-file-1",
+                quantity: projectObjectContainerEntryQuantityLimits.max
+              }
+            ]
+          },
+          deck: {
+            sizePreset: "bridge"
+          },
+          rectTransform: {
+            height: 89,
+            scaleX: 1,
+            scaleY: 1,
+            width: 57
+          },
+          stackDisplay: {
+            showCount: false,
+            stackOffsetX: 24,
+            stackOffsetY: -24,
+            visibleItemCount: projectObjectStackDisplayVisibleItemCountLimits.max
           }
         }
       }

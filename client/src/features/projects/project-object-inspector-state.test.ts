@@ -1,12 +1,15 @@
 import type {
   ProjectObjectAppearance,
   ProjectObjectCard,
+  ProjectObjectContainer,
   ProjectObjectCounter,
+  ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectImage,
   ProjectObjectLayout,
   ProjectObjectRectTransform,
   ProjectObjectShape,
+  ProjectObjectStackDisplay,
   ProjectObjectText
 } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
@@ -14,15 +17,23 @@ import {
   createAppearanceDraft,
   createCardDraft,
   createCounterDraft,
+  createDeckDraft,
   createDieDraft,
   createImageDraft,
   createLayoutDraft,
   createRectTransformDraft,
   createShapePolygonPointDrafts,
+  createStackDisplayDraft,
   createTextDraft,
   getAppearanceWithDraftField,
   getCardWithDraftField,
+  getContainerWithAddedEntry,
+  getContainerWithEntryObjectFileNodeId,
+  getContainerWithEntryQuantityDraftField,
+  getContainerWithMovedEntry,
+  getContainerWithRemovedEntry,
   getCounterWithDraftField,
+  getDeckWithDraftField,
   getDieFace,
   getDieFaces,
   getDieWithDraftField,
@@ -37,17 +48,20 @@ import {
   getShapeWithPolygonPointDraftField,
   getShapeWithRemovedPolygonPoint,
   getShapeWithVariant,
+  getStackDisplayWithDraftField,
   getTextFontStyleForItalic,
   getTextFontWeightForBold,
   getTextWithDraftField,
   isTextFontWeightBold,
   normalizeAppearanceNumberValue,
+  normalizeContainerEntryQuantityValue,
   normalizeCounterNumberValue,
   normalizeDieNumberValue,
   normalizeImageNumberValue,
   normalizeLayoutNumberValue,
   normalizeRectTransformValue,
   normalizeShapePolygonPointValue,
+  normalizeStackDisplayNumberValue,
   normalizeTextNumberValue,
   parseRectTransformDraftValue
 } from "./project-object-inspector-state";
@@ -88,6 +102,24 @@ const counter: ProjectObjectCounter = {
   prefix: "",
   step: 1,
   suffix: " HP"
+};
+
+const deck: ProjectObjectDeck = {
+  sizePreset: "poker"
+};
+
+const container: ProjectObjectContainer = {
+  entries: [
+    { objectFileNodeId: "card-file-1", quantity: 2 },
+    { objectFileNodeId: "card-file-2", quantity: 3 }
+  ]
+};
+
+const stackDisplay: ProjectObjectStackDisplay = {
+  showCount: true,
+  stackOffsetX: 2,
+  stackOffsetY: -2,
+  visibleItemCount: 4
 };
 
 const die: ProjectObjectDie = {
@@ -244,6 +276,75 @@ describe("project object inspector state", () => {
     });
     expect(getCounterWithDraftField(counter, "boundsMode", "bounce")).toBeNull();
     expect(getCounterWithDraftField(counter, "step", "nope")).toBeNull();
+  });
+
+  it("creates and updates deck container and stack display drafts", () => {
+    expect(createDeckDraft(deck)).toEqual({
+      sizePreset: "poker"
+    });
+    expect(getDeckWithDraftField(deck, "sizePreset", "bridge")).toMatchObject({
+      sizePreset: "bridge"
+    });
+    expect(createStackDisplayDraft(stackDisplay)).toEqual({
+      showCount: true,
+      stackOffsetX: "2",
+      stackOffsetY: "-2",
+      visibleItemCount: "4"
+    });
+    expect(normalizeStackDisplayNumberValue("visibleItemCount", 20)).toBe(12);
+    expect(getStackDisplayWithDraftField(stackDisplay, "showCount", false)).toMatchObject({
+      showCount: false
+    });
+    expect(getStackDisplayWithDraftField(stackDisplay, "stackOffsetX", "24")).toMatchObject({
+      stackOffsetX: 24
+    });
+    expect(getStackDisplayWithDraftField(stackDisplay, "visibleItemCount", "0")).toMatchObject({
+      visibleItemCount: 1
+    });
+  });
+
+  it("updates generic container entries", () => {
+    expect(normalizeContainerEntryQuantityValue(1200)).toBe(999);
+    expect(getContainerWithAddedEntry(container, "card-file-3")).toMatchObject({
+      entries: [
+        { objectFileNodeId: "card-file-1", quantity: 2 },
+        { objectFileNodeId: "card-file-2", quantity: 3 },
+        { objectFileNodeId: "card-file-3", quantity: 1 }
+      ]
+    });
+    expect(getContainerWithAddedEntry(container, "card-file-1")).toMatchObject({
+      entries: [
+        { objectFileNodeId: "card-file-1", quantity: 3 },
+        { objectFileNodeId: "card-file-2", quantity: 3 }
+      ]
+    });
+    expect(getContainerWithEntryQuantityDraftField(container, 1, "8")).toMatchObject({
+      entries: [
+        { objectFileNodeId: "card-file-1", quantity: 2 },
+        { objectFileNodeId: "card-file-2", quantity: 8 }
+      ]
+    });
+    expect(getContainerWithEntryObjectFileNodeId(container, 1, " card-file-3 ")).toMatchObject({
+      entries: [
+        { objectFileNodeId: "card-file-1", quantity: 2 },
+        { objectFileNodeId: "card-file-3", quantity: 3 }
+      ]
+    });
+    expect(getContainerWithEntryObjectFileNodeId(container, 1, "card-file-1")).toMatchObject({
+      entries: [{ objectFileNodeId: "card-file-1", quantity: 5 }]
+    });
+    expect(getContainerWithMovedEntry(container, 1, -1)).toMatchObject({
+      entries: [
+        { objectFileNodeId: "card-file-2", quantity: 3 },
+        { objectFileNodeId: "card-file-1", quantity: 2 }
+      ]
+    });
+    expect(getContainerWithRemovedEntry(container, 0)).toMatchObject({
+      entries: [{ objectFileNodeId: "card-file-2", quantity: 3 }]
+    });
+    expect(getContainerWithAddedEntry(container, " ")).toBeNull();
+    expect(getContainerWithEntryObjectFileNodeId(container, 0, " ")).toBeNull();
+    expect(getContainerWithEntryQuantityDraftField(container, 0, "nope")).toBeNull();
   });
 
   it("creates and updates die drafts and faces", () => {

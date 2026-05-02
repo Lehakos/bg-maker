@@ -38,6 +38,10 @@ export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindI
     return <Hash {...iconProps} />;
   }
 
+  if (kind === "deck") {
+    return <Boxes {...iconProps} />;
+  }
+
   if (kind === "die") {
     return <Dices {...iconProps} />;
   }

@@ -3,6 +3,7 @@ import type { ProjectObjectKind } from "@bg-maker/shared";
 const projectObjectKindIconClassNames: Record<ProjectObjectKind, string> = {
   card: "text-rose-600",
   counter: "text-blue-600",
+  deck: "text-sky-700",
   die: "text-amber-600",
   group: "text-teal-700",
   image: "text-sky-600",
@@ -14,6 +15,7 @@ const projectObjectKindIconClassNames: Record<ProjectObjectKind, string> = {
 const projectObjectKindLabels: Record<ProjectObjectKind, string> = {
   card: "Card",
   counter: "Counter",
+  deck: "Deck",
   die: "Die",
   group: "Group",
   image: "Image",

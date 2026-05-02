@@ -4,7 +4,9 @@ import type {
   ProjectFileKind,
   ProjectFileNode,
   ProjectObjectCard,
+  ProjectObjectContainer,
   ProjectObjectCounter,
+  ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectDoubleSide,
   ProjectObjectKind,
@@ -12,6 +14,7 @@ import type {
   ProjectObjectNode,
   ProjectObjectRectTransform,
   ProjectObjectShape,
+  ProjectObjectStackDisplay,
   ProjectObjectText
 } from "@bg-maker/shared";
 import { hasProjectObjectSides } from "@bg-maker/shared";
@@ -193,6 +196,14 @@ export function getProjectObjectNodeCounter(object: ProjectObjectNode): ProjectO
   return projectObjectComponentEngine.getCounter(object);
 }
 
+export function getProjectObjectNodeContainer(object: ProjectObjectNode): ProjectObjectContainer {
+  return projectObjectComponentEngine.getContainer(object);
+}
+
+export function getProjectObjectNodeDeck(object: ProjectObjectNode): ProjectObjectDeck {
+  return projectObjectComponentEngine.getDeck(object);
+}
+
 export function getProjectObjectNodeDie(object: ProjectObjectNode): ProjectObjectDie {
   return projectObjectComponentEngine.getDie(object);
 }
@@ -215,6 +226,12 @@ export function getProjectObjectNodeLayout(object: ProjectObjectNode): ProjectOb
 
 export function getProjectObjectNodeShape(object: ProjectObjectNode): ProjectObjectShape {
   return projectObjectComponentEngine.getShape(object);
+}
+
+export function getProjectObjectNodeStackDisplay(
+  object: ProjectObjectNode
+): ProjectObjectStackDisplay {
+  return projectObjectComponentEngine.getStackDisplay(object);
 }
 
 export function setProjectObjectNodeRectTransform(
@@ -260,6 +277,30 @@ export function setProjectObjectNodeCounter(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withCounter(node, counter)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeContainer(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  container: ProjectObjectContainer
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withContainer(node, container)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeDeck(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  deck: ProjectObjectDeck
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withDeck(node, deck)
   );
 
   return result.changed ? result.nodes : objectTree;
@@ -332,6 +373,18 @@ export function setProjectObjectNodeShape(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withShape(node, shape)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeStackDisplay(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  stackDisplay: ProjectObjectStackDisplay
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withStackDisplay(node, stackDisplay)
   );
 
   return result.changed ? result.nodes : objectTree;

@@ -3,9 +3,11 @@ import type {
   ProjectObjectBorderStyle,
   ProjectObjectCard,
   ProjectObjectCardSizePresetValue,
+  ProjectObjectContainer,
   ProjectObjectCounter,
   ProjectObjectCounterBoundsMode,
   ProjectObjectCounterDisplayMode,
+  ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectDieFace,
   ProjectObjectDieFaceMode,
@@ -19,6 +21,7 @@ import type {
   ProjectObjectShape,
   ProjectObjectShapePoint,
   ProjectObjectShapeVariant,
+  ProjectObjectStackDisplay,
   ProjectObjectText,
   ProjectObjectTextAlign,
   ProjectObjectTextFontStyle,
@@ -27,6 +30,7 @@ import type {
 import {
   getDefaultProjectObjectShapePolygonPoints,
   getDefaultProjectObjectDieFace,
+  getDefaultProjectObjectStackDisplay,
   normalizeProjectObjectDieActiveFace,
   normalizeProjectObjectDieFaceCount,
   projectObjectCardCustomSizePresetId,
@@ -36,11 +40,14 @@ import {
   projectObjectCounterDisplayModes,
   projectObjectCounterStepLimits,
   projectObjectCounterValueLimits,
+  projectObjectContainerEntryQuantityLimits,
   projectObjectDieFaceCountLimits,
   projectObjectDieFaceLabelMaxLength,
   projectObjectDieFaceModes,
   projectObjectShapePolygonCoordinateLimits,
-  projectObjectShapePolygonPointCountLimits
+  projectObjectShapePolygonPointCountLimits,
+  projectObjectStackDisplayOffsetLimits,
+  projectObjectStackDisplayVisibleItemCountLimits
 } from "@bg-maker/shared";
 
 export type RectTransformFieldKey = keyof ProjectObjectRectTransform;
@@ -78,6 +85,22 @@ export type CounterDraft = {
   prefix: string;
   step: string;
   suffix: string;
+};
+
+export type DeckFieldKey = keyof ProjectObjectDeck;
+export type DeckDraft = {
+  sizePreset: ProjectObjectCardSizePresetValue;
+};
+export type StackDisplayFieldKey = keyof ProjectObjectStackDisplay;
+export type StackDisplayNumberFieldKey = Extract<
+  StackDisplayFieldKey,
+  "stackOffsetX" | "stackOffsetY" | "visibleItemCount"
+>;
+export type StackDisplayDraft = {
+  showCount: boolean;
+  stackOffsetX: string;
+  stackOffsetY: string;
+  visibleItemCount: string;
 };
 
 export type DieFieldKey = "activeFace" | "faceCount";
@@ -184,6 +207,30 @@ export const counterNumberFieldSettings = {
   }
 } as const satisfies Record<
   CounterNumberFieldKey,
+  { decimals: number; max: number; min: number; step: number }
+>;
+
+export const stackDisplayNumberFieldSettings = {
+  stackOffsetX: {
+    decimals: 0,
+    max: projectObjectStackDisplayOffsetLimits.max,
+    min: projectObjectStackDisplayOffsetLimits.min,
+    step: 1
+  },
+  stackOffsetY: {
+    decimals: 0,
+    max: projectObjectStackDisplayOffsetLimits.max,
+    min: projectObjectStackDisplayOffsetLimits.min,
+    step: 1
+  },
+  visibleItemCount: {
+    decimals: 0,
+    max: projectObjectStackDisplayVisibleItemCountLimits.max,
+    min: projectObjectStackDisplayVisibleItemCountLimits.min,
+    step: 1
+  }
+} as const satisfies Record<
+  StackDisplayNumberFieldKey,
   { decimals: number; max: number; min: number; step: number }
 >;
 
@@ -390,6 +437,26 @@ export function createCounterDraft(counter: ProjectObjectCounter): CounterDraft 
   };
 }
 
+export function createDeckDraft(deck: ProjectObjectDeck): DeckDraft {
+  return {
+    sizePreset: deck.sizePreset
+  };
+}
+
+export function createStackDisplayDraft(
+  stackDisplay: ProjectObjectStackDisplay
+): StackDisplayDraft {
+  return {
+    showCount: stackDisplay.showCount,
+    stackOffsetX: formatStackDisplayNumberValue(stackDisplay.stackOffsetX, "stackOffsetX"),
+    stackOffsetY: formatStackDisplayNumberValue(stackDisplay.stackOffsetY, "stackOffsetY"),
+    visibleItemCount: formatStackDisplayNumberValue(
+      stackDisplay.visibleItemCount,
+      "visibleItemCount"
+    )
+  };
+}
+
 export function createDieDraft(die: ProjectObjectDie): DieDraft {
   return {
     activeFace: String(normalizeProjectObjectDieActiveFace(die.activeFace, die.faceCount)),
@@ -469,6 +536,169 @@ export function getCounterWithDraftField(
   }
 
   return areCountersEqual(counter, nextCounter) ? null : nextCounter;
+}
+
+export function getDeckWithDraftField(
+  deck: ProjectObjectDeck,
+  fieldKey: DeckFieldKey,
+  value: string | boolean
+) {
+  const nextDeck = createNextDeck(deck, fieldKey, value);
+
+  if (!nextDeck) {
+    return null;
+  }
+
+  return areDecksEqual(deck, nextDeck) ? null : nextDeck;
+}
+
+export function getStackDisplayWithDraftField(
+  stackDisplay: ProjectObjectStackDisplay,
+  fieldKey: StackDisplayFieldKey,
+  value: string | boolean
+) {
+  const nextStackDisplay = createNextStackDisplay(stackDisplay, fieldKey, value);
+
+  if (!nextStackDisplay) {
+    return null;
+  }
+
+  return areStackDisplaysEqual(stackDisplay, nextStackDisplay) ? null : nextStackDisplay;
+}
+
+export function getContainerWithAddedEntry(
+  container: ProjectObjectContainer,
+  objectFileNodeId: string
+) {
+  const normalizedObjectFileNodeId = objectFileNodeId.trim();
+
+  if (!normalizedObjectFileNodeId) {
+    return null;
+  }
+
+  const currentEntryIndex = container.entries.findIndex(
+    (entry) => entry.objectFileNodeId === normalizedObjectFileNodeId
+  );
+  const entries =
+    currentEntryIndex === -1
+      ? [...container.entries, { objectFileNodeId: normalizedObjectFileNodeId, quantity: 1 }]
+      : container.entries.map((entry, index) =>
+          index === currentEntryIndex
+            ? {
+                ...entry,
+                quantity: normalizeContainerEntryQuantityValue(entry.quantity + 1)
+              }
+            : entry
+        );
+  const nextContainer = normalizeContainer({
+    ...container,
+    entries
+  });
+
+  return areContainersEqual(container, nextContainer) ? null : nextContainer;
+}
+
+export function getContainerWithRemovedEntry(
+  container: ProjectObjectContainer,
+  entryIndex: number
+) {
+  if (entryIndex < 0 || entryIndex >= container.entries.length) {
+    return null;
+  }
+
+  const nextContainer = normalizeContainer({
+    ...container,
+    entries: container.entries.filter((_, index) => index !== entryIndex)
+  });
+
+  return areContainersEqual(container, nextContainer) ? null : nextContainer;
+}
+
+export function getContainerWithMovedEntry(
+  container: ProjectObjectContainer,
+  entryIndex: number,
+  direction: -1 | 1
+) {
+  const targetIndex = entryIndex + direction;
+
+  if (
+    entryIndex < 0 ||
+    entryIndex >= container.entries.length ||
+    targetIndex < 0 ||
+    targetIndex >= container.entries.length
+  ) {
+    return null;
+  }
+
+  const entries = [...container.entries];
+  const [entry] = entries.splice(entryIndex, 1);
+
+  if (!entry) {
+    return null;
+  }
+
+  entries.splice(targetIndex, 0, entry);
+
+  return normalizeContainer({
+    ...container,
+    entries
+  });
+}
+
+export function getContainerWithEntryObjectFileNodeId(
+  container: ProjectObjectContainer,
+  entryIndex: number,
+  objectFileNodeId: string
+) {
+  const normalizedObjectFileNodeId = objectFileNodeId.trim();
+
+  if (
+    !normalizedObjectFileNodeId ||
+    entryIndex < 0 ||
+    entryIndex >= container.entries.length
+  ) {
+    return null;
+  }
+
+  const nextContainer = normalizeContainer({
+    ...container,
+    entries: container.entries.map((entry, index) =>
+      index === entryIndex
+        ? {
+            ...entry,
+            objectFileNodeId: normalizedObjectFileNodeId
+          }
+        : entry
+    )
+  });
+
+  return areContainersEqual(container, nextContainer) ? null : nextContainer;
+}
+
+export function getContainerWithEntryQuantityDraftField(
+  container: ProjectObjectContainer,
+  entryIndex: number,
+  value: string
+) {
+  const parsedValue = parseRectTransformDraftValue(value);
+
+  if (parsedValue === null || entryIndex < 0 || entryIndex >= container.entries.length) {
+    return null;
+  }
+
+  const nextContainer = normalizeContainer({
+    ...container,
+    entries: container.entries.map((entry, index) =>
+      index === entryIndex
+        ? {
+            ...entry,
+            quantity: normalizeContainerEntryQuantityValue(parsedValue)
+          }
+        : entry
+    )
+  });
+
+  return areContainersEqual(container, nextContainer) ? null : nextContainer;
 }
 
 export function getDieWithDraftField(die: ProjectObjectDie, fieldKey: DieFieldKey, value: string) {
@@ -729,6 +959,26 @@ export function normalizeCounterNumberValue(
   return roundTo(clamp(value, min, max), decimals);
 }
 
+export function normalizeStackDisplayNumberValue(
+  fieldKey: keyof typeof stackDisplayNumberFieldSettings,
+  value: number
+) {
+  const { decimals, max, min } = stackDisplayNumberFieldSettings[fieldKey];
+
+  return roundTo(clamp(value, min, max), decimals);
+}
+
+export function normalizeContainerEntryQuantityValue(value: number) {
+  return roundTo(
+    clamp(
+      value,
+      projectObjectContainerEntryQuantityLimits.min,
+      projectObjectContainerEntryQuantityLimits.max
+    ),
+    0
+  );
+}
+
 export function normalizeDieNumberValue(
   fieldKey: keyof typeof dieNumberFieldSettings,
   value: number
@@ -781,6 +1031,19 @@ export function formatCounterNumberValue(
   const { decimals } = counterNumberFieldSettings[fieldKey];
 
   return String(roundTo(value, decimals));
+}
+
+export function formatStackDisplayNumberValue(
+  value: number,
+  fieldKey: keyof typeof stackDisplayNumberFieldSettings
+) {
+  const { decimals } = stackDisplayNumberFieldSettings[fieldKey];
+
+  return String(roundTo(value, decimals));
+}
+
+export function formatContainerEntryQuantityValue(value: number) {
+  return String(normalizeContainerEntryQuantityValue(value));
 }
 
 export function formatDieNumberValue(value: number, fieldKey: keyof typeof dieNumberFieldSettings) {
@@ -895,6 +1158,42 @@ function createNextCounter(
   return normalizeCounter({
     ...counter,
     [fieldKey]: normalizeCounterNumberValue(fieldKey, parsedValue)
+  });
+}
+
+function createNextDeck(
+  deck: ProjectObjectDeck,
+  fieldKey: DeckFieldKey,
+  value: string | boolean
+): ProjectObjectDeck | null {
+  if (fieldKey === "sizePreset") {
+    return typeof value === "string" &&
+      cardSizePresetValues.has(value as ProjectObjectCardSizePresetValue)
+      ? { ...deck, sizePreset: value as ProjectObjectCardSizePresetValue }
+      : null;
+  }
+
+  return null;
+}
+
+function createNextStackDisplay(
+  stackDisplay: ProjectObjectStackDisplay,
+  fieldKey: StackDisplayFieldKey,
+  value: string | boolean
+): ProjectObjectStackDisplay | null {
+  if (fieldKey === "showCount") {
+    return typeof value === "boolean" ? { ...stackDisplay, showCount: value } : null;
+  }
+
+  const parsedValue = typeof value === "string" ? parseRectTransformDraftValue(value) : null;
+
+  if (parsedValue === null) {
+    return null;
+  }
+
+  return normalizeStackDisplay({
+    ...stackDisplay,
+    [fieldKey]: normalizeStackDisplayNumberValue(fieldKey, parsedValue)
   });
 }
 
@@ -1100,6 +1399,44 @@ function areCountersEqual(left: ProjectObjectCounter, right: ProjectObjectCounte
   );
 }
 
+function areDecksEqual(left: ProjectObjectDeck, right: ProjectObjectDeck) {
+  return left.sizePreset === right.sizePreset;
+}
+
+function areStackDisplaysEqual(
+  left: ProjectObjectStackDisplay,
+  right: ProjectObjectStackDisplay
+) {
+  return (
+    left.showCount === right.showCount &&
+    left.stackOffsetX === right.stackOffsetX &&
+    left.stackOffsetY === right.stackOffsetY &&
+    left.visibleItemCount === right.visibleItemCount
+  );
+}
+
+function areContainersEqual(left: ProjectObjectContainer, right: ProjectObjectContainer) {
+  return areContainerEntriesEqual(left.entries, right.entries);
+}
+
+function areContainerEntriesEqual(
+  left: readonly ProjectObjectContainer["entries"][number][],
+  right: readonly ProjectObjectContainer["entries"][number][]
+) {
+  return (
+    left.length === right.length &&
+    left.every((leftEntry, index) => {
+      const rightEntry = right[index];
+
+      return (
+        Boolean(rightEntry) &&
+        leftEntry.objectFileNodeId === rightEntry.objectFileNodeId &&
+        leftEntry.quantity === rightEntry.quantity
+      );
+    })
+  );
+}
+
 function areDiesEqual(left: ProjectObjectDie, right: ProjectObjectDie) {
   return (
     left.activeFace === right.activeFace &&
@@ -1202,6 +1539,57 @@ function normalizeCounter(counter: ProjectObjectCounter): ProjectObjectCounter {
     step: normalizeCounterNumberValue("step", counter.step),
     suffix: counter.suffix.slice(0, projectObjectCounterAffixMaxLength)
   };
+}
+
+function normalizeStackDisplay(
+  stackDisplay: ProjectObjectStackDisplay
+): ProjectObjectStackDisplay {
+  const defaultStackDisplay = getDefaultProjectObjectStackDisplay();
+
+  return {
+    ...stackDisplay,
+    showCount:
+      typeof stackDisplay.showCount === "boolean"
+        ? stackDisplay.showCount
+        : defaultStackDisplay.showCount,
+    stackOffsetX: normalizeStackDisplayNumberValue("stackOffsetX", stackDisplay.stackOffsetX),
+    stackOffsetY: normalizeStackDisplayNumberValue("stackOffsetY", stackDisplay.stackOffsetY),
+    visibleItemCount: normalizeStackDisplayNumberValue(
+      "visibleItemCount",
+      stackDisplay.visibleItemCount
+    )
+  };
+}
+
+function normalizeContainer(container: ProjectObjectContainer): ProjectObjectContainer {
+  return {
+    ...container,
+    entries: normalizeContainerEntries(container.entries)
+  };
+}
+
+function normalizeContainerEntries(entries: ProjectObjectContainer["entries"]) {
+  const quantityByObjectFileNodeId = new Map<string, number>();
+
+  for (const entry of entries) {
+    const objectFileNodeId = entry.objectFileNodeId.trim();
+
+    if (!objectFileNodeId) {
+      continue;
+    }
+
+    quantityByObjectFileNodeId.set(
+      objectFileNodeId,
+      normalizeContainerEntryQuantityValue(
+        (quantityByObjectFileNodeId.get(objectFileNodeId) ?? 0) + entry.quantity
+      )
+    );
+  }
+
+  return Array.from(quantityByObjectFileNodeId, ([objectFileNodeId, quantity]) => ({
+    objectFileNodeId,
+    quantity
+  }));
 }
 
 function resizeDieFaces(die: ProjectObjectDie, faceCount: number) {

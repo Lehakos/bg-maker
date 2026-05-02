@@ -5,6 +5,11 @@ export {
   withProjectObjectAppearanceComponent
 } from "./appearance-component";
 export { getProjectObjectCardComponent, withProjectObjectCardComponent } from "./card-component";
+export {
+  getProjectObjectContainerComponent,
+  withProjectObjectContainerComponent
+} from "./container-component";
+export { getProjectObjectDeckComponent, withProjectObjectDeckComponent } from "./deck-component";
 export { getProjectObjectDieComponent, withProjectObjectDieComponent } from "./die-component";
 export {
   getProjectObjectDoubleSideComponent,
@@ -20,6 +25,10 @@ export {
   getProjectObjectRectTransformComponent,
   withProjectObjectRectTransformComponent
 } from "./rect-transform-component";
+export {
+  getProjectObjectStackDisplayComponent,
+  withProjectObjectStackDisplayComponent
+} from "./stack-display-component";
 export {
   getProjectObjectLayoutComponent,
   withProjectObjectLayoutComponent

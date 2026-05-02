@@ -4,7 +4,9 @@ import {
   type ProjectFileNode,
   type ProjectObjectAppearance,
   type ProjectObjectCard,
+  type ProjectObjectContainer,
   type ProjectObjectCounter,
+  type ProjectObjectDeck,
   type ProjectObjectDie,
   type ProjectObjectImage,
   type ProjectObjectKind,
@@ -12,6 +14,7 @@ import {
   type ProjectObjectNode,
   type ProjectObjectRectTransform,
   type ProjectObjectShape,
+  type ProjectObjectStackDisplay,
   type ProjectObjectText
 } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
@@ -23,7 +26,9 @@ import {
   getExpandableProjectObjectNodeIds,
   getProjectObjectNodeAppearance,
   getProjectObjectNodeCard,
+  getProjectObjectNodeContainer,
   getProjectObjectNodeCounter,
+  getProjectObjectNodeDeck,
   getProjectObjectNodeDie,
   getProjectObjectNodeChildren,
   getProjectObjectNodeDoubleSide,
@@ -32,18 +37,22 @@ import {
   getProjectObjectNodeLayout,
   getProjectObjectNodeRectTransform,
   getProjectObjectNodeShape,
+  getProjectObjectNodeStackDisplay,
   getProjectObjectNodeText,
   moveProjectObjectNode,
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
   setProjectObjectNodeCard,
+  setProjectObjectNodeContainer,
   setProjectObjectNodeCounter,
+  setProjectObjectNodeDeck,
   setProjectObjectNodeDie,
   setProjectObjectNodeDoubleSide,
   setProjectObjectNodeImage,
   setProjectObjectNodeLayout,
   setProjectObjectNodeRectTransform,
   setProjectObjectNodeShape,
+  setProjectObjectNodeStackDisplay,
   setProjectObjectNodeText,
   setProjectObjectNodeVisibility,
   updateProjectFileNodeObjectTree
@@ -267,6 +276,51 @@ describe("project object tree helpers", () => {
     ).toEqual({ activeSide: "front", enabled: false });
   });
 
+  it("creates deck defaults and locks deck dimensions to the selected size preset", () => {
+    const objectTree = [objectNode("deck-1", "Deck", "deck")];
+    const bridgeDeck: ProjectObjectDeck = {
+      sizePreset: "bridge"
+    };
+    const oversizedRectTransform: ProjectObjectRectTransform = {
+      height: 200,
+      pivotX: 0.5,
+      pivotY: 0.5,
+      rotation: 0,
+      scaleX: 2,
+      scaleY: 3,
+      width: 200,
+      x: 10,
+      y: 20
+    };
+
+    const bridgeTree = setProjectObjectNodeDeck(objectTree, "deck-1", bridgeDeck);
+    const resizedBridgeTree = setProjectObjectNodeRectTransform(
+      bridgeTree,
+      "deck-1",
+      oversizedRectTransform
+    );
+    const deck = findProjectObjectNode(bridgeTree, "deck-1")!;
+
+    expect(getProjectObjectNodeDeck(deck)).toEqual(bridgeDeck);
+    expect(getProjectObjectNodeContainer(deck)).toEqual({
+      entries: []
+    });
+    expect(getProjectObjectNodeStackDisplay(deck)).toMatchObject({
+      showCount: true,
+      visibleItemCount: 4
+    });
+    expect(
+      getProjectObjectNodeRectTransform(findProjectObjectNode(resizedBridgeTree, "deck-1")!)
+    ).toMatchObject({
+      height: 89,
+      scaleX: 1,
+      scaleY: 1,
+      width: 57,
+      x: 10,
+      y: 20
+    });
+  });
+
   it("keeps card children on the active card side", () => {
     const objectTree = [objectNode("card-1", "Card", "card")];
     const frontChild = objectNode("front-label", "Front label", "label");
@@ -312,6 +366,7 @@ describe("project object tree helpers", () => {
 
   it("clips card, token, counter, die, and shape children by object kind", () => {
     expect(doesProjectObjectClipChildren("card")).toBe(true);
+    expect(doesProjectObjectClipChildren("deck")).toBe(true);
     expect(doesProjectObjectClipChildren("token")).toBe(true);
     expect(doesProjectObjectClipChildren("counter")).toBe(true);
     expect(doesProjectObjectClipChildren("die")).toBe(true);
@@ -436,6 +491,21 @@ describe("project object tree helpers", () => {
       activeSide: "back" as const,
       enabled: true
     };
+    const deck: ProjectObjectDeck = {
+      sizePreset: "custom"
+    };
+    const container: ProjectObjectContainer = {
+      entries: [
+        { objectFileNodeId: "card-file-1", quantity: 2 },
+        { objectFileNodeId: "card-file-2", quantity: 3 }
+      ]
+    };
+    const stackDisplay: ProjectObjectStackDisplay = {
+      showCount: false,
+      stackOffsetX: 4,
+      stackOffsetY: -3,
+      visibleItemCount: 6
+    };
 
     const appearanceTree = setProjectObjectNodeAppearance(objectTree, "shape-1", appearance);
     const textTree = setProjectObjectNodeText(objectTree, "label-1", text);
@@ -452,6 +522,14 @@ describe("project object tree helpers", () => {
       [objectNode("token-1", "Token", "token")],
       "token-1",
       doubleSide
+    );
+    const deckObjectTree = [objectNode("deck-1", "Deck", "deck")];
+    const deckTree = setProjectObjectNodeDeck(deckObjectTree, "deck-1", deck);
+    const containerTree = setProjectObjectNodeContainer(deckTree, "deck-1", container);
+    const stackDisplayTree = setProjectObjectNodeStackDisplay(
+      containerTree,
+      "deck-1",
+      stackDisplay
     );
 
     expect(
@@ -470,11 +548,27 @@ describe("project object tree helpers", () => {
     expect(getProjectObjectNodeDoubleSide(findProjectObjectNode(tokenTree, "token-1")!)).toEqual(
       doubleSide
     );
+    expect(getProjectObjectNodeDeck(findProjectObjectNode(stackDisplayTree, "deck-1")!)).toEqual(
+      deck
+    );
+    expect(
+      getProjectObjectNodeContainer(findProjectObjectNode(stackDisplayTree, "deck-1")!)
+    ).toEqual(container);
+    expect(
+      getProjectObjectNodeStackDisplay(findProjectObjectNode(stackDisplayTree, "deck-1")!)
+    ).toEqual(stackDisplay);
     expect(findProjectObjectNode(objectTree, "image-1")?.components?.image).toBeUndefined();
     expect(setProjectObjectNodeCounter(objectTree, "missing-object", counter)).toBe(objectTree);
+    expect(setProjectObjectNodeContainer(objectTree, "missing-object", container)).toBe(
+      objectTree
+    );
+    expect(setProjectObjectNodeDeck(objectTree, "missing-object", deck)).toBe(objectTree);
     expect(setProjectObjectNodeImage(objectTree, "missing-object", image)).toBe(objectTree);
     expect(setProjectObjectNodeDie(objectTree, "missing-object", die)).toBe(objectTree);
     expect(setProjectObjectNodeLayout(objectTree, "missing-object", layout)).toBe(objectTree);
+    expect(setProjectObjectNodeStackDisplay(objectTree, "missing-object", stackDisplay)).toBe(
+      objectTree
+    );
     expect(setProjectObjectNodeDoubleSide(objectTree, "missing-object", doubleSide)).toBe(
       objectTree
     );

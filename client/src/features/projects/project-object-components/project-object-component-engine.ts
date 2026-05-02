@@ -1,7 +1,9 @@
 import type {
   ProjectObjectAppearance,
   ProjectObjectCard,
+  ProjectObjectContainer,
   ProjectObjectCounter,
+  ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectDoubleSide,
   ProjectObjectImage,
@@ -10,6 +12,7 @@ import type {
   ProjectObjectNode,
   ProjectObjectRectTransform,
   ProjectObjectShape,
+  ProjectObjectStackDisplay,
   ProjectObjectText
 } from "@bg-maker/shared";
 import { createDefaultProjectObjectNode, getDefaultProjectObjectName } from "@bg-maker/shared";
@@ -22,6 +25,11 @@ import {
   getProjectObjectCounterComponent,
   withProjectObjectCounterComponent
 } from "./counter-component";
+import {
+  getProjectObjectContainerComponent,
+  withProjectObjectContainerComponent
+} from "./container-component";
+import { getProjectObjectDeckComponent, withProjectObjectDeckComponent } from "./deck-component";
 import { getProjectObjectDieComponent, withProjectObjectDieComponent } from "./die-component";
 import {
   getProjectObjectDoubleSideComponent,
@@ -37,6 +45,10 @@ import {
   withProjectObjectRectTransformComponent
 } from "./rect-transform-component";
 import { getProjectObjectShapeComponent, withProjectObjectShapeComponent } from "./shape-component";
+import {
+  getProjectObjectStackDisplayComponent,
+  withProjectObjectStackDisplayComponent
+} from "./stack-display-component";
 import { getProjectObjectTextComponent, withProjectObjectTextComponent } from "./text-component";
 
 export class ProjectObjectComponentEngine {
@@ -63,6 +75,14 @@ export class ProjectObjectComponentEngine {
     return getProjectObjectCounterComponent(object);
   }
 
+  getContainer(object: ProjectObjectNode): ProjectObjectContainer {
+    return getProjectObjectContainerComponent(object);
+  }
+
+  getDeck(object: ProjectObjectNode): ProjectObjectDeck {
+    return getProjectObjectDeckComponent(object);
+  }
+
   getDie(object: ProjectObjectNode): ProjectObjectDie {
     return getProjectObjectDieComponent(object);
   }
@@ -87,6 +107,10 @@ export class ProjectObjectComponentEngine {
     return getProjectObjectShapeComponent(object);
   }
 
+  getStackDisplay(object: ProjectObjectNode): ProjectObjectStackDisplay {
+    return getProjectObjectStackDisplayComponent(object);
+  }
+
   withRectTransform(
     object: ProjectObjectNode,
     rectTransform: ProjectObjectRectTransform
@@ -107,6 +131,17 @@ export class ProjectObjectComponentEngine {
 
   withCounter(object: ProjectObjectNode, counter: ProjectObjectCounter): ProjectObjectNode {
     return withProjectObjectCounterComponent(object, counter);
+  }
+
+  withContainer(
+    object: ProjectObjectNode,
+    container: ProjectObjectContainer
+  ): ProjectObjectNode {
+    return withProjectObjectContainerComponent(object, container);
+  }
+
+  withDeck(object: ProjectObjectNode, deck: ProjectObjectDeck): ProjectObjectNode {
+    return withProjectObjectDeckComponent(object, deck);
   }
 
   withDie(object: ProjectObjectNode, die: ProjectObjectDie): ProjectObjectNode {
@@ -134,6 +169,13 @@ export class ProjectObjectComponentEngine {
 
   withShape(object: ProjectObjectNode, shape: ProjectObjectShape): ProjectObjectNode {
     return withProjectObjectShapeComponent(object, shape);
+  }
+
+  withStackDisplay(
+    object: ProjectObjectNode,
+    stackDisplay: ProjectObjectStackDisplay
+  ): ProjectObjectNode {
+    return withProjectObjectStackDisplayComponent(object, stackDisplay);
   }
 
   private getDefaultObjectName(kind: ProjectObjectKind) {

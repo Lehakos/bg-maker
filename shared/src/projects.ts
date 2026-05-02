@@ -19,6 +19,7 @@ export const projectAssetsFolderName = "Assets";
 export const projectObjectKinds = [
   "group",
   "card",
+  "deck",
   "token",
   "counter",
   "die",
@@ -105,6 +106,45 @@ export const projectObjectSides = ["front", "back"] as const;
 export type ProjectObjectSide = (typeof projectObjectSides)[number];
 
 export type ProjectObjectCard = {
+  sizePreset: ProjectObjectCardSizePresetValue;
+};
+
+export type ProjectObjectSized = {
+  sizePreset: ProjectObjectCardSizePresetValue;
+};
+
+export const projectObjectContainerEntryQuantityLimits = {
+  max: 999,
+  min: 1
+} as const;
+
+export type ProjectObjectContainerEntry = {
+  objectFileNodeId: string;
+  quantity: number;
+};
+
+export type ProjectObjectContainer = {
+  entries: ProjectObjectContainerEntry[];
+};
+
+export const projectObjectStackDisplayVisibleItemCountLimits = {
+  max: 12,
+  min: 1
+} as const;
+
+export const projectObjectStackDisplayOffsetLimits = {
+  max: 24,
+  min: -24
+} as const;
+
+export type ProjectObjectStackDisplay = {
+  showCount: boolean;
+  stackOffsetX: number;
+  stackOffsetY: number;
+  visibleItemCount: number;
+};
+
+export type ProjectObjectDeck = {
   sizePreset: ProjectObjectCardSizePresetValue;
 };
 
@@ -235,13 +275,16 @@ export type ProjectObjectRectTransform = {
 export type ProjectObjectComponents = {
   appearance?: ProjectObjectAppearance;
   card?: ProjectObjectCard;
+  container?: ProjectObjectContainer;
   counter?: ProjectObjectCounter;
+  deck?: ProjectObjectDeck;
   die?: ProjectObjectDie;
   doubleSide?: ProjectObjectDoubleSide;
   image?: ProjectObjectImage;
   layout?: ProjectObjectLayout;
   rectTransform?: ProjectObjectRectTransform;
   shape?: ProjectObjectShape;
+  stackDisplay?: ProjectObjectStackDisplay;
   text?: ProjectObjectText;
 };
 
@@ -306,6 +349,7 @@ export type ApiErrorResponse = {
 const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; width: number }> = {
   card: { height: 88, width: 63 },
   counter: { height: 64, width: 112 },
+  deck: { height: 88, width: 63 },
   die: { height: 120, width: 120 },
   group: { height: 240, width: 320 },
   image: { height: 180, width: 240 },
@@ -317,6 +361,7 @@ const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; wid
 const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
   card: "New card",
   counter: "New counter",
+  deck: "New deck",
   die: "New die",
   group: "New group",
   image: "New image",
@@ -345,6 +390,16 @@ const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAp
     borderWidth: 2,
     opacity: 1,
     padding: 8
+  },
+  deck: {
+    backgroundColor: "#e0f2fe",
+    backgroundOpacity: 1,
+    borderColor: "#0284c7",
+    borderRadius: 5,
+    borderStyle: "solid",
+    borderWidth: 2,
+    opacity: 1,
+    padding: 0
   },
   die: {
     backgroundColor: "#ffffff",
@@ -469,6 +524,41 @@ export function getDefaultProjectObjectCard(): ProjectObjectCard {
   };
 }
 
+export function getProjectObjectContainerAcceptedObjectKinds(
+  kind: ProjectObjectKind = "group"
+): ProjectObjectKind[] {
+  if (kind === "deck") {
+    return ["card"];
+  }
+
+  return [];
+}
+
+export function getDefaultProjectObjectContainer(
+  kind: ProjectObjectKind = "group"
+): ProjectObjectContainer {
+  void kind;
+
+  return {
+    entries: []
+  };
+}
+
+export function getDefaultProjectObjectStackDisplay(): ProjectObjectStackDisplay {
+  return {
+    showCount: true,
+    stackOffsetX: 2,
+    stackOffsetY: -2,
+    visibleItemCount: 4
+  };
+}
+
+export function getDefaultProjectObjectDeck(): ProjectObjectDeck {
+  return {
+    sizePreset: "poker"
+  };
+}
+
 export function getDefaultProjectObjectCounter(): ProjectObjectCounter {
   return {
     boundsMode: "clamp",
@@ -538,15 +628,19 @@ export function getProjectObjectCardSizePreset(
   return projectObjectCardSizePresets.find((preset) => preset.id === sizePreset);
 }
 
-export function isProjectObjectCardSizePresetLocked(card: ProjectObjectCard) {
-  return Boolean(getProjectObjectCardSizePreset(card.sizePreset));
+export function isProjectObjectSizePresetLocked(sizedObject: ProjectObjectSized) {
+  return Boolean(getProjectObjectCardSizePreset(sizedObject.sizePreset));
 }
 
-export function getProjectObjectRectTransformWithCardSizePreset(
+export function isProjectObjectCardSizePresetLocked(card: ProjectObjectSized) {
+  return isProjectObjectSizePresetLocked(card);
+}
+
+export function getProjectObjectRectTransformWithSizePreset(
   rectTransform: ProjectObjectRectTransform,
-  card: ProjectObjectCard
+  sizedObject: ProjectObjectSized
 ): ProjectObjectRectTransform {
-  const preset = getProjectObjectCardSizePreset(card.sizePreset);
+  const preset = getProjectObjectCardSizePreset(sizedObject.sizePreset);
 
   if (!preset) {
     return rectTransform;
@@ -559,6 +653,17 @@ export function getProjectObjectRectTransformWithCardSizePreset(
     scaleY: 1,
     width: preset.width
   };
+}
+
+export function getProjectObjectRectTransformWithCardSizePreset(
+  rectTransform: ProjectObjectRectTransform,
+  card: ProjectObjectSized
+): ProjectObjectRectTransform {
+  return getProjectObjectRectTransformWithSizePreset(rectTransform, card);
+}
+
+export function getProjectObjectContainerTotalCount(container: ProjectObjectContainer) {
+  return container.entries.reduce((total, entry) => total + entry.quantity, 0);
 }
 
 export function normalizeProjectObjectDieFaceCount(
@@ -596,6 +701,7 @@ export function doesProjectObjectClipChildren(kind: ProjectObjectKind) {
   return (
     kind === "card" ||
     kind === "counter" ||
+    kind === "deck" ||
     kind === "die" ||
     kind === "shape" ||
     kind === "token"
@@ -639,6 +745,12 @@ export function createDefaultProjectObjectComponents(
     components.card = getDefaultProjectObjectCard();
     components.doubleSide = getDefaultProjectObjectDoubleSide(kind);
     components.layout = getDefaultProjectObjectLayout();
+  }
+
+  if (kind === "deck") {
+    components.container = getDefaultProjectObjectContainer(kind);
+    components.deck = getDefaultProjectObjectDeck();
+    components.stackDisplay = getDefaultProjectObjectStackDisplay();
   }
 
   if (kind === "counter") {

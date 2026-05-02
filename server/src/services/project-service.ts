@@ -11,9 +11,12 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectBorderStyle,
   ProjectObjectCard,
+  ProjectObjectContainer,
+  ProjectObjectContainerEntry,
   ProjectObjectCounter,
   ProjectObjectCounterBoundsMode,
   ProjectObjectCounterDisplayMode,
+  ProjectObjectDeck,
   ProjectObjectSide,
   ProjectObjectCardSizePresetValue,
   ProjectObjectDie,
@@ -34,6 +37,7 @@ import type {
   ProjectObjectShapePoint,
   ProjectObjectShapeVariant,
   ProjectObjectSideComponents,
+  ProjectObjectStackDisplay,
   ProjectObjectText,
   ProjectObjectTextAlign,
   ProjectObjectTextFontStyle,
@@ -45,6 +49,7 @@ import {
   getDefaultProjectObjectAppearance,
   getDefaultProjectObjectCard,
   getDefaultProjectObjectCounter,
+  getDefaultProjectObjectDeck,
   getDefaultProjectObjectDie,
   getDefaultProjectObjectDieFace,
   getDefaultProjectObjectDoubleSide,
@@ -53,12 +58,14 @@ import {
   getDefaultProjectObjectRectTransform,
   getDefaultProjectObjectShape,
   getDefaultProjectObjectShapePolygonPoints,
+  getDefaultProjectObjectStackDisplay,
   getDefaultProjectObjectText,
   getProjectObjectCardSizePreset,
   getProjectObjectRectTransformWithCardSizePreset,
   projectAssetsFolderId,
   projectAssetsFolderName,
   projectObjectCardCustomSizePresetId,
+  projectObjectContainerEntryQuantityLimits,
   projectObjectCounterAffixMaxLength,
   projectObjectCounterBoundsModes,
   projectObjectCounterDisplayModes,
@@ -70,6 +77,8 @@ import {
   projectObjectDieFaceModes,
   projectImageAssetContentTypes,
   projectObjectKinds as sharedProjectObjectKinds,
+  projectObjectStackDisplayOffsetLimits,
+  projectObjectStackDisplayVisibleItemCountLimits,
   projectObjectShapePolygonCoordinateLimits,
   projectObjectShapePolygonPointCountLimits
 } from "@bg-maker/shared";
@@ -751,6 +760,18 @@ function normalizeProjectObjectComponents(value: unknown, kind: ProjectObjectKin
     };
   }
 
+  if (kind === "deck") {
+    const deck = normalizeProjectObjectDeck(record.deck);
+
+    return {
+      ...components,
+      container: normalizeProjectObjectContainer(record.container, kind),
+      deck,
+      rectTransform: getProjectObjectRectTransformWithCardSizePreset(rectTransform, deck),
+      stackDisplay: normalizeProjectObjectStackDisplay(record.stackDisplay)
+    };
+  }
+
   if (kind === "counter") {
     return {
       ...components,
@@ -924,6 +945,93 @@ function normalizeProjectObjectCard(value: unknown): ProjectObjectCard {
 
   return {
     sizePreset
+  };
+}
+
+function normalizeProjectObjectDeck(value: unknown): ProjectObjectDeck {
+  const defaultDeck = getDefaultProjectObjectDeck();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const sizePreset =
+    typeof record.sizePreset === "string" &&
+    (record.sizePreset === projectObjectCardCustomSizePresetId ||
+      getProjectObjectCardSizePreset(record.sizePreset))
+      ? (record.sizePreset as ProjectObjectCardSizePresetValue)
+      : defaultDeck.sizePreset;
+
+  return {
+    sizePreset
+  };
+}
+
+function normalizeProjectObjectContainer(
+  value: unknown,
+  kind: ProjectObjectKind
+): ProjectObjectContainer {
+  void kind;
+
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    entries: normalizeProjectObjectContainerEntries(record.entries)
+  };
+}
+
+function normalizeProjectObjectContainerEntries(value: unknown): ProjectObjectContainerEntry[] {
+  const entries = Array.isArray(value) ? value : [];
+  const quantityByObjectFileNodeId = new Map<string, number>();
+
+  for (const entry of entries) {
+    const record = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {};
+    const objectFileNodeId =
+      typeof record.objectFileNodeId === "string" ? record.objectFileNodeId.trim() : "";
+
+    if (!objectFileNodeId) {
+      continue;
+    }
+
+    const quantity = normalizeIntegerNumber(
+      record.quantity,
+      1,
+      projectObjectContainerEntryQuantityLimits
+    );
+    quantityByObjectFileNodeId.set(
+      objectFileNodeId,
+      normalizeIntegerNumber(
+        (quantityByObjectFileNodeId.get(objectFileNodeId) ?? 0) + quantity,
+        1,
+        projectObjectContainerEntryQuantityLimits
+      )
+    );
+  }
+
+  return Array.from(quantityByObjectFileNodeId, ([objectFileNodeId, quantity]) => ({
+    objectFileNodeId,
+    quantity
+  }));
+}
+
+function normalizeProjectObjectStackDisplay(value: unknown): ProjectObjectStackDisplay {
+  const defaultStackDisplay = getDefaultProjectObjectStackDisplay();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    showCount:
+      typeof record.showCount === "boolean" ? record.showCount : defaultStackDisplay.showCount,
+    stackOffsetX: normalizeIntegerNumber(
+      record.stackOffsetX,
+      defaultStackDisplay.stackOffsetX,
+      projectObjectStackDisplayOffsetLimits
+    ),
+    stackOffsetY: normalizeIntegerNumber(
+      record.stackOffsetY,
+      defaultStackDisplay.stackOffsetY,
+      projectObjectStackDisplayOffsetLimits
+    ),
+    visibleItemCount: normalizeIntegerNumber(
+      record.visibleItemCount,
+      defaultStackDisplay.visibleItemCount,
+      projectObjectStackDisplayVisibleItemCountLimits
+    )
   };
 }
 

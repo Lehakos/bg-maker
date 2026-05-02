@@ -4,6 +4,7 @@ import {
   getProjectObjectRectTransformWithCardSizePreset
 } from "@bg-maker/shared";
 import { getProjectObjectCardComponent } from "./card-component";
+import { getProjectObjectDeckComponent } from "./deck-component";
 
 export function getProjectObjectRectTransformComponent(
   object: ProjectObjectNode
@@ -13,12 +14,21 @@ export function getProjectObjectRectTransformComponent(
     ...object.components?.rectTransform
   };
 
-  return object.kind === "card"
-    ? getProjectObjectRectTransformWithCardSizePreset(
-        rectTransform,
-        getProjectObjectCardComponent(object)
-      )
-    : rectTransform;
+  if (object.kind === "card") {
+    return getProjectObjectRectTransformWithCardSizePreset(
+      rectTransform,
+      getProjectObjectCardComponent(object)
+    );
+  }
+
+  if (object.kind === "deck") {
+    return getProjectObjectRectTransformWithCardSizePreset(
+      rectTransform,
+      getProjectObjectDeckComponent(object)
+    );
+  }
+
+  return rectTransform;
 }
 
 export function withProjectObjectRectTransformComponent(
@@ -31,7 +41,12 @@ export function withProjectObjectRectTransformComponent(
           rectTransform,
           getProjectObjectCardComponent(object)
         )
-      : rectTransform;
+      : object.kind === "deck"
+        ? getProjectObjectRectTransformWithCardSizePreset(
+            rectTransform,
+            getProjectObjectDeckComponent(object)
+          )
+        : rectTransform;
 
   return {
     ...object,
