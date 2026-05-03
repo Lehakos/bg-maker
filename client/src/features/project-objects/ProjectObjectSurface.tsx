@@ -5,6 +5,7 @@ import type {
   ProjectObjectBorderStyle,
   ProjectObjectCounter,
   ProjectObjectKind,
+  ProjectObjectMeepleVisualVariant,
   ProjectObjectNode,
   ProjectObjectShapePoint,
   ProjectObjectShapeVariant,
@@ -23,6 +24,7 @@ import {
   getProjectObjectNodeContainer,
   getProjectObjectNodeDie,
   getProjectObjectNodeImage,
+  getProjectObjectNodeMeeple,
   getProjectObjectNodeShape,
   getProjectObjectNodeStackDisplay,
   getProjectObjectNodeText
@@ -65,6 +67,10 @@ export function ProjectObjectSurface({
 
   if (object.kind === "die") {
     return <DieVisual imageAssetById={imageAssetById} object={object} />;
+  }
+
+  if (object.kind === "meeple") {
+    return <MeepleVisual object={object} />;
   }
 
   if (object.kind === "token") {
@@ -565,6 +571,37 @@ function ShapeVisual({ object }: ObjectVisualProps) {
   );
 }
 
+function MeepleVisual({ object }: ObjectVisualProps) {
+  const appearance = getProjectObjectNodeAppearance(object);
+  const meeple = getProjectObjectNodeMeeple(object);
+  const strokeDasharray = getStrokeDasharray(appearance.borderStyle);
+  const strokeWidth = appearance.borderStyle === "none" ? 0 : appearance.borderWidth;
+
+  return (
+    <div
+      className="relative flex h-full w-full items-center justify-center overflow-visible text-center text-red-950"
+      style={{ opacity: appearance.opacity }}
+    >
+      <svg
+        aria-hidden
+        className="absolute inset-0 h-full w-full overflow-visible"
+        preserveAspectRatio="none"
+        style={{ filter: "drop-shadow(0 14px 18px rgba(15, 23, 42, 0.16))" }}
+        viewBox="0 0 100 100"
+      >
+        <MeepleSvgElement
+          fill={appearance.backgroundColor}
+          fillOpacity={appearance.backgroundOpacity}
+          stroke={appearance.borderColor}
+          strokeDasharray={strokeDasharray}
+          strokeWidth={strokeWidth}
+          variant={meeple.visualVariant}
+        />
+      </svg>
+    </div>
+  );
+}
+
 function TokenVisual({ object }: ObjectVisualProps) {
   const appearance = getProjectObjectNodeAppearance(object);
   const shape = getProjectObjectNodeShape(object);
@@ -594,6 +631,139 @@ function TokenVisual({ object }: ObjectVisualProps) {
         />
       </svg>
     </div>
+  );
+}
+
+type MeepleSvgElementProps = {
+  fill: string;
+  fillOpacity: number;
+  stroke: string;
+  strokeDasharray?: string;
+  strokeWidth: number;
+  variant: ProjectObjectMeepleVisualVariant;
+};
+
+function MeepleSvgElement({
+  fill,
+  fillOpacity,
+  stroke,
+  strokeDasharray,
+  strokeWidth,
+  variant
+}: MeepleSvgElementProps) {
+  const commonProps = {
+    fill,
+    fillOpacity,
+    stroke,
+    strokeDasharray,
+    strokeLinejoin: "round" as const,
+    strokeWidth
+  };
+  const detailStrokeWidth = strokeWidth > 0 ? Math.max(1.1, strokeWidth * 0.7) : 0;
+
+  if (variant === "pawn") {
+    return (
+      <>
+        <circle {...commonProps} cx="50" cy="16" r="12" />
+        <path {...commonProps} d="M38 32h24l6 39h10v22H22V71h10l6-39Z" />
+        <path
+          d="M35 71h30"
+          fill="none"
+          stroke={stroke}
+          strokeLinecap="round"
+          strokeWidth={detailStrokeWidth}
+          opacity="0.35"
+        />
+      </>
+    );
+  }
+
+  if (variant === "cube") {
+    return (
+      <>
+        <path {...commonProps} d="M15 31 50 12l35 19-35 20-35-20Z" />
+        <path {...commonProps} d="M15 31v39l35 20V51L15 31Z" />
+        <path {...commonProps} d="M85 31v39L50 90V51l35-20Z" />
+        <path
+          d="M15 31 50 51l35-20M50 51v39"
+          fill="none"
+          stroke={stroke}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={detailStrokeWidth}
+          opacity="0.6"
+        />
+      </>
+    );
+  }
+
+  if (variant === "cylinder") {
+    return (
+      <>
+        <path {...commonProps} d="M20 27v43c0 11 13.5 20 30 20s30-9 30-20V27" />
+        <ellipse {...commonProps} cx="50" cy="27" rx="30" ry="15" />
+        <path
+          d="M20 70c0 11 13.5 20 30 20s30-9 30-20"
+          fill="none"
+          stroke={stroke}
+          strokeWidth={detailStrokeWidth}
+          opacity="0.4"
+        />
+      </>
+    );
+  }
+
+  if (variant === "cone") {
+    return (
+      <>
+        <path {...commonProps} d="M50 9 20 80c8 11 52 11 60 0L50 9Z" />
+        <ellipse {...commonProps} cx="50" cy="80" rx="30" ry="12" />
+        <path
+          d="M35 76c8 4 22 4 30 0"
+          fill="none"
+          stroke={stroke}
+          strokeLinecap="round"
+          strokeWidth={detailStrokeWidth}
+          opacity="0.35"
+        />
+      </>
+    );
+  }
+
+  if (variant === "standee") {
+    return (
+      <>
+        <rect {...commonProps} height="62" rx="5" ry="5" width="42" x="29" y="8" />
+        <path {...commonProps} d="M38 70h24l4 15H34l4-15Z" />
+        <path {...commonProps} d="M24 85h52v8H24z" />
+        <path
+          d="M37 20h26M37 31h26"
+          fill="none"
+          stroke={stroke}
+          strokeLinecap="round"
+          strokeWidth={detailStrokeWidth}
+          opacity="0.28"
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <circle {...commonProps} cx="50" cy="16" r="12" />
+      <path
+        {...commonProps}
+        d="M36 32c-9 1-17 8-24 20l10 10c4-5 8-9 13-11l-6 44h16l5-25 5 25h16l-6-44c5 2 9 6 13 11l10-10c-7-12-15-19-24-20H36Z"
+      />
+      <path
+        d="M38 47c7 4 17 4 24 0"
+        fill="none"
+        stroke={stroke}
+        strokeLinecap="round"
+        strokeWidth={detailStrokeWidth}
+        opacity="0.28"
+      />
+    </>
   );
 }
 

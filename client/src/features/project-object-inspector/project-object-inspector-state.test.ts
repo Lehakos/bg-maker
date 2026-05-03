@@ -8,6 +8,7 @@ import type {
   ProjectObjectDie,
   ProjectObjectImage,
   ProjectObjectLayout,
+  ProjectObjectMeeple,
   ProjectObjectRectTransform,
   ProjectObjectShape,
   ProjectObjectStackDisplay,
@@ -24,6 +25,7 @@ import {
   createBagDraft,
   createCardDraft,
   createDeckDraft,
+  createMeepleDraft,
   createStackDisplayDraft,
   getCardWithDraftField,
   getContainerWithAddedEntry,
@@ -33,6 +35,7 @@ import {
   getContainerWithRemovedEntry,
   getBagWithDraftField,
   getDeckWithDraftField,
+  getMeepleWithDraftField,
   getStackDisplayWithDraftField,
   normalizeContainerEntryQuantityValue,
   normalizeStackDisplayNumberValue
@@ -131,6 +134,10 @@ const deck: ProjectObjectDeck = {
 
 const bag: ProjectObjectBag = {
   appearanceVariant: "bag"
+};
+
+const meeple: ProjectObjectMeeple = {
+  visualVariant: "meeple"
 };
 
 const container: ProjectObjectContainer = {
@@ -341,6 +348,20 @@ describe("project object inspector state", () => {
       appearanceVariant: "box"
     });
     expect(getBagWithDraftField(bag, "appearanceVariant", "crate")).toBeNull();
+  });
+
+  it("creates and updates meeple drafts", () => {
+    expect(createMeepleDraft(meeple)).toEqual({
+      visualVariant: "meeple"
+    });
+    expect(getMeepleWithDraftField(meeple, "visualVariant", "pawn")).toMatchObject({
+      visualVariant: "pawn"
+    });
+    expect(getMeepleWithDraftField(meeple, "visualVariant", "standee")).toMatchObject({
+      visualVariant: "standee"
+    });
+    expect(getMeepleWithDraftField(meeple, "visualVariant", "paw")).toBeNull();
+    expect(getMeepleWithDraftField(meeple, "visualVariant", "meeple")).toBeNull();
   });
 
   it("creates and updates zone drafts", () => {

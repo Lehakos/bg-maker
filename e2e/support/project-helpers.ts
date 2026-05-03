@@ -50,7 +50,7 @@ export async function createObjectFileFromFileTree(
   }: {
     name: string;
     parentName: string;
-    rootType: "Card" | "Group" | "Label" | "Shape" | "Token";
+    rootType: "Bag" | "Card" | "Group" | "Label" | "Meeple" | "Shape" | "Token";
   }
 ) {
   await getFileTree(page).getByRole("button", { name: new RegExp(`^${escapeRegExp(parentName)}`) }).click({

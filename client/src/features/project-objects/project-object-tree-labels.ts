@@ -9,6 +9,7 @@ const projectObjectKindIconClassNames: Record<ProjectObjectKind, string> = {
   group: "text-teal-700",
   image: "text-sky-600",
   label: "text-slate-600",
+  meeple: "text-red-600",
   shape: "text-emerald-600",
   token: "text-orange-600",
   zone: "text-cyan-600"
@@ -23,6 +24,7 @@ const projectObjectKindLabels: Record<ProjectObjectKind, string> = {
   group: "Group",
   image: "Image",
   label: "Label",
+  meeple: "Meeple",
   shape: "Shape",
   token: "Token",
   zone: "Zone"

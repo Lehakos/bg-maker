@@ -5,15 +5,19 @@ import type {
   ProjectObjectBagAppearanceVariant,
   ProjectObjectContainer,
   ProjectObjectDeck,
+  ProjectObjectMeeple,
+  ProjectObjectMeepleVisualVariant,
   ProjectObjectStackDisplay
 } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectBag,
+  getDefaultProjectObjectMeeple,
   getDefaultProjectObjectStackDisplay,
   projectObjectBagAppearanceVariants,
   projectObjectCardCustomSizePresetId,
   projectObjectCardSizePresets,
   projectObjectContainerEntryQuantityLimits,
+  projectObjectMeepleVisualVariants,
   projectObjectStackDisplayOffsetLimits,
   projectObjectStackDisplayVisibleItemCountLimits
 } from "@bg-maker/shared";
@@ -32,6 +36,11 @@ export type DeckDraft = {
 export type BagFieldKey = keyof ProjectObjectBag;
 export type BagDraft = {
   appearanceVariant: ProjectObjectBagAppearanceVariant;
+};
+
+export type MeepleFieldKey = keyof ProjectObjectMeeple;
+export type MeepleDraft = {
+  visualVariant: ProjectObjectMeepleVisualVariant;
 };
 
 export type StackDisplayFieldKey = keyof ProjectObjectStackDisplay;
@@ -77,6 +86,9 @@ const cardSizePresetValues = new Set<ProjectObjectCardSizePresetValue>([
 const bagAppearanceVariantValues = new Set<ProjectObjectBagAppearanceVariant>(
   projectObjectBagAppearanceVariants
 );
+const meepleVisualVariantValues = new Set<ProjectObjectMeepleVisualVariant>(
+  projectObjectMeepleVisualVariants
+);
 
 export function createCardDraft(card: ProjectObjectCard): CardDraft {
   return {
@@ -93,6 +105,12 @@ export function createDeckDraft(deck: ProjectObjectDeck): DeckDraft {
 export function createBagDraft(bag: ProjectObjectBag): BagDraft {
   return {
     appearanceVariant: bag.appearanceVariant
+  };
+}
+
+export function createMeepleDraft(meeple: ProjectObjectMeeple): MeepleDraft {
+  return {
+    visualVariant: meeple.visualVariant
   };
 }
 
@@ -150,6 +168,20 @@ export function getBagWithDraftField(
   }
 
   return areBagsEqual(bag, nextBag) ? null : nextBag;
+}
+
+export function getMeepleWithDraftField(
+  meeple: ProjectObjectMeeple,
+  fieldKey: MeepleFieldKey,
+  value: string
+) {
+  const nextMeeple = createNextMeeple(meeple, fieldKey, value);
+
+  if (!nextMeeple) {
+    return null;
+  }
+
+  return areMeeplesEqual(meeple, nextMeeple) ? null : nextMeeple;
 }
 
 export function getStackDisplayWithDraftField(
@@ -377,6 +409,20 @@ function createNextBag(
   return null;
 }
 
+function createNextMeeple(
+  meeple: ProjectObjectMeeple,
+  fieldKey: MeepleFieldKey,
+  value: string
+): ProjectObjectMeeple | null {
+  if (fieldKey === "visualVariant") {
+    return meepleVisualVariantValues.has(value as ProjectObjectMeepleVisualVariant)
+      ? normalizeMeeple({ ...meeple, visualVariant: value as ProjectObjectMeepleVisualVariant })
+      : null;
+  }
+
+  return null;
+}
+
 function createNextStackDisplay(
   stackDisplay: ProjectObjectStackDisplay,
   fieldKey: StackDisplayFieldKey,
@@ -429,6 +475,17 @@ function normalizeBag(bag: ProjectObjectBag): ProjectObjectBag {
   };
 }
 
+function normalizeMeeple(meeple: ProjectObjectMeeple): ProjectObjectMeeple {
+  const defaultMeeple = getDefaultProjectObjectMeeple();
+
+  return {
+    ...meeple,
+    visualVariant: meepleVisualVariantValues.has(meeple.visualVariant)
+      ? meeple.visualVariant
+      : defaultMeeple.visualVariant
+  };
+}
+
 function normalizeContainer(container: ProjectObjectContainer): ProjectObjectContainer {
   return {
     ...container,
@@ -470,6 +527,10 @@ function areDecksEqual(left: ProjectObjectDeck, right: ProjectObjectDeck) {
 
 function areBagsEqual(left: ProjectObjectBag, right: ProjectObjectBag) {
   return left.appearanceVariant === right.appearanceVariant;
+}
+
+function areMeeplesEqual(left: ProjectObjectMeeple, right: ProjectObjectMeeple) {
+  return left.visualVariant === right.visualVariant;
 }
 
 function areStackDisplaysEqual(

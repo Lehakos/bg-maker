@@ -12,7 +12,7 @@ import {
   Type,
   type LucideProps
 } from "lucide-react";
-import { BagIcon, CardIcon, DeckIcon } from "./project-object-icons";
+import { BagIcon, CardIcon, DeckIcon, MeepleIcon } from "./project-object-icons";
 
 type ProjectObjectKindIconProps = LucideProps & {
   kind: ProjectObjectKind;
@@ -45,6 +45,10 @@ export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindI
 
   if (kind === "bag") {
     return <BagIcon {...iconProps} />;
+  }
+
+  if (kind === "meeple") {
+    return <MeepleIcon {...iconProps} />;
   }
 
   if (kind === "die") {

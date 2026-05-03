@@ -22,6 +22,7 @@ export const projectObjectKinds = [
   "deck",
   "bag",
   "zone",
+  "meeple",
   "token",
   "counter",
   "die",
@@ -157,6 +158,22 @@ export type ProjectObjectBagAppearanceVariant =
 
 export type ProjectObjectBag = {
   appearanceVariant: ProjectObjectBagAppearanceVariant;
+};
+
+export const projectObjectMeepleVisualVariants = [
+  "meeple",
+  "pawn",
+  "cube",
+  "cylinder",
+  "cone",
+  "standee"
+] as const;
+
+export type ProjectObjectMeepleVisualVariant =
+  (typeof projectObjectMeepleVisualVariants)[number];
+
+export type ProjectObjectMeeple = {
+  visualVariant: ProjectObjectMeepleVisualVariant;
 };
 
 export const projectObjectZoneCapacityLimits = {
@@ -303,6 +320,7 @@ export type ProjectObjectComponents = {
   doubleSide?: ProjectObjectDoubleSide;
   image?: ProjectObjectImage;
   layout?: ProjectObjectLayout;
+  meeple?: ProjectObjectMeeple;
   rectTransform?: ProjectObjectRectTransform;
   shape?: ProjectObjectShape;
   stackDisplay?: ProjectObjectStackDisplay;
@@ -377,6 +395,7 @@ const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; wid
   group: { height: 240, width: 320 },
   image: { height: 180, width: 240 },
   label: { height: 32, width: 160 },
+  meeple: { height: 80, width: 80 },
   shape: { height: 120, width: 120 },
   token: { height: 80, width: 80 },
   zone: { height: 120, width: 180 }
@@ -391,6 +410,7 @@ const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
   group: "New group",
   image: "New image",
   label: "New label",
+  meeple: "New meeple",
   shape: "New shape",
   token: "New token",
   zone: "New zone"
@@ -476,6 +496,16 @@ const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAp
     borderWidth: 0,
     opacity: 1,
     padding: 6
+  },
+  meeple: {
+    backgroundColor: "#fee2e2",
+    backgroundOpacity: 1,
+    borderColor: "#dc2626",
+    borderRadius: 8,
+    borderStyle: "solid",
+    borderWidth: 2,
+    opacity: 1,
+    padding: 0
   },
   shape: {
     backgroundColor: "#d1fae5",
@@ -578,7 +608,7 @@ export function getProjectObjectContainerAcceptedObjectKinds(
   }
 
   if (kind === "bag") {
-    return ["token"];
+    return ["token", "meeple"];
   }
 
   return [];
@@ -612,6 +642,12 @@ export function getDefaultProjectObjectDeck(): ProjectObjectDeck {
 export function getDefaultProjectObjectBag(): ProjectObjectBag {
   return {
     appearanceVariant: "bag"
+  };
+}
+
+export function getDefaultProjectObjectMeeple(): ProjectObjectMeeple {
+  return {
+    visualVariant: "meeple"
   };
 }
 
@@ -781,6 +817,7 @@ export function doesProjectObjectClipChildren(kind: ProjectObjectKind) {
     kind === "counter" ||
     kind === "deck" ||
     kind === "die" ||
+    kind === "meeple" ||
     kind === "shape" ||
     kind === "token"
   );
@@ -847,6 +884,10 @@ export function createDefaultProjectObjectComponents(
 
   if (kind === "die") {
     components.die = getDefaultProjectObjectDie();
+  }
+
+  if (kind === "meeple") {
+    components.meeple = getDefaultProjectObjectMeeple();
   }
 
   if (kind === "token") {

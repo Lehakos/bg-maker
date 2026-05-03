@@ -12,6 +12,7 @@ import type {
   ProjectObjectDoubleSide,
   ProjectObjectKind,
   ProjectObjectLayout,
+  ProjectObjectMeeple,
   ProjectObjectNode,
   ProjectObjectRectTransform,
   ProjectObjectShape,
@@ -230,6 +231,10 @@ export function getProjectObjectNodeLayout(object: ProjectObjectNode): ProjectOb
   return projectObjectComponentEngine.getLayout(object);
 }
 
+export function getProjectObjectNodeMeeple(object: ProjectObjectNode): ProjectObjectMeeple {
+  return projectObjectComponentEngine.getMeeple(object);
+}
+
 export function getProjectObjectNodeShape(object: ProjectObjectNode): ProjectObjectShape {
   return projectObjectComponentEngine.getShape(object);
 }
@@ -383,6 +388,18 @@ export function setProjectObjectNodeLayout(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withLayout(node, layout)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeMeeple(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  meeple: ProjectObjectMeeple
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withMeeple(node, meeple)
   );
 
   return result.changed ? result.nodes : objectTree;

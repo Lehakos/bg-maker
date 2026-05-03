@@ -254,6 +254,7 @@ export function InspectorIconSegmentedField<TValue extends string>({
             <button
               key={option.value}
               aria-label={option.label}
+              aria-pressed={active}
               className={cx(
                 "flex h-full min-w-0 flex-1 items-center justify-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-100",
                 index > 0 && "border-l border-slate-200",

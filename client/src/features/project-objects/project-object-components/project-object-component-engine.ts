@@ -10,6 +10,7 @@ import type {
   ProjectObjectImage,
   ProjectObjectKind,
   ProjectObjectLayout,
+  ProjectObjectMeeple,
   ProjectObjectNode,
   ProjectObjectRectTransform,
   ProjectObjectShape,
@@ -43,6 +44,10 @@ import {
   getProjectObjectLayoutComponent,
   withProjectObjectLayoutComponent
 } from "./layout-component";
+import {
+  getProjectObjectMeepleComponent,
+  withProjectObjectMeepleComponent
+} from "./meeple-component";
 import {
   getProjectObjectRectTransformComponent,
   withProjectObjectRectTransformComponent
@@ -109,6 +114,10 @@ export class ProjectObjectComponentEngine {
 
   getLayout(object: ProjectObjectNode): ProjectObjectLayout {
     return getProjectObjectLayoutComponent(object);
+  }
+
+  getMeeple(object: ProjectObjectNode): ProjectObjectMeeple {
+    return getProjectObjectMeepleComponent(object);
   }
 
   getShape(object: ProjectObjectNode): ProjectObjectShape {
@@ -181,6 +190,10 @@ export class ProjectObjectComponentEngine {
 
   withLayout(object: ProjectObjectNode, layout: ProjectObjectLayout): ProjectObjectNode {
     return withProjectObjectLayoutComponent(object, layout);
+  }
+
+  withMeeple(object: ProjectObjectNode, meeple: ProjectObjectMeeple): ProjectObjectNode {
+    return withProjectObjectMeepleComponent(object, meeple);
   }
 
   withShape(object: ProjectObjectNode, shape: ProjectObjectShape): ProjectObjectNode {

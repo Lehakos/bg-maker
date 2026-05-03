@@ -11,6 +11,7 @@ import type {
   ProjectObjectImage,
   ProjectObjectKind,
   ProjectObjectLayout,
+  ProjectObjectMeeple,
   ProjectObjectNode,
   ProjectObjectShape,
   ProjectObjectShapePoint,
@@ -23,6 +24,7 @@ import {
   getDefaultProjectObjectBag,
   getDefaultProjectObjectDeck,
   getDefaultProjectObjectDie,
+  getDefaultProjectObjectMeeple,
   getDefaultProjectObjectStackDisplay,
   getDefaultProjectObjectZone,
   getProjectObjectContainerAcceptedObjectKinds,
@@ -52,6 +54,7 @@ import {
   getProjectObjectNodeDoubleSide,
   getProjectObjectNodeImage,
   getProjectObjectNodeLayout,
+  getProjectObjectNodeMeeple,
   getProjectObjectNodeRectTransform,
   getProjectObjectNodeShape,
   getProjectObjectNodeStackDisplay,
@@ -68,6 +71,7 @@ import {
   setProjectObjectNodeDoubleSide,
   setProjectObjectNodeImage,
   setProjectObjectNodeLayout,
+  setProjectObjectNodeMeeple,
   setProjectObjectNodeRectTransform,
   setProjectObjectNodeShape,
   setProjectObjectNodeStackDisplay,
@@ -86,6 +90,7 @@ import {
   createDieDraft,
   createImageDraft,
   createLayoutDraft,
+  createMeepleDraft,
   createStackDisplayDraft,
   createTextDraft,
   createZoneDraft,
@@ -114,6 +119,7 @@ import {
   getDieWithFaceField,
   getImageWithDraftField,
   getLayoutWithDraftField,
+  getMeepleWithDraftField,
   getRectTransformWithDraftField,
   getShapePolygonPoints,
   getShapeWithAddedPolygonPoint,
@@ -162,6 +168,8 @@ import {
   type ImageFieldKey,
   type LayoutDraft,
   type LayoutFieldKey,
+  type MeepleDraft,
+  type MeepleFieldKey,
   type RectTransformDraft,
   type RectTransformFieldKey,
   type ShapePolygonPointFieldKey,
@@ -191,6 +199,7 @@ import {
   ProjectObjectCardSection,
   ProjectObjectContainerSection,
   ProjectObjectDeckSection,
+  ProjectObjectMeepleSection,
   ProjectObjectStackSection,
   ProjectObjectZoneSection
 } from "./ProjectObjectStructureSections";
@@ -272,6 +281,11 @@ export function ProjectObjectInspectorPanel({
     () => (selectedObject?.kind === "bag" ? getProjectObjectNodeBag(selectedObject) : null),
     [selectedObject]
   );
+  const meeple = useMemo(
+    () =>
+      selectedObject?.kind === "meeple" ? getProjectObjectNodeMeeple(selectedObject) : null,
+    [selectedObject]
+  );
   const container = useMemo(
     () =>
       selectedObject?.kind === "deck" || selectedObject?.kind === "bag"
@@ -345,6 +359,9 @@ export function ProjectObjectInspectorPanel({
   const [bagDraft, setBagDraft] = useState<BagDraft>(() =>
     bag ? createBagDraft(bag) : createBagDraft(getFallbackBagDraftValue())
   );
+  const [meepleDraft, setMeepleDraft] = useState<MeepleDraft>(() =>
+    meeple ? createMeepleDraft(meeple) : createMeepleDraft(getFallbackMeepleDraftValue())
+  );
   const [stackDisplayDraft, setStackDisplayDraft] = useState<StackDisplayDraft>(() =>
     stackDisplay
       ? createStackDisplayDraft(stackDisplay)
@@ -415,6 +432,12 @@ export function ProjectObjectInspectorPanel({
       setBagDraft(createBagDraft(bag));
     }
   }, [bag, selectedObject?.id]);
+
+  useEffect(() => {
+    if (meeple) {
+      setMeepleDraft(createMeepleDraft(meeple));
+    }
+  }, [meeple, selectedObject?.id]);
 
   useEffect(() => {
     if (stackDisplay) {
@@ -838,6 +861,38 @@ export function ProjectObjectInspectorPanel({
     }
 
     const nextObjectTree = setProjectObjectNodeBag(objectTree, selectedObject.id, nextBag);
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
+  function updateMeepleDraft<TFieldKey extends MeepleFieldKey>(
+    fieldKey: TFieldKey,
+    value: ProjectObjectMeeple[TFieldKey]
+  ) {
+    setMeepleDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    updateObjectTreeMeepleField(fieldKey, value);
+  }
+
+  function updateObjectTreeMeepleField<TFieldKey extends MeepleFieldKey>(
+    fieldKey: TFieldKey,
+    value: ProjectObjectMeeple[TFieldKey]
+  ) {
+    if (!contentFileNode || !selectedObject || !meeple) {
+      return;
+    }
+
+    const nextMeeple = getMeepleWithDraftField(meeple, fieldKey, value);
+
+    if (!nextMeeple) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeMeeple(objectTree, selectedObject.id, nextMeeple);
 
     if (nextObjectTree !== objectTree) {
       onObjectTreeChange(contentFileNode.id, nextObjectTree);
@@ -1625,6 +1680,13 @@ export function ProjectObjectInspectorPanel({
             />
           ) : null}
 
+          {meeple ? (
+            <ProjectObjectMeepleSection
+              draft={meepleDraft}
+              onVisualVariantChange={(value) => updateMeepleDraft("visualVariant", value)}
+            />
+          ) : null}
+
           {container ? (
             <ProjectObjectContainerSection
               canAddDraftRow={canAddContainerDraftRow}
@@ -1813,6 +1875,10 @@ function getFallbackDeckDraftValue(): ProjectObjectDeck {
 
 function getFallbackBagDraftValue(): ProjectObjectBag {
   return getDefaultProjectObjectBag();
+}
+
+function getFallbackMeepleDraftValue(): ProjectObjectMeeple {
+  return getDefaultProjectObjectMeeple();
 }
 
 function getFallbackStackDisplayDraftValue(): ProjectObjectStackDisplay {

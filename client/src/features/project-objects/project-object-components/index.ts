@@ -34,6 +34,10 @@ export {
   getProjectObjectLayoutComponent,
   withProjectObjectLayoutComponent
 } from "./layout-component";
+export {
+  getProjectObjectMeepleComponent,
+  withProjectObjectMeepleComponent
+} from "./meeple-component";
 export { getProjectObjectShapeComponent, withProjectObjectShapeComponent } from "./shape-component";
 export { getProjectObjectTextComponent, withProjectObjectTextComponent } from "./text-component";
 export { getProjectObjectZoneComponent, withProjectObjectZoneComponent } from "./zone-component";

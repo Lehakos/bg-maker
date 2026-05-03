@@ -624,6 +624,87 @@ describe("ProjectService", () => {
     );
   });
 
+  it("normalizes meeple components as a free-sized visual piece", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "object-file",
+        kind: "object",
+        name: "Object file",
+        objectTree: [
+          {
+            id: "meeple-1",
+            kind: "meeple",
+            name: "Meeple 1",
+            components: {
+              meeple: {
+                visualVariant: "paw"
+              },
+              rectTransform: {
+                height: 120,
+                scaleX: 2,
+                scaleY: 1.5,
+                width: 90
+              },
+              shape: {
+                variant: "triangle"
+              }
+            },
+            visible: true
+          },
+          {
+            id: "meeple-2",
+            kind: "meeple",
+            name: "Meeple 2",
+            components: {
+              meeple: {
+                visualVariant: "cylinder"
+              }
+            },
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ]);
+
+    expect(updatedProject?.fileTree[0]?.objectTree).toMatchObject([
+      {
+        id: "meeple-1",
+        kind: "meeple",
+        components: {
+          meeple: {
+            visualVariant: "meeple"
+          },
+          rectTransform: {
+            height: 120,
+            scaleX: 2,
+            scaleY: 1.5,
+            width: 90
+          }
+        }
+      },
+      {
+        id: "meeple-2",
+        kind: "meeple",
+        components: {
+          meeple: {
+            visualVariant: "cylinder"
+          },
+          rectTransform: {
+            height: 80,
+            width: 80
+          }
+        }
+      }
+    ]);
+    expect(updatedProject?.fileTree[0]?.objectTree?.[0]?.components).not.toHaveProperty("shape");
+    expect(updatedProject?.fileTree[0]?.objectTree?.[0]?.components).not.toHaveProperty(
+      "doubleSide"
+    );
+  });
+
   it("normalizes die components and face customization", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 

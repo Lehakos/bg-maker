@@ -27,3 +27,43 @@ export const BoxIcon = createLucideIcon("Box", [
   ["path", { d: "M4 8v8l8 4 8-4V8", key: "box-sides" }],
   ["path", { d: "M12 12v8", key: "box-front" }]
 ]);
+
+export const MeepleIcon = createLucideIcon("Meeple", [
+  ["circle", { cx: "12", cy: "4.8", r: "2.5", key: "meeple-head" }],
+  [
+    "path",
+    {
+      d: "M8.5 8.5 5 13h4l-1.8 9.5h9.6L15 13h4l-3.5-4.5h-7Z",
+      key: "meeple-body"
+    }
+  ]
+]);
+
+export const PawnIcon = createLucideIcon("Pawn", [
+  ["circle", { cx: "12", cy: "5.5", r: "2.5", key: "pawn-head" }],
+  ["path", { d: "M9 9h6l1.8 8h2.2v5.5H5V17h2.2L9 9Z", key: "pawn-body" }]
+]);
+
+export const CubePieceIcon = createLucideIcon("CubePiece", [
+  ["path", { d: "m5 8 7-4 7 4-7 4-7-4Z", key: "cube-top" }],
+  ["path", { d: "M5 8v8l7 4 7-4V8", key: "cube-sides" }],
+  ["path", { d: "M12 12v8", key: "cube-front" }]
+]);
+
+export const CylinderPieceIcon = createLucideIcon("CylinderPiece", [
+  ["ellipse", { cx: "12", cy: "6", rx: "6", ry: "3", key: "cylinder-top" }],
+  ["path", { d: "M6 6v10c0 1.7 2.7 3 6 3s6-1.3 6-3V6", key: "cylinder-body" }],
+  ["path", { d: "M6 16c0 1.7 2.7 3 6 3s6-1.3 6-3", key: "cylinder-bottom" }]
+]);
+
+export const ConePieceIcon = createLucideIcon("ConePiece", [
+  ["path", { d: "M12 4 5.5 18", key: "cone-left" }],
+  ["path", { d: "M12 4 18.5 18", key: "cone-right" }],
+  ["ellipse", { cx: "12", cy: "18", rx: "6.5", ry: "2.5", key: "cone-base" }]
+]);
+
+export const StandeeIcon = createLucideIcon("Standee", [
+  ["rect", { x: "8", y: "3", width: "8", height: "14", rx: "1.5", key: "standee-card" }],
+  ["path", { d: "M6 21h12", key: "standee-base" }],
+  ["path", { d: "M9 17h6l1 4H8l1-4Z", key: "standee-feet" }]
+]);

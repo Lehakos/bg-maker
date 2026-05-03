@@ -2,7 +2,8 @@ import type {
   ProjectObjectBagAppearanceVariant,
   ProjectObjectCardSizePresetValue,
   ProjectObjectContainer,
-  ProjectObjectKind
+  ProjectObjectKind,
+  ProjectObjectMeepleVisualVariant
 } from "@bg-maker/shared";
 import {
   ArrowDown,
@@ -14,7 +15,18 @@ import {
   Trash2
 } from "lucide-react";
 import type { KeyboardEvent } from "react";
-import { BagIcon, BoxIcon, CardIcon, DeckIcon } from "../project-objects/project-object-icons";
+import {
+  BagIcon,
+  BoxIcon,
+  CardIcon,
+  ConePieceIcon,
+  CubePieceIcon,
+  CylinderPieceIcon,
+  DeckIcon,
+  MeepleIcon,
+  PawnIcon,
+  StandeeIcon
+} from "../project-objects/project-object-icons";
 import { cx } from "./class-names";
 import {
   InspectorBehaviorNumberField,
@@ -31,6 +43,7 @@ import {
   type BagDraft,
   type CardDraft,
   type DeckDraft,
+  type MeepleDraft,
   type StackDisplayDraft,
   type StackDisplayFieldKey,
   type StackDisplayNumberFieldKey,
@@ -67,6 +80,15 @@ const zoneCapacityField = {
 const bagAppearanceVariantOptions = [
   { icon: BagIcon, label: "Bag", value: "bag" },
   { icon: BoxIcon, label: "Box", value: "box" }
+] as const;
+
+const meepleVisualVariantOptions = [
+  { icon: MeepleIcon, label: "Meeple", value: "meeple" },
+  { icon: PawnIcon, label: "Pawn", value: "pawn" },
+  { icon: CubePieceIcon, label: "Cube", value: "cube" },
+  { icon: CylinderPieceIcon, label: "Cylinder", value: "cylinder" },
+  { icon: ConePieceIcon, label: "Cone", value: "cone" },
+  { icon: StandeeIcon, label: "Standee", value: "standee" }
 ] as const;
 
 type ProjectObjectCardSectionProps = {
@@ -131,6 +153,27 @@ export function ProjectObjectBagSection({
         value={draft.appearanceVariant}
         options={bagAppearanceVariantOptions}
         onChange={onAppearanceVariantChange}
+      />
+    </InspectorSection>
+  );
+}
+
+type ProjectObjectMeepleSectionProps = {
+  draft: MeepleDraft;
+  onVisualVariantChange: (value: ProjectObjectMeepleVisualVariant) => void;
+};
+
+export function ProjectObjectMeepleSection({
+  draft,
+  onVisualVariantChange
+}: ProjectObjectMeepleSectionProps) {
+  return (
+    <InspectorSection icon={<MeepleIcon size={15} />} title="Meeple">
+      <InspectorIconSegmentedField
+        label="Visual"
+        value={draft.visualVariant}
+        options={meepleVisualVariantOptions}
+        onChange={onVisualVariantChange}
       />
     </InspectorSection>
   );

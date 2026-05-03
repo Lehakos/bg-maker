@@ -13,6 +13,7 @@ import {
   type ProjectObjectImage,
   type ProjectObjectKind,
   type ProjectObjectLayout,
+  type ProjectObjectMeeple,
   type ProjectObjectNode,
   type ProjectObjectRectTransform,
   type ProjectObjectShape,
@@ -39,6 +40,7 @@ import {
   getProjectObjectNodeVisibleChildren,
   getProjectObjectNodeImage,
   getProjectObjectNodeLayout,
+  getProjectObjectNodeMeeple,
   getProjectObjectNodeRectTransform,
   getProjectObjectNodeShape,
   getProjectObjectNodeStackDisplay,
@@ -56,6 +58,7 @@ import {
   setProjectObjectNodeDoubleSide,
   setProjectObjectNodeImage,
   setProjectObjectNodeLayout,
+  setProjectObjectNodeMeeple,
   setProjectObjectNodeRectTransform,
   setProjectObjectNodeShape,
   setProjectObjectNodeStackDisplay,
@@ -356,7 +359,7 @@ describe("project object tree helpers", () => {
       entries: []
     });
     expect(bag.components?.stackDisplay).toBeUndefined();
-    expect(getProjectObjectContainerAcceptedObjectKinds("bag")).toEqual(["token"]);
+    expect(getProjectObjectContainerAcceptedObjectKinds("bag")).toEqual(["token", "meeple"]);
     expect(getProjectObjectContainerAcceptedObjectKinds("deck")).toEqual(["card"]);
     expect(getProjectObjectNodeRectTransform(bag)).toMatchObject({
       height: 200,
@@ -366,6 +369,51 @@ describe("project object tree helpers", () => {
       x: 10,
       y: 20
     });
+  });
+
+  it("creates and updates meeple defaults as a free-sized visual piece", () => {
+    const objectTree = [objectNode("meeple-1", "Meeple", "meeple")];
+    const coneMeeple: ProjectObjectMeeple = {
+      visualVariant: "cone"
+    };
+    const oversizedRectTransform: ProjectObjectRectTransform = {
+      height: 140,
+      pivotX: 0.5,
+      pivotY: 0.5,
+      rotation: 20,
+      scaleX: 1.5,
+      scaleY: 0.8,
+      width: 90,
+      x: 10,
+      y: 20
+    };
+
+    const meepleTree = setProjectObjectNodeMeeple(objectTree, "meeple-1", coneMeeple);
+    const resizedTree = setProjectObjectNodeRectTransform(
+      meepleTree,
+      "meeple-1",
+      oversizedRectTransform
+    );
+    const meeple = findProjectObjectNode(resizedTree, "meeple-1")!;
+
+    expect(getProjectObjectNodeMeeple(objectTree[0]!)).toEqual({
+      visualVariant: "meeple"
+    });
+    expect(getProjectObjectNodeMeeple(meeple)).toEqual(coneMeeple);
+    expect(getProjectObjectNodeAppearance(meeple)).toMatchObject({
+      backgroundColor: "#fee2e2",
+      borderColor: "#dc2626"
+    });
+    expect(getProjectObjectNodeRectTransform(meeple)).toMatchObject({
+      height: 140,
+      scaleX: 1.5,
+      scaleY: 0.8,
+      width: 90,
+      x: 10,
+      y: 20
+    });
+    expect(meeple.components?.doubleSide).toBeUndefined();
+    expect(meeple.components?.shape).toBeUndefined();
   });
 
   it("keeps card children on the active card side", () => {
@@ -416,6 +464,7 @@ describe("project object tree helpers", () => {
     expect(doesProjectObjectClipChildren("card")).toBe(true);
     expect(doesProjectObjectClipChildren("deck")).toBe(true);
     expect(doesProjectObjectClipChildren("token")).toBe(true);
+    expect(doesProjectObjectClipChildren("meeple")).toBe(true);
     expect(doesProjectObjectClipChildren("counter")).toBe(true);
     expect(doesProjectObjectClipChildren("die")).toBe(true);
     expect(doesProjectObjectClipChildren("shape")).toBe(true);
@@ -585,6 +634,9 @@ describe("project object tree helpers", () => {
     const bag: ProjectObjectBag = {
       appearanceVariant: "box"
     };
+    const meeple: ProjectObjectMeeple = {
+      visualVariant: "standee"
+    };
     const container: ProjectObjectContainer = {
       entries: [
         { objectFileNodeId: "card-file-1", quantity: 2 },
@@ -627,6 +679,11 @@ describe("project object tree helpers", () => {
       stackDisplay
     );
     const bagTree = setProjectObjectNodeBag([objectNode("bag-1", "Bag", "bag")], "bag-1", bag);
+    const meepleTree = setProjectObjectNodeMeeple(
+      [objectNode("meeple-1", "Meeple", "meeple")],
+      "meeple-1",
+      meeple
+    );
     const zoneTree = setProjectObjectNodeZone(
       [objectNode("zone-1", "Zone", "zone")],
       "zone-1",
@@ -659,6 +716,9 @@ describe("project object tree helpers", () => {
       getProjectObjectNodeStackDisplay(findProjectObjectNode(stackDisplayTree, "deck-1")!)
     ).toEqual(stackDisplay);
     expect(getProjectObjectNodeBag(findProjectObjectNode(bagTree, "bag-1")!)).toEqual(bag);
+    expect(getProjectObjectNodeMeeple(findProjectObjectNode(meepleTree, "meeple-1")!)).toEqual(
+      meeple
+    );
     expect(getProjectObjectNodeZone(findProjectObjectNode(zoneTree, "zone-1")!)).toEqual(zone);
     expect(getProjectObjectNodeLayout(findProjectObjectNode(zoneTree, "zone-1")!)).toMatchObject({
       mode: "grid"
@@ -669,6 +729,7 @@ describe("project object tree helpers", () => {
       objectTree
     );
     expect(setProjectObjectNodeBag(objectTree, "missing-object", bag)).toBe(objectTree);
+    expect(setProjectObjectNodeMeeple(objectTree, "missing-object", meeple)).toBe(objectTree);
     expect(setProjectObjectNodeDeck(objectTree, "missing-object", deck)).toBe(objectTree);
     expect(setProjectObjectNodeImage(objectTree, "missing-object", image)).toBe(objectTree);
     expect(setProjectObjectNodeDie(objectTree, "missing-object", die)).toBe(objectTree);

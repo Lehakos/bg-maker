@@ -23,6 +23,8 @@ import type {
   ProjectObjectLayoutAlignment,
   ProjectObjectLayoutJustification,
   ProjectObjectLayoutMode,
+  ProjectObjectMeeple,
+  ProjectObjectMeepleVisualVariant,
   ProjectObjectRectTransform,
   ProjectObjectShape,
   ProjectObjectShapePoint,
@@ -46,6 +48,7 @@ import {
   getDefaultProjectObjectDoubleSide,
   getDefaultProjectObjectImage,
   getDefaultProjectObjectLayout,
+  getDefaultProjectObjectMeeple,
   getDefaultProjectObjectRectTransform,
   getDefaultProjectObjectShape,
   getDefaultProjectObjectShapePolygonPoints,
@@ -64,6 +67,7 @@ import {
   projectObjectDieFaceCountLimits,
   projectObjectDieFaceLabelMaxLength,
   projectObjectDieFaceModes,
+  projectObjectMeepleVisualVariants,
   projectObjectShapePolygonCoordinateLimits,
   projectObjectShapePolygonPointCountLimits,
   projectObjectSides,
@@ -105,6 +109,9 @@ const projectObjectBorderStyles = new Set<ProjectObjectBorderStyle>([
 ]);
 const projectObjectBagAppearanceVariantSet = new Set<ProjectObjectBagAppearanceVariant>(
   projectObjectBagAppearanceVariants
+);
+const projectObjectMeepleVisualVariantSet = new Set<ProjectObjectMeepleVisualVariant>(
+  projectObjectMeepleVisualVariants
 );
 const projectObjectImageFits = new Set<ProjectObjectImageFit>([
   "contain",
@@ -218,6 +225,13 @@ export function normalizeProjectObjectComponents(
     return {
       ...components,
       die: normalizeProjectObjectDie(record.die)
+    };
+  }
+
+  if (kind === "meeple") {
+    return {
+      ...components,
+      meeple: normalizeProjectObjectMeeple(record.meeple)
     };
   }
 
@@ -481,6 +495,20 @@ function normalizeProjectObjectBag(value: unknown): ProjectObjectBag {
 
   return {
     appearanceVariant
+  };
+}
+
+function normalizeProjectObjectMeeple(value: unknown): ProjectObjectMeeple {
+  const defaultMeeple = getDefaultProjectObjectMeeple();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const visualVariant = projectObjectMeepleVisualVariantSet.has(
+    record.visualVariant as ProjectObjectMeepleVisualVariant
+  )
+    ? (record.visualVariant as ProjectObjectMeepleVisualVariant)
+    : defaultMeeple.visualVariant;
+
+  return {
+    visualVariant
   };
 }
 
