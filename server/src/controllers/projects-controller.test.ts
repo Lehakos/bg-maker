@@ -5,7 +5,7 @@ import { apiPaths, type UploadProjectImageAssetResponse } from "@bg-maker/shared
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app.js";
-import { maxProjectImageAssetBytes, ProjectService } from "../services/project-service.js";
+import { maxProjectImageAssetBytes, ProjectService } from "../projects/project-service.js";
 
 let testDirectory: string;
 let projectService: ProjectService;

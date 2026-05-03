@@ -1,7 +1,7 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 import { App } from "./app/App";
-import { ProjectPickerPage } from "./features/projects/ProjectPickerPage";
-import { ProjectWorkspacePage } from "./features/projects/ProjectWorkspacePage";
+import { ProjectPickerPage } from "./features/project-catalog/ProjectPickerPage";
+import { ProjectWorkspacePage } from "./features/project-workspace/ProjectWorkspacePage";
 import { NotFoundPage } from "./routes/NotFoundPage";
 
 const rootRoute = createRootRoute({

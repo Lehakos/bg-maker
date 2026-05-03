@@ -220,7 +220,6 @@ export type ProjectObjectSideComponents = {
   appearance?: ProjectObjectAppearance;
   image?: ProjectObjectImage;
   layout?: ProjectObjectLayout;
-  shape?: ProjectObjectShape;
   text?: ProjectObjectText;
 };
 

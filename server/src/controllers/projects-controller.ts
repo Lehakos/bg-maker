@@ -1,7 +1,6 @@
 import {
   apiPaths,
   type ApiErrorResponse,
-  type CreateProjectRequest,
   type CreateProjectResponse,
   type GetProjectResponse,
   type ListProjectsResponse,
@@ -13,7 +12,13 @@ import {
   createProjectService,
   ProjectService,
   ProjectValidationError
-} from "../services/project-service.js";
+} from "../projects/project-service.js";
+import { getProjectValidationErrorStatusCode } from "../projects/project-route-errors.js";
+import {
+  getProjectFileTreePayload,
+  toCreateProjectImageAssetRequest,
+  toCreateProjectRequest
+} from "../projects/project-route-payloads.js";
 
 type ProjectRouteParams = {
   projectId: string;
@@ -40,7 +45,7 @@ export function registerProjectsController(
         return { project };
       } catch (error) {
         if (error instanceof ProjectValidationError) {
-          reply.code(400);
+          reply.code(getProjectValidationErrorStatusCode(error));
 
           return { message: error.message };
         }
@@ -83,7 +88,7 @@ export function registerProjectsController(
         return { project };
       } catch (error) {
         if (error instanceof ProjectValidationError) {
-          reply.code(400);
+          reply.code(getProjectValidationErrorStatusCode(error));
 
           return { message: error.message };
         }
@@ -97,17 +102,10 @@ export function registerProjectsController(
     `${apiPaths.projects}/:projectId/image-assets`,
     async (request, reply): Promise<UploadProjectImageAssetResponse | ApiErrorResponse> => {
       try {
-        if (!Buffer.isBuffer(request.body)) {
-          reply.code(400);
-
-          return { message: "Image asset data is required" };
-        }
-
-        const imageAsset = await projectService.createProjectImageAsset(request.params.projectId, {
-          contentType: getHeaderValue(request.headers["content-type"]),
-          data: request.body,
-          fileName: getHeaderValue(request.headers["x-file-name"])
-        });
+        const imageAsset = await projectService.createProjectImageAsset(
+          request.params.projectId,
+          toCreateProjectImageAssetRequest(request.body, request.headers)
+        );
 
         if (!imageAsset) {
           reply.code(404);
@@ -120,7 +118,7 @@ export function registerProjectsController(
         return { imageAsset };
       } catch (error) {
         if (error instanceof ProjectValidationError) {
-          reply.code(error.message === "Unsupported image content type" ? 415 : 400);
+          reply.code(getProjectValidationErrorStatusCode(error));
 
           return { message: error.message };
         }
@@ -152,35 +150,4 @@ export function registerProjectsController(
       return imageAsset.data;
     }
   );
-}
-
-function toCreateProjectRequest(body: unknown): CreateProjectRequest {
-  if (!body || typeof body !== "object") {
-    return { name: "" };
-  }
-
-  const record = body as Record<string, unknown>;
-
-  return {
-    name: typeof record.name === "string" ? record.name : "",
-    description: typeof record.description === "string" ? record.description : undefined
-  };
-}
-
-function getProjectFileTreePayload(body: unknown): unknown {
-  if (!body || typeof body !== "object") {
-    return undefined;
-  }
-
-  const record = body as Record<string, unknown>;
-
-  return record.fileTree;
-}
-
-function getHeaderValue(value: string | string[] | undefined) {
-  if (Array.isArray(value)) {
-    return value[0] ?? "";
-  }
-
-  return value ?? "";
 }

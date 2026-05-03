@@ -8,7 +8,7 @@ export class ProjectWorkspacePage extends GameObject {
 
   async expectProjectOpen(projectName: RegExp | string) {
     await expect(this.page).toHaveURL(/\/projects\/[^/]+$/);
-    await expect(this.getByRole("heading", { name: projectName })).toBeVisible();
+    await expect(this.page.getByRole("banner").getByText(projectName)).toBeVisible();
     await expect(this.getByRole("heading", { name: "File tree", exact: true })).toBeVisible();
     await expect(this.getByRole("button", { name: "Table setups", exact: true })).toBeVisible();
   }

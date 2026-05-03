@@ -3,7 +3,7 @@ import { projectImageAssetContentTypes } from "@bg-maker/shared";
 import Fastify from "fastify";
 import { registerHealthController } from "./controllers/health-controller.js";
 import { registerProjectsController } from "./controllers/projects-controller.js";
-import { maxProjectImageAssetBytes, type ProjectService } from "./services/project-service.js";
+import { maxProjectImageAssetBytes, type ProjectService } from "./projects/project-service.js";
 
 export type BuildAppOptions = {
   projectService?: ProjectService;
