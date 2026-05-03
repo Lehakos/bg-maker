@@ -1,5 +1,6 @@
 import type {
   ProjectObjectAppearance,
+  ProjectObjectBag,
   ProjectObjectImage,
   ProjectFileKind,
   ProjectFileNode,
@@ -189,6 +190,10 @@ export function getProjectObjectNodeAppearance(object: ProjectObjectNode): Proje
   return projectObjectComponentEngine.getAppearance(object);
 }
 
+export function getProjectObjectNodeBag(object: ProjectObjectNode): ProjectObjectBag {
+  return projectObjectComponentEngine.getBag(object);
+}
+
 export function getProjectObjectNodeCard(object: ProjectObjectNode): ProjectObjectCard {
   return projectObjectComponentEngine.getCard(object);
 }
@@ -258,6 +263,18 @@ export function setProjectObjectNodeAppearance(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withAppearance(node, appearance)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeBag(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  bag: ProjectObjectBag
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withBag(node, bag)
   );
 
   return result.changed ? result.nodes : objectTree;

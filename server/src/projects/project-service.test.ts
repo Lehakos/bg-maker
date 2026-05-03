@@ -549,7 +549,7 @@ describe("ProjectService", () => {
     ]);
   });
 
-  it("normalizes bag components as a free-sized token container stack", async () => {
+  it("normalizes bag components as a free-sized token container", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 
     const updatedProject = await projectService.updateProjectFileTree("project-1", [
@@ -563,6 +563,9 @@ describe("ProjectService", () => {
             kind: "bag",
             name: "Bag 1",
             components: {
+              bag: {
+                appearanceVariant: "box"
+              },
               container: {
                 entries: [
                   { objectFileNodeId: " token-file-1 ", quantity: 2 },
@@ -595,6 +598,9 @@ describe("ProjectService", () => {
         id: "bag-1",
         kind: "bag",
         components: {
+          bag: {
+            appearanceVariant: "box"
+          },
           container: {
             entries: [
               {
@@ -608,17 +614,14 @@ describe("ProjectService", () => {
             scaleX: 2,
             scaleY: 3,
             width: 200
-          },
-          stackDisplay: {
-            showCount: false,
-            stackOffsetX: 24,
-            stackOffsetY: -24,
-            visibleItemCount: projectObjectStackDisplayVisibleItemCountLimits.max
           }
         }
       }
     ]);
     expect(updatedProject?.fileTree[0]?.objectTree?.[0]?.components).not.toHaveProperty("deck");
+    expect(updatedProject?.fileTree[0]?.objectTree?.[0]?.components).not.toHaveProperty(
+      "stackDisplay"
+    );
   });
 
   it("normalizes die components and face customization", async () => {

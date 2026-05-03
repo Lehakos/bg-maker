@@ -1,15 +1,25 @@
 import type {
+  ProjectObjectBagAppearanceVariant,
   ProjectObjectCardSizePresetValue,
   ProjectObjectContainer,
   ProjectObjectKind
 } from "@bg-maker/shared";
-import { ArrowDown, ArrowUp, Boxes, Plus, Rows3, Scan, ShoppingBag, Trash2 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Boxes,
+  Plus,
+  Rows3,
+  Scan,
+  Trash2
+} from "lucide-react";
 import type { KeyboardEvent } from "react";
-import { CardIcon, DeckIcon } from "../project-objects/project-object-icons";
+import { BagIcon, BoxIcon, CardIcon, DeckIcon } from "../project-objects/project-object-icons";
 import { cx } from "./class-names";
 import {
   InspectorBehaviorNumberField,
   type InspectorFieldDefinition,
+  InspectorIconSegmentedField,
   InspectorSection,
   InspectorSelectField,
   InspectorSwitchField
@@ -18,6 +28,7 @@ import {
   formatContainerEntryQuantityValue,
   stackDisplayNumberFieldSettings,
   zoneNumberFieldSettings,
+  type BagDraft,
   type CardDraft,
   type DeckDraft,
   type StackDisplayDraft,
@@ -52,6 +63,11 @@ const zoneCapacityField = {
   key: "capacity",
   label: "Capacity"
 } as const satisfies InspectorFieldDefinition<ZoneNumberFieldKey>;
+
+const bagAppearanceVariantOptions = [
+  { icon: BagIcon, label: "Bag", value: "bag" },
+  { icon: BoxIcon, label: "Box", value: "box" }
+] as const;
 
 type ProjectObjectCardSectionProps = {
   draft: CardDraft;
@@ -94,6 +110,27 @@ export function ProjectObjectDeckSection({
         value={draft.sizePreset}
         options={sizePresetOptions}
         onChange={onSizePresetChange}
+      />
+    </InspectorSection>
+  );
+}
+
+type ProjectObjectBagSectionProps = {
+  draft: BagDraft;
+  onAppearanceVariantChange: (value: ProjectObjectBagAppearanceVariant) => void;
+};
+
+export function ProjectObjectBagSection({
+  draft,
+  onAppearanceVariantChange
+}: ProjectObjectBagSectionProps) {
+  return (
+    <InspectorSection icon={<BagIcon size={15} />} title="Bag">
+      <InspectorIconSegmentedField
+        label="Appearance"
+        value={draft.appearanceVariant}
+        options={bagAppearanceVariantOptions}
+        onChange={onAppearanceVariantChange}
       />
     </InspectorSection>
   );
@@ -144,7 +181,7 @@ export function ProjectObjectContainerSection({
 }: ProjectObjectContainerSectionProps) {
   return (
     <InspectorSection
-      icon={objectKind === "bag" ? <ShoppingBag size={15} /> : <Boxes size={15} />}
+      icon={objectKind === "bag" ? <BagIcon size={15} /> : <Boxes size={15} />}
       title="Container"
     >
       <div className="flex items-center justify-between gap-2">

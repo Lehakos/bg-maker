@@ -1,5 +1,7 @@
 import type {
   ProjectObjectAppearance,
+  ProjectObjectBag,
+  ProjectObjectBagAppearanceVariant,
   ProjectObjectBorderStyle,
   ProjectObjectCard,
   ProjectObjectCardSizePresetValue,
@@ -35,6 +37,7 @@ import type {
 } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectAppearance,
+  getDefaultProjectObjectBag,
   getDefaultProjectObjectCard,
   getDefaultProjectObjectCounter,
   getDefaultProjectObjectDeck,
@@ -50,6 +53,7 @@ import {
   getDefaultProjectObjectText,
   getProjectObjectCardSizePreset,
   getProjectObjectRectTransformWithCardSizePreset,
+  projectObjectBagAppearanceVariants,
   projectObjectCardCustomSizePresetId,
   projectObjectContainerEntryQuantityLimits,
   projectObjectCounterAffixMaxLength,
@@ -99,6 +103,9 @@ const projectObjectBorderStyles = new Set<ProjectObjectBorderStyle>([
   "dashed",
   "dotted"
 ]);
+const projectObjectBagAppearanceVariantSet = new Set<ProjectObjectBagAppearanceVariant>(
+  projectObjectBagAppearanceVariants
+);
 const projectObjectImageFits = new Set<ProjectObjectImageFit>([
   "contain",
   "cover",
@@ -195,8 +202,8 @@ export function normalizeProjectObjectComponents(
   if (kind === "bag") {
     return {
       ...components,
-      container: normalizeProjectObjectContainer(record.container, kind),
-      stackDisplay: normalizeProjectObjectStackDisplay(record.stackDisplay)
+      bag: normalizeProjectObjectBag(record.bag),
+      container: normalizeProjectObjectContainer(record.container, kind)
     };
   }
 
@@ -460,6 +467,20 @@ function normalizeProjectObjectStackDisplay(value: unknown): ProjectObjectStackD
       defaultStackDisplay.visibleItemCount,
       projectObjectStackDisplayVisibleItemCountLimits
     )
+  };
+}
+
+function normalizeProjectObjectBag(value: unknown): ProjectObjectBag {
+  const defaultBag = getDefaultProjectObjectBag();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const appearanceVariant = projectObjectBagAppearanceVariantSet.has(
+    record.appearanceVariant as ProjectObjectBagAppearanceVariant
+  )
+    ? (record.appearanceVariant as ProjectObjectBagAppearanceVariant)
+    : defaultBag.appearanceVariant;
+
+  return {
+    appearanceVariant
   };
 }
 

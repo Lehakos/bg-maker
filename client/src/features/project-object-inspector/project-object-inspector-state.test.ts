@@ -1,5 +1,6 @@
 import type {
   ProjectObjectAppearance,
+  ProjectObjectBag,
   ProjectObjectCard,
   ProjectObjectContainer,
   ProjectObjectCounter,
@@ -20,6 +21,7 @@ import {
   normalizeAppearanceNumberValue
 } from "./project-object-inspector-state/appearance-state";
 import {
+  createBagDraft,
   createCardDraft,
   createDeckDraft,
   createStackDisplayDraft,
@@ -29,6 +31,7 @@ import {
   getContainerWithEntryQuantityDraftField,
   getContainerWithMovedEntry,
   getContainerWithRemovedEntry,
+  getBagWithDraftField,
   getDeckWithDraftField,
   getStackDisplayWithDraftField,
   normalizeContainerEntryQuantityValue,
@@ -124,6 +127,10 @@ const counter: ProjectObjectCounter = {
 
 const deck: ProjectObjectDeck = {
   sizePreset: "poker"
+};
+
+const bag: ProjectObjectBag = {
+  appearanceVariant: "bag"
 };
 
 const container: ProjectObjectContainer = {
@@ -324,6 +331,16 @@ describe("project object inspector state", () => {
     expect(getStackDisplayWithDraftField(stackDisplay, "visibleItemCount", "0")).toMatchObject({
       visibleItemCount: 1
     });
+  });
+
+  it("creates and updates bag drafts", () => {
+    expect(createBagDraft(bag)).toEqual({
+      appearanceVariant: "bag"
+    });
+    expect(getBagWithDraftField(bag, "appearanceVariant", "box")).toMatchObject({
+      appearanceVariant: "box"
+    });
+    expect(getBagWithDraftField(bag, "appearanceVariant", "crate")).toBeNull();
   });
 
   it("creates and updates zone drafts", () => {

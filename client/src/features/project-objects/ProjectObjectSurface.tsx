@@ -1,6 +1,7 @@
 import type {
   ProjectFileNode,
   ProjectObjectAppearance,
+  ProjectObjectBagAppearanceVariant,
   ProjectObjectBorderStyle,
   ProjectObjectCounter,
   ProjectObjectKind,
@@ -16,6 +17,7 @@ import {
 } from "@bg-maker/shared";
 import type { CSSProperties } from "react";
 import {
+  getProjectObjectNodeBag,
   getProjectObjectNodeCounter,
   getProjectObjectNodeAppearance,
   getProjectObjectNodeContainer,
@@ -26,6 +28,7 @@ import {
   getProjectObjectNodeText
 } from "./project-object-tree";
 import { getProjectObjectZoneSlotRects } from "./project-object-zone";
+import { BagIcon, BoxIcon } from "./project-object-icons";
 import { ProjectObjectKindIcon } from "./project-object-tree-ui";
 import type { ProjectImageAssetOption } from "../project-assets/project-image-assets";
 
@@ -148,14 +151,187 @@ function DeckVisual({ object }: ObjectVisualProps) {
 }
 
 function BagVisual({ object }: ObjectVisualProps) {
+  const bag = getProjectObjectNodeBag(object);
+  const appearance = getProjectObjectNodeAppearance(object);
+  const container = getProjectObjectNodeContainer(object);
+  const totalCount = getProjectObjectContainerTotalCount(container);
+  const Icon = bag.appearanceVariant === "box" ? BoxIcon : BagIcon;
+  const emptyLabel = bag.appearanceVariant === "box" ? "Empty box" : "Empty bag";
+  const countClassName =
+    bag.appearanceVariant === "box"
+      ? "border-amber-200 text-amber-700"
+      : "border-violet-200 text-violet-700";
+  const emptyClassName =
+    bag.appearanceVariant === "box" ? "text-amber-800" : "text-violet-800";
+
   return (
-    <StackedContainerVisual
-      countClassName="border-violet-200 text-violet-700"
-      emptyClassName="text-violet-800"
-      emptyLabel="Empty bag"
-      iconKind="bag"
-      object={object}
-    />
+    <div
+      className="relative h-full w-full overflow-visible"
+      style={{ opacity: appearance.opacity }}
+    >
+      <BagContainerShape appearance={appearance} variant={bag.appearanceVariant} />
+      {totalCount === 0 ? (
+        <div
+          className={`absolute inset-0 flex min-w-0 flex-col items-center justify-center px-2 ${emptyClassName}`}
+          style={{ padding: appearance.padding }}
+        >
+          <Icon size={24} />
+          <span className="mt-2 max-w-full truncate text-xs font-semibold">{emptyLabel}</span>
+        </div>
+      ) : null}
+      <span
+        className={`pointer-events-none absolute bottom-1.5 right-1.5 rounded border bg-white/90 px-1.5 py-0.5 text-[10px] font-bold leading-none shadow-sm ${countClassName}`}
+      >
+        {totalCount}
+      </span>
+    </div>
+  );
+}
+
+type BagContainerShapeProps = {
+  appearance: ProjectObjectAppearance;
+  variant: ProjectObjectBagAppearanceVariant;
+};
+
+function BagContainerShape({ appearance, variant }: BagContainerShapeProps) {
+  const fill = getColorWithOpacity(appearance.backgroundColor, appearance.backgroundOpacity);
+  const strokeWidth = appearance.borderStyle === "none" ? 0 : appearance.borderWidth;
+  const strokeDasharray = getStrokeDasharray(appearance.borderStyle);
+
+  return (
+    <svg
+      aria-hidden
+      className="absolute inset-0 h-full w-full overflow-visible"
+      preserveAspectRatio="none"
+      style={{
+        filter: "drop-shadow(0 14px 18px rgba(15, 23, 42, 0.16))"
+      }}
+      viewBox="0 0 100 100"
+    >
+      {variant === "box" ? (
+        <BoxContainerShapeSvg
+          fill={fill}
+          stroke={appearance.borderColor}
+          strokeDasharray={strokeDasharray}
+          strokeWidth={strokeWidth}
+        />
+      ) : (
+        <BagContainerShapeSvg
+          fill={fill}
+          stroke={appearance.borderColor}
+          strokeDasharray={strokeDasharray}
+          strokeWidth={strokeWidth}
+        />
+      )}
+    </svg>
+  );
+}
+
+type BagContainerShapeSvgProps = {
+  fill: string;
+  stroke: string;
+  strokeDasharray?: string;
+  strokeWidth: number;
+};
+
+function BagContainerShapeSvg({
+  fill,
+  stroke,
+  strokeDasharray,
+  strokeWidth
+}: BagContainerShapeSvgProps) {
+  const detailStrokeWidth = Math.max(1.2, strokeWidth * 0.7);
+
+  return (
+    <>
+      <path
+        d="M35 19c3.2-7.6 9-11 15-11s11.8 3.4 15 11"
+        fill="none"
+        stroke={stroke}
+        strokeLinecap="round"
+        strokeWidth={detailStrokeWidth}
+        opacity="0.75"
+      />
+      <path
+        d="M28 25c8.8 6.3 34.2 6.3 43 0"
+        fill="none"
+        stroke={stroke}
+        strokeLinecap="round"
+        strokeWidth={detailStrokeWidth}
+        opacity="0.7"
+      />
+      <path
+        d="M29 27c-12 15.5-16 46.2-3.5 60C35 97.5 65 97.5 74.5 87 87 73.2 83 42.5 71 27c-10 7-32 7-42 0Z"
+        fill={fill}
+        stroke={stroke}
+        strokeDasharray={strokeDasharray}
+        strokeLinejoin="round"
+        strokeWidth={strokeWidth}
+      />
+      <path
+        d="M33 37c9.5 5.4 24.5 5.4 34 0"
+        fill="none"
+        stroke={stroke}
+        strokeLinecap="round"
+        strokeWidth={detailStrokeWidth}
+        opacity="0.3"
+      />
+      <path
+        d="M38 27c-2.5 6-2.2 12 .8 17M62 27c2.5 6 2.2 12-.8 17"
+        fill="none"
+        stroke={stroke}
+        strokeLinecap="round"
+        strokeWidth={detailStrokeWidth}
+        opacity="0.2"
+      />
+    </>
+  );
+}
+
+function BoxContainerShapeSvg({
+  fill,
+  stroke,
+  strokeDasharray,
+  strokeWidth
+}: BagContainerShapeSvgProps) {
+  const detailStrokeWidth = Math.max(1.2, strokeWidth * 0.7);
+
+  return (
+    <>
+      <path
+        d="M10 29 50 10l40 19-40 20-40-20Z"
+        fill={fill}
+        stroke={stroke}
+        strokeDasharray={strokeDasharray}
+        strokeLinejoin="round"
+        strokeWidth={strokeWidth}
+      />
+      <path
+        d="M10 29v43l40 20V49L10 29Z"
+        fill={fill}
+        stroke={stroke}
+        strokeDasharray={strokeDasharray}
+        strokeLinejoin="round"
+        strokeWidth={strokeWidth}
+      />
+      <path
+        d="M90 29v43L50 92V49l40-20Z"
+        fill={fill}
+        stroke={stroke}
+        strokeDasharray={strokeDasharray}
+        strokeLinejoin="round"
+        strokeWidth={strokeWidth}
+      />
+      <path
+        d="M10 29 50 49l40-20M50 49v43"
+        fill="none"
+        stroke={stroke}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={detailStrokeWidth}
+        opacity="0.85"
+      />
+    </>
   );
 }
 

@@ -150,6 +150,15 @@ export type ProjectObjectDeck = {
   sizePreset: ProjectObjectCardSizePresetValue;
 };
 
+export const projectObjectBagAppearanceVariants = ["bag", "box"] as const;
+
+export type ProjectObjectBagAppearanceVariant =
+  (typeof projectObjectBagAppearanceVariants)[number];
+
+export type ProjectObjectBag = {
+  appearanceVariant: ProjectObjectBagAppearanceVariant;
+};
+
 export const projectObjectZoneCapacityLimits = {
   max: 999,
   min: 1
@@ -285,6 +294,7 @@ export type ProjectObjectRectTransform = {
 
 export type ProjectObjectComponents = {
   appearance?: ProjectObjectAppearance;
+  bag?: ProjectObjectBag;
   card?: ProjectObjectCard;
   container?: ProjectObjectContainer;
   counter?: ProjectObjectCounter;
@@ -599,6 +609,12 @@ export function getDefaultProjectObjectDeck(): ProjectObjectDeck {
   };
 }
 
+export function getDefaultProjectObjectBag(): ProjectObjectBag {
+  return {
+    appearanceVariant: "bag"
+  };
+}
+
 export function getDefaultProjectObjectZone(): ProjectObjectZone {
   return {
     capacity: 1,
@@ -816,8 +832,8 @@ export function createDefaultProjectObjectComponents(
   }
 
   if (kind === "bag") {
+    components.bag = getDefaultProjectObjectBag();
     components.container = getDefaultProjectObjectContainer(kind);
-    components.stackDisplay = getDefaultProjectObjectStackDisplay();
   }
 
   if (kind === "zone") {

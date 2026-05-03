@@ -8,12 +8,11 @@ import {
   Image,
   Rows3,
   Scan,
-  ShoppingBag,
   Square,
   Type,
   type LucideProps
 } from "lucide-react";
-import { CardIcon, DeckIcon } from "./project-object-icons";
+import { BagIcon, CardIcon, DeckIcon } from "./project-object-icons";
 
 type ProjectObjectKindIconProps = LucideProps & {
   kind: ProjectObjectKind;
@@ -45,7 +44,7 @@ export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindI
   }
 
   if (kind === "bag") {
-    return <ShoppingBag {...iconProps} />;
+    return <BagIcon {...iconProps} />;
   }
 
   if (kind === "die") {

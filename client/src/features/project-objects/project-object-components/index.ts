@@ -4,6 +4,7 @@ export {
   getProjectObjectAppearanceComponent,
   withProjectObjectAppearanceComponent
 } from "./appearance-component";
+export { getProjectObjectBagComponent, withProjectObjectBagComponent } from "./bag-component";
 export { getProjectObjectCardComponent, withProjectObjectCardComponent } from "./card-component";
 export {
   getProjectObjectContainerComponent,

@@ -1,12 +1,16 @@
 import type {
   ProjectObjectCard,
   ProjectObjectCardSizePresetValue,
+  ProjectObjectBag,
+  ProjectObjectBagAppearanceVariant,
   ProjectObjectContainer,
   ProjectObjectDeck,
   ProjectObjectStackDisplay
 } from "@bg-maker/shared";
 import {
+  getDefaultProjectObjectBag,
   getDefaultProjectObjectStackDisplay,
+  projectObjectBagAppearanceVariants,
   projectObjectCardCustomSizePresetId,
   projectObjectCardSizePresets,
   projectObjectContainerEntryQuantityLimits,
@@ -23,6 +27,11 @@ export type CardDraft = {
 export type DeckFieldKey = keyof ProjectObjectDeck;
 export type DeckDraft = {
   sizePreset: ProjectObjectCardSizePresetValue;
+};
+
+export type BagFieldKey = keyof ProjectObjectBag;
+export type BagDraft = {
+  appearanceVariant: ProjectObjectBagAppearanceVariant;
 };
 
 export type StackDisplayFieldKey = keyof ProjectObjectStackDisplay;
@@ -65,6 +74,9 @@ const cardSizePresetValues = new Set<ProjectObjectCardSizePresetValue>([
   projectObjectCardCustomSizePresetId,
   ...projectObjectCardSizePresets.map((preset) => preset.id)
 ]);
+const bagAppearanceVariantValues = new Set<ProjectObjectBagAppearanceVariant>(
+  projectObjectBagAppearanceVariants
+);
 
 export function createCardDraft(card: ProjectObjectCard): CardDraft {
   return {
@@ -75,6 +87,12 @@ export function createCardDraft(card: ProjectObjectCard): CardDraft {
 export function createDeckDraft(deck: ProjectObjectDeck): DeckDraft {
   return {
     sizePreset: deck.sizePreset
+  };
+}
+
+export function createBagDraft(bag: ProjectObjectBag): BagDraft {
+  return {
+    appearanceVariant: bag.appearanceVariant
   };
 }
 
@@ -118,6 +136,20 @@ export function getDeckWithDraftField(
   }
 
   return areDecksEqual(deck, nextDeck) ? null : nextDeck;
+}
+
+export function getBagWithDraftField(
+  bag: ProjectObjectBag,
+  fieldKey: BagFieldKey,
+  value: string
+) {
+  const nextBag = createNextBag(bag, fieldKey, value);
+
+  if (!nextBag) {
+    return null;
+  }
+
+  return areBagsEqual(bag, nextBag) ? null : nextBag;
 }
 
 export function getStackDisplayWithDraftField(
@@ -331,6 +363,20 @@ function createNextDeck(
   return null;
 }
 
+function createNextBag(
+  bag: ProjectObjectBag,
+  fieldKey: BagFieldKey,
+  value: string
+): ProjectObjectBag | null {
+  if (fieldKey === "appearanceVariant") {
+    return bagAppearanceVariantValues.has(value as ProjectObjectBagAppearanceVariant)
+      ? normalizeBag({ ...bag, appearanceVariant: value as ProjectObjectBagAppearanceVariant })
+      : null;
+  }
+
+  return null;
+}
+
 function createNextStackDisplay(
   stackDisplay: ProjectObjectStackDisplay,
   fieldKey: StackDisplayFieldKey,
@@ -372,6 +418,17 @@ function normalizeStackDisplay(
   };
 }
 
+function normalizeBag(bag: ProjectObjectBag): ProjectObjectBag {
+  const defaultBag = getDefaultProjectObjectBag();
+
+  return {
+    ...bag,
+    appearanceVariant: bagAppearanceVariantValues.has(bag.appearanceVariant)
+      ? bag.appearanceVariant
+      : defaultBag.appearanceVariant
+  };
+}
+
 function normalizeContainer(container: ProjectObjectContainer): ProjectObjectContainer {
   return {
     ...container,
@@ -409,6 +466,10 @@ function areCardsEqual(left: ProjectObjectCard, right: ProjectObjectCard) {
 
 function areDecksEqual(left: ProjectObjectDeck, right: ProjectObjectDeck) {
   return left.sizePreset === right.sizePreset;
+}
+
+function areBagsEqual(left: ProjectObjectBag, right: ProjectObjectBag) {
+  return left.appearanceVariant === right.appearanceVariant;
 }
 
 function areStackDisplaysEqual(

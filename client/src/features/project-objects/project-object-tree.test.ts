@@ -4,6 +4,7 @@ import {
   type ProjectFileKind,
   type ProjectFileNode,
   type ProjectObjectAppearance,
+  type ProjectObjectBag,
   type ProjectObjectCard,
   type ProjectObjectContainer,
   type ProjectObjectCounter,
@@ -27,6 +28,7 @@ import {
   findProjectObjectNodeLocation,
   getExpandableProjectObjectNodeIds,
   getProjectObjectNodeAppearance,
+  getProjectObjectNodeBag,
   getProjectObjectNodeCard,
   getProjectObjectNodeContainer,
   getProjectObjectNodeCounter,
@@ -45,6 +47,7 @@ import {
   moveProjectObjectNode,
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
+  setProjectObjectNodeBag,
   setProjectObjectNodeCard,
   setProjectObjectNodeContainer,
   setProjectObjectNodeCounter,
@@ -325,7 +328,7 @@ describe("project object tree helpers", () => {
     });
   });
 
-  it("creates bag defaults as a free-sized token container stack", () => {
+  it("creates bag defaults as a free-sized token container", () => {
     const objectTree = [objectNode("bag-1", "Bag", "bag")];
     const oversizedRectTransform: ProjectObjectRectTransform = {
       height: 200,
@@ -346,13 +349,13 @@ describe("project object tree helpers", () => {
     );
     const bag = findProjectObjectNode(resizedTree, "bag-1")!;
 
+    expect(getProjectObjectNodeBag(bag)).toEqual({
+      appearanceVariant: "bag"
+    });
     expect(getProjectObjectNodeContainer(bag)).toEqual({
       entries: []
     });
-    expect(getProjectObjectNodeStackDisplay(bag)).toMatchObject({
-      showCount: true,
-      visibleItemCount: 4
-    });
+    expect(bag.components?.stackDisplay).toBeUndefined();
     expect(getProjectObjectContainerAcceptedObjectKinds("bag")).toEqual(["token"]);
     expect(getProjectObjectContainerAcceptedObjectKinds("deck")).toEqual(["card"]);
     expect(getProjectObjectNodeRectTransform(bag)).toMatchObject({
@@ -579,6 +582,9 @@ describe("project object tree helpers", () => {
     const deck: ProjectObjectDeck = {
       sizePreset: "custom"
     };
+    const bag: ProjectObjectBag = {
+      appearanceVariant: "box"
+    };
     const container: ProjectObjectContainer = {
       entries: [
         { objectFileNodeId: "card-file-1", quantity: 2 },
@@ -620,6 +626,7 @@ describe("project object tree helpers", () => {
       "deck-1",
       stackDisplay
     );
+    const bagTree = setProjectObjectNodeBag([objectNode("bag-1", "Bag", "bag")], "bag-1", bag);
     const zoneTree = setProjectObjectNodeZone(
       [objectNode("zone-1", "Zone", "zone")],
       "zone-1",
@@ -651,6 +658,7 @@ describe("project object tree helpers", () => {
     expect(
       getProjectObjectNodeStackDisplay(findProjectObjectNode(stackDisplayTree, "deck-1")!)
     ).toEqual(stackDisplay);
+    expect(getProjectObjectNodeBag(findProjectObjectNode(bagTree, "bag-1")!)).toEqual(bag);
     expect(getProjectObjectNodeZone(findProjectObjectNode(zoneTree, "zone-1")!)).toEqual(zone);
     expect(getProjectObjectNodeLayout(findProjectObjectNode(zoneTree, "zone-1")!)).toMatchObject({
       mode: "grid"
@@ -660,6 +668,7 @@ describe("project object tree helpers", () => {
     expect(setProjectObjectNodeContainer(objectTree, "missing-object", container)).toBe(
       objectTree
     );
+    expect(setProjectObjectNodeBag(objectTree, "missing-object", bag)).toBe(objectTree);
     expect(setProjectObjectNodeDeck(objectTree, "missing-object", deck)).toBe(objectTree);
     expect(setProjectObjectNodeImage(objectTree, "missing-object", image)).toBe(objectTree);
     expect(setProjectObjectNodeDie(objectTree, "missing-object", die)).toBe(objectTree);

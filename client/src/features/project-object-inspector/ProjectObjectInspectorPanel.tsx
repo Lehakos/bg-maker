@@ -1,6 +1,7 @@
 import type {
   ProjectFileNode,
   ProjectObjectAppearance,
+  ProjectObjectBag,
   ProjectObjectCard,
   ProjectObjectCardSizePresetValue,
   ProjectObjectContainer,
@@ -19,6 +20,7 @@ import type {
 } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectCounter,
+  getDefaultProjectObjectBag,
   getDefaultProjectObjectDeck,
   getDefaultProjectObjectDie,
   getDefaultProjectObjectStackDisplay,
@@ -41,6 +43,7 @@ import {
 } from "../project-assets/project-image-assets";
 import {
   getProjectObjectNodeAppearance,
+  getProjectObjectNodeBag,
   getProjectObjectNodeCard,
   getProjectObjectNodeContainer,
   getProjectObjectNodeCounter,
@@ -56,6 +59,7 @@ import {
   getProjectObjectNodeZone,
   renameProjectObjectNode,
   setProjectObjectNodeAppearance,
+  setProjectObjectNodeBag,
   setProjectObjectNodeCard,
   setProjectObjectNodeContainer,
   setProjectObjectNodeCounter,
@@ -75,6 +79,7 @@ import {
 import {
   createRectTransformDraft,
   createAppearanceDraft,
+  createBagDraft,
   createCardDraft,
   createCounterDraft,
   createDeckDraft,
@@ -95,6 +100,7 @@ import {
   formatTextNumberValue,
   formatZoneNumberValue,
   getAppearanceWithDraftField,
+  getBagWithDraftField,
   getCardWithDraftField,
   getContainerWithAddedEntry,
   getContainerWithEntryObjectFileNodeId,
@@ -140,6 +146,8 @@ import {
   textNumberFieldSettings,
   type AppearanceDraft,
   type AppearanceFieldKey,
+  type BagDraft,
+  type BagFieldKey,
   type CardDraft,
   type CardFieldKey,
   type CounterDraft,
@@ -179,6 +187,7 @@ import {
   ProjectObjectDoubleSidedSection
 } from "./ProjectObjectMechanicsSections";
 import {
+  ProjectObjectBagSection,
   ProjectObjectCardSection,
   ProjectObjectContainerSection,
   ProjectObjectDeckSection,
@@ -259,6 +268,10 @@ export function ProjectObjectInspectorPanel({
     () => (selectedObject?.kind === "deck" ? getProjectObjectNodeDeck(selectedObject) : null),
     [selectedObject]
   );
+  const bag = useMemo(
+    () => (selectedObject?.kind === "bag" ? getProjectObjectNodeBag(selectedObject) : null),
+    [selectedObject]
+  );
   const container = useMemo(
     () =>
       selectedObject?.kind === "deck" || selectedObject?.kind === "bag"
@@ -268,7 +281,7 @@ export function ProjectObjectInspectorPanel({
   );
   const stackDisplay = useMemo(
     () =>
-      selectedObject?.kind === "deck" || selectedObject?.kind === "bag"
+      selectedObject?.kind === "deck"
         ? getProjectObjectNodeStackDisplay(selectedObject)
         : null,
     [selectedObject]
@@ -328,6 +341,9 @@ export function ProjectObjectInspectorPanel({
   );
   const [deckDraft, setDeckDraft] = useState<DeckDraft>(() =>
     deck ? createDeckDraft(deck) : createDeckDraft(getFallbackDeckDraftValue())
+  );
+  const [bagDraft, setBagDraft] = useState<BagDraft>(() =>
+    bag ? createBagDraft(bag) : createBagDraft(getFallbackBagDraftValue())
   );
   const [stackDisplayDraft, setStackDisplayDraft] = useState<StackDisplayDraft>(() =>
     stackDisplay
@@ -393,6 +409,12 @@ export function ProjectObjectInspectorPanel({
       setDeckDraft(createDeckDraft(deck));
     }
   }, [deck, selectedObject?.id]);
+
+  useEffect(() => {
+    if (bag) {
+      setBagDraft(createBagDraft(bag));
+    }
+  }, [bag, selectedObject?.id]);
 
   useEffect(() => {
     if (stackDisplay) {
@@ -784,6 +806,38 @@ export function ProjectObjectInspectorPanel({
     }
 
     const nextObjectTree = setProjectObjectNodeDeck(objectTree, selectedObject.id, nextDeck);
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
+  function updateBagDraft<TFieldKey extends BagFieldKey>(
+    fieldKey: TFieldKey,
+    value: ProjectObjectBag[TFieldKey]
+  ) {
+    setBagDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    updateObjectTreeBagField(fieldKey, value);
+  }
+
+  function updateObjectTreeBagField<TFieldKey extends BagFieldKey>(
+    fieldKey: TFieldKey,
+    value: ProjectObjectBag[TFieldKey]
+  ) {
+    if (!contentFileNode || !selectedObject || !bag) {
+      return;
+    }
+
+    const nextBag = getBagWithDraftField(bag, fieldKey, value);
+
+    if (!nextBag) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeBag(objectTree, selectedObject.id, nextBag);
 
     if (nextObjectTree !== objectTree) {
       onObjectTreeChange(contentFileNode.id, nextObjectTree);
@@ -1564,6 +1618,13 @@ export function ProjectObjectInspectorPanel({
             />
           ) : null}
 
+          {bag ? (
+            <ProjectObjectBagSection
+              draft={bagDraft}
+              onAppearanceVariantChange={(value) => updateBagDraft("appearanceVariant", value)}
+            />
+          ) : null}
+
           {container ? (
             <ProjectObjectContainerSection
               canAddDraftRow={canAddContainerDraftRow}
@@ -1748,6 +1809,10 @@ function getFallbackCounterDraftValue(): ProjectObjectCounter {
 
 function getFallbackDeckDraftValue(): ProjectObjectDeck {
   return getDefaultProjectObjectDeck();
+}
+
+function getFallbackBagDraftValue(): ProjectObjectBag {
+  return getDefaultProjectObjectBag();
 }
 
 function getFallbackStackDisplayDraftValue(): ProjectObjectStackDisplay {
