@@ -374,6 +374,47 @@ export type ProjectObjectNode = {
   children?: ProjectObjectNode[];
 };
 
+export type ProjectTableSetupGrid = {
+  size: number;
+  snap: boolean;
+  visible: boolean;
+};
+
+export type ProjectTableSetupItemTransform = {
+  rotation: number;
+  scaleX: number;
+  scaleY: number;
+  x: number;
+  y: number;
+};
+
+export type ProjectTableSetupLinkedObjectItem = {
+  id: string;
+  name: string;
+  sourceObjectFileNodeId: string;
+  transform: ProjectTableSetupItemTransform;
+  type: "linkedObject";
+  values: Record<string, ProjectObjectVariableValue>;
+  visible: boolean;
+};
+
+export type ProjectTableSetupLocalObjectItem = {
+  object: ProjectObjectNode;
+  type: "localObject";
+};
+
+export type ProjectTableSetupItem =
+  | ProjectTableSetupLinkedObjectItem
+  | ProjectTableSetupLocalObjectItem;
+
+export type ProjectTableSetup = {
+  backgroundColor: string;
+  grid: ProjectTableSetupGrid;
+  height: number;
+  items: ProjectTableSetupItem[];
+  width: number;
+};
+
 export type ProjectFileNode = {
   id: string;
   name: string;
@@ -383,6 +424,7 @@ export type ProjectFileNode = {
   imageAsset?: ProjectImageAsset;
   objectTree?: ProjectObjectNode[];
   sourceRef?: ProjectObjectSourceRef;
+  tableSetup?: ProjectTableSetup;
   template?: ProjectObjectTemplate;
 };
 
@@ -982,6 +1024,46 @@ export function createDefaultProjectObjectNode(
   };
 }
 
+export const defaultProjectTableSetupBackgroundColor = "#6f8b70";
+
+export const projectTableSetupSizeLimits = {
+  max: 5000,
+  min: 100
+} as const;
+
+export const projectTableSetupGridSizeLimits = {
+  max: 500,
+  min: 5
+} as const;
+
+export function getDefaultProjectTableSetupGrid(): ProjectTableSetupGrid {
+  return {
+    size: 50,
+    snap: false,
+    visible: true
+  };
+}
+
+export function getDefaultProjectTableSetupItemTransform(): ProjectTableSetupItemTransform {
+  return {
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+    x: 0,
+    y: 0
+  };
+}
+
+export function getDefaultProjectTableSetup(): ProjectTableSetup {
+  return {
+    backgroundColor: defaultProjectTableSetupBackgroundColor,
+    grid: getDefaultProjectTableSetupGrid(),
+    height: 600,
+    items: [],
+    width: 900
+  };
+}
+
 export function getProjectObjectVariableDefaultValues(
   template: ProjectObjectTemplate | undefined
 ): Record<string, ProjectObjectVariableValue> {
@@ -1006,7 +1088,7 @@ export function resolveProjectObjectFileObjectTree(
     return resolveProjectObjectFileObjectTreeById(fileTree, fileNode.id, undefined, new Set());
   }
 
-  return fileNode.objectTree ?? [];
+  return [];
 }
 
 export function resolveProjectObjectFileObjectTreeById(
@@ -1046,6 +1128,61 @@ export function resolveProjectObjectFileObjectTreeById(
   };
 
   return resolveProjectObjectTreeVariables(fileNode.objectTree ?? [], template, values);
+}
+
+export function getProjectTableSetupItemId(item: ProjectTableSetupItem) {
+  return item.type === "linkedObject" ? item.id : item.object.id;
+}
+
+export function getProjectTableSetupItemName(item: ProjectTableSetupItem) {
+  return item.type === "linkedObject" ? item.name : item.object.name;
+}
+
+export function getProjectTableSetupItemVisible(item: ProjectTableSetupItem) {
+  return item.type === "linkedObject" ? item.visible : item.object.visible;
+}
+
+export function resolveProjectTableSetupItemObject(
+  fileTree: readonly ProjectFileNode[],
+  item: ProjectTableSetupItem
+): ProjectObjectNode | null {
+  if (item.type === "localObject") {
+    return item.object;
+  }
+
+  const sourceRoot = resolveProjectObjectFileObjectTreeById(
+    fileTree,
+    item.sourceObjectFileNodeId,
+    item.values,
+    new Set()
+  )[0];
+
+  if (!sourceRoot) {
+    return null;
+  }
+
+  const sourceRectTransform = {
+    ...getDefaultProjectObjectRectTransform(sourceRoot.kind),
+    ...sourceRoot.components?.rectTransform
+  };
+
+  return {
+    ...sourceRoot,
+    id: item.id,
+    name: item.name,
+    visible: item.visible,
+    components: {
+      ...sourceRoot.components,
+      rectTransform: {
+        ...sourceRectTransform,
+        rotation: item.transform.rotation,
+        scaleX: item.transform.scaleX,
+        scaleY: item.transform.scaleY,
+        x: item.transform.x,
+        y: item.transform.y
+      }
+    }
+  };
 }
 
 export function resolveProjectObjectTreeVariables(

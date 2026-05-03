@@ -13,6 +13,11 @@ export type TransformDragState = {
   startClientY: number;
 };
 
+export type TransformDragOptions = {
+  resizeMode?: "scale" | "size";
+  snapSize?: number | null;
+};
+
 export function getRotateDragState(element: HTMLElement, clientX: number, clientY: number) {
   const pivot = getElementCenterClientPoint(element);
   const pointerAngle = getPointerAngleDegrees(clientX, clientY, pivot.x, pivot.y);
@@ -30,7 +35,8 @@ export function getNextTransformDragState(
   activeTool: WorkspaceTool,
   canvasScale: number,
   clientX: number,
-  clientY: number
+  clientY: number,
+  options: TransformDragOptions = {}
 ): TransformDragState {
   const deltaX = (clientX - currentState.startClientX) / canvasScale;
   const deltaY = (clientY - currentState.startClientY) / canvasScale;
@@ -45,7 +51,8 @@ export function getNextTransformDragState(
         currentState.before,
         deltaX,
         deltaY,
-        rotateDragUpdate.rotateOffset ?? currentState.rotateOffset ?? 0
+        rotateDragUpdate.rotateOffset ?? currentState.rotateOffset ?? 0,
+        options
       )
     )
   };
@@ -89,13 +96,14 @@ export function getDraggedProjectObjectRectTransform(
   before: ProjectObjectRectTransform,
   deltaX: number,
   deltaY: number,
-  rotateOffset = 0
+  rotateOffset = 0,
+  options: TransformDragOptions = {}
 ): ProjectObjectRectTransform {
   if (activeTool === "move") {
     return {
       ...before,
-      x: before.x + deltaX,
-      y: before.y + deltaY
+      x: snapValue(before.x + deltaX, options.snapSize),
+      y: snapValue(before.y + deltaY, options.snapSize)
     };
   }
 
@@ -107,6 +115,14 @@ export function getDraggedProjectObjectRectTransform(
   }
 
   if (activeTool === "resize") {
+    if (options.resizeMode === "scale") {
+      return {
+        ...before,
+        scaleX: clamp(before.scaleX + deltaX / Math.max(1, before.width), 0.01, 100),
+        scaleY: clamp(before.scaleY + deltaY / Math.max(1, before.height), 0.01, 100)
+      };
+    }
+
     return {
       ...before,
       height: clamp(before.height + deltaY, 1, 2000),
@@ -196,6 +212,14 @@ function getShortestAngleDelta(currentAngle: number, previousAngle: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function snapValue(value: number, snapSize: number | null | undefined) {
+  if (!snapSize || snapSize <= 0) {
+    return value;
+  }
+
+  return Math.round(value / snapSize) * snapSize;
 }
 
 function roundTo(value: number, decimals: number) {

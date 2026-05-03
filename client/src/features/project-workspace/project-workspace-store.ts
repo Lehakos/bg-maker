@@ -1,4 +1,9 @@
-import type { ProjectFileNode, ProjectObjectNode } from "@bg-maker/shared";
+import type {
+  ProjectFileNode,
+  ProjectObjectNode,
+  ProjectTableSetup,
+  ProjectTableSetupItem
+} from "@bg-maker/shared";
 import { resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { findProjectFileNode, sortProjectFileTree } from "../project-files/project-file-tree";
@@ -7,6 +12,7 @@ import {
   getProjectObjectTreeWithActiveSides,
   isProjectObjectTreeFileNode
 } from "../project-objects/project-object-tree";
+import { getProjectFileNodeTableSetup } from "../project-table-setup/project-table-setup";
 import type { ProjectEditorCommand, ProjectEditorState } from "./project-editor-commands";
 import {
   getProjectObjectSideSelection,
@@ -26,6 +32,7 @@ type SelectedProjectObject = {
 export type ProjectWorkspaceObjectTreeFileNode = ProjectFileNode & {
   kind: "object" | "tableSetup";
   objectTree?: ProjectObjectNode[];
+  tableSetup?: ProjectTableSetup;
   type: "file";
 };
 
@@ -35,6 +42,7 @@ export type ProjectWorkspaceSelection = {
   selectedFileNode: ProjectFileNode | undefined;
   selectedObjectId: string | null;
   selectedProjectObject: ProjectObjectNode | null;
+  selectedTableSetupItem: ProjectTableSetupItem | null;
 };
 
 export type ProjectWorkspaceStoreState = {
@@ -218,7 +226,7 @@ export function getProjectWorkspaceSelection(
     selectedObject: state.selectedObject
   });
   const selectedProjectObject =
-    selectedContentFileNode && selectedObjectId
+    selectedContentFileNode?.kind === "object" && selectedObjectId
       ? (findProjectObjectNode(
           getProjectWorkspaceContentObjectTree(
             state.fileTree,
@@ -228,13 +236,22 @@ export function getProjectWorkspaceSelection(
           selectedObjectId
         ) ?? null)
       : null;
+  const selectedTableSetupItem =
+    selectedContentFileNode?.kind === "tableSetup" && selectedObjectId
+      ? (getProjectFileNodeTableSetup(selectedContentFileNode)?.items.find(
+          (item) => (item.type === "linkedObject" ? item.id : item.object.id) === selectedObjectId
+        ) ?? null)
+      : null;
+  const selectedTableSetupLocalObject =
+    selectedTableSetupItem?.type === "localObject" ? selectedTableSetupItem.object : null;
 
   return {
     effectiveSelectedNodeId,
     selectedContentFileNode,
     selectedFileNode,
     selectedObjectId,
-    selectedProjectObject
+    selectedProjectObject: selectedProjectObject ?? selectedTableSetupLocalObject,
+    selectedTableSetupItem
   };
 }
 
@@ -255,6 +272,15 @@ function getSelectedObjectId({
 
   if (!selectedObject.objectId) {
     return defaultSelectedObjectId;
+  }
+
+  if (selectedContentFileNode.kind === "tableSetup") {
+    return getProjectFileNodeTableSetup(selectedContentFileNode)?.items.some(
+      (item) =>
+        (item.type === "linkedObject" ? item.id : item.object.id) === selectedObject.objectId
+    )
+      ? selectedObject.objectId
+      : defaultSelectedObjectId;
   }
 
   return findProjectObjectNode(

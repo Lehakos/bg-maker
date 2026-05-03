@@ -40,6 +40,7 @@ import {
   getNextTransformDragState,
   getRectTransformCommandLabel,
   getRotateDragState,
+  type TransformDragOptions,
   type TransformDragState
 } from "./transform-drag-helpers";
 import { useProjectWorkspaceStore } from "./use-project-workspace-store";
@@ -51,14 +52,21 @@ type SceneObjectFrameProps = {
   object: ProjectObjectNode;
   readOnly?: boolean;
   rectTransformOverride?: ProjectObjectRectTransform;
+  resizeMode?: TransformDragOptions["resizeMode"];
   root?: boolean;
+  selectionObjectId?: string;
   selectedObjectId: string | null;
   siblingIndex: number;
+  snapSize?: number | null;
+  stackRootOffset?: boolean;
   onDieFaceChange: (objectId: string, die: ProjectObjectDie, activeFace: number) => void;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
-  onObjectSideChange: (
+  onObjectSideChange: (objectId: string, activeSide: ProjectObjectSide) => void;
+  onRectTransformChange?: (
     objectId: string,
-    activeSide: ProjectObjectSide
+    before: ProjectObjectRectTransform,
+    after: ProjectObjectRectTransform,
+    label: string
   ) => void;
   onSelectObject: (objectId: string | null) => void;
 };
@@ -70,12 +78,17 @@ export function SceneObjectFrame({
   object,
   readOnly = false,
   rectTransformOverride,
+  resizeMode = "size",
   root = false,
+  selectionObjectId,
   selectedObjectId,
   siblingIndex,
+  snapSize = null,
+  stackRootOffset = true,
   onDieFaceChange,
   onExecuteCommand,
   onObjectSideChange,
+  onRectTransformChange,
   onSelectObject
 }: SceneObjectFrameProps) {
   const activeTool = useProjectWorkspaceStore((state) => state.activeTool);
@@ -86,7 +99,9 @@ export function SceneObjectFrame({
   const baseVisibleRectTransform = rectTransformOverride ?? effectiveObjectRectTransform;
   const [dragState, setDragState] = useState<TransformDragState | null>(null);
   const visibleRectTransform = dragState?.current ?? baseVisibleRectTransform;
-  const selected = selectedObjectId === viewObject.id;
+  const selectableObjectId = selectionObjectId ?? viewObject.id;
+  const handlesOwnInteraction = selectableObjectId === viewObject.id;
+  const selected = selectedObjectId === selectableObjectId && handlesOwnInteraction;
   const layoutManaged = Boolean(rectTransformOverride);
   const appearance = getProjectObjectNodeAppearance(viewObject);
   const card = viewObject.kind === "card" ? getProjectObjectNodeCard(viewObject) : null;
@@ -126,6 +141,10 @@ export function SceneObjectFrame({
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!handlesOwnInteraction) {
+      return;
+    }
+
     event.stopPropagation();
 
     if (!interactive) {
@@ -164,7 +183,11 @@ export function SceneObjectFrame({
             activeTool,
             canvasScale,
             event.clientX,
-            event.clientY
+            event.clientY,
+            {
+              resizeMode,
+              snapSize
+            }
           )
         : currentState
     );
@@ -187,33 +210,47 @@ export function SceneObjectFrame({
     releasePointerCapture(event);
 
     if (fileNodeId && !areProjectObjectRectTransformsEqual(dragState.before, dragState.current)) {
-      onExecuteCommand(
-        createUpdateProjectObjectRectTransformCommand({
-          after: dragState.current,
-          before: dragState.before,
-          fileNodeId,
-          label: getRectTransformCommandLabel(activeTool),
-          objectId: object.id
-        })
-      );
+      const label = getRectTransformCommandLabel(activeTool);
+
+      if (onRectTransformChange) {
+        onRectTransformChange(object.id, dragState.before, dragState.current, label);
+      } else {
+        onExecuteCommand(
+          createUpdateProjectObjectRectTransformCommand({
+            after: dragState.current,
+            before: dragState.before,
+            fileNodeId,
+            label,
+            objectId: object.id
+          })
+        );
+      }
     }
 
     setDragState(null);
   }
 
   function handleClick(event: MouseEvent<HTMLDivElement>) {
+    if (!handlesOwnInteraction) {
+      return;
+    }
+
     event.stopPropagation();
-    onSelectObject(viewObject.id);
+    onSelectObject(selectableObjectId);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!handlesOwnInteraction) {
+      return;
+    }
+
     if (event.key !== "Enter" && event.key !== " ") {
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
-    onSelectObject(viewObject.id);
+    onSelectObject(selectableObjectId);
   }
 
   function releasePointerCapture(event: PointerEvent<HTMLDivElement>) {
@@ -231,9 +268,9 @@ export function SceneObjectFrame({
         activeTool === "rotate" && interactive && "cursor-grab",
         activeTool === "resize" && interactive && "cursor-nwse-resize"
       )}
-      role="button"
-      style={getSceneObjectFrameStyle(visibleRectTransform, root, siblingIndex)}
-      tabIndex={0}
+      role={handlesOwnInteraction ? "button" : undefined}
+      style={getSceneObjectFrameStyle(visibleRectTransform, root, siblingIndex, stackRootOffset)}
+      tabIndex={handlesOwnInteraction ? 0 : undefined}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       onPointerCancel={handlePointerCancel}
@@ -259,11 +296,13 @@ export function SceneObjectFrame({
             object={child}
             readOnly={readOnly}
             rectTransformOverride={childRectTransformOverrides.get(child.id)}
+            selectionObjectId={selectionObjectId}
             selectedObjectId={selectedObjectId}
             siblingIndex={index}
             onDieFaceChange={onDieFaceChange}
             onExecuteCommand={onExecuteCommand}
             onObjectSideChange={onObjectSideChange}
+            onRectTransformChange={onRectTransformChange}
             onSelectObject={onSelectObject}
           />
         ))}
@@ -273,9 +312,7 @@ export function SceneObjectFrame({
           activeSide={getProjectObjectNodeActiveSide(viewObject)}
           canvasScale={canvasScale}
           label="Card side"
-          onSideChange={(activeSide) =>
-            onObjectSideChange(viewObject.id, activeSide)
-          }
+          onSideChange={(activeSide) => onObjectSideChange(viewObject.id, activeSide)}
         />
       ) : null}
       {selected && die ? (
@@ -291,9 +328,7 @@ export function SceneObjectFrame({
           activeSide={getProjectObjectNodeActiveSide(viewObject)}
           canvasScale={canvasScale}
           label="Token side"
-          onSideChange={(activeSide) =>
-            onObjectSideChange(viewObject.id, activeSide)
-          }
+          onSideChange={(activeSide) => onObjectSideChange(viewObject.id, activeSide)}
         />
       ) : null}
       {selected ? (
@@ -408,9 +443,10 @@ function DieFaceSwitcher({ activeFace, canvasScale, die, onFaceChange }: DieFace
 function getSceneObjectFrameStyle(
   rectTransform: ProjectObjectRectTransform,
   root: boolean,
-  siblingIndex: number
+  siblingIndex: number,
+  stackRootOffset: boolean
 ): CSSProperties {
-  const rootOffset = siblingIndex * 28;
+  const rootOffset = stackRootOffset ? siblingIndex * 28 : 0;
   const left = root ? `calc(50% + ${rectTransform.x + rootOffset}px)` : `${rectTransform.x}px`;
   const top = root ? `calc(50% + ${rectTransform.y + rootOffset}px)` : `${rectTransform.y}px`;
 

@@ -1,4 +1,4 @@
-import type { Project, ProjectFileNode } from "@bg-maker/shared";
+import type { Project, ProjectFileNode, ProjectTableSetup } from "@bg-maker/shared";
 import { resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
 import { useMemo } from "react";
 import { getProjectImageAssetOptions } from "../project-assets/project-image-assets";
@@ -18,6 +18,7 @@ type ProjectWorkspaceAreaProps = {
   fileTree: ProjectFileNode[];
   project: Project;
   selectedNodeId: string | null;
+  tableSetup: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onRedo: () => void;
   selectedObjectId: string | null;
@@ -32,6 +33,7 @@ export function ProjectWorkspaceArea({
   fileTree,
   project,
   selectedNodeId,
+  tableSetup,
   onExecuteCommand,
   onRedo,
   selectedObjectId,
@@ -95,6 +97,7 @@ export function ProjectWorkspaceArea({
           parentFolderName={parentFolder?.name}
           selectedNode={selectedNode}
           selectedObjectId={selectedObjectId}
+          tableSetup={tableSetup}
           onExecuteCommand={onExecuteCommand}
           onSelectObject={onSelectObject}
         />

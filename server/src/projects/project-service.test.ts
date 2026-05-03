@@ -425,6 +425,111 @@ describe("ProjectService", () => {
     expect(linkedFile).not.toHaveProperty("objectTree");
   });
 
+  it("normalizes table setup metadata and items", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "setup-1",
+        kind: "tableSetup",
+        name: "Setup",
+        tableSetup: {
+          backgroundColor: "green",
+          grid: {
+            size: 9999,
+            snap: true,
+            visible: false
+          },
+          height: 20,
+          items: [
+            {
+              id: "linked-1",
+              name: " Linked ",
+              sourceObjectFileNodeId: "object-1",
+              transform: {
+                rotation: 45,
+                scaleX: -1,
+                scaleY: 2,
+                x: Number.POSITIVE_INFINITY,
+                y: -10
+              },
+              type: "linkedObject",
+              values: {
+                count: 2,
+                empty: null
+              },
+              visible: false
+            },
+            {
+              object: {
+                id: "local-1",
+                kind: "label",
+                name: " Local label ",
+                visible: true
+              },
+              type: "localObject"
+            },
+            {
+              id: "linked-1",
+              name: "Duplicate",
+              sourceObjectFileNodeId: "object-2",
+              type: "linkedObject"
+            }
+          ],
+          width: 99999
+        },
+        type: "file"
+      }
+    ]);
+
+    expect(updatedProject?.fileTree[0]).toMatchObject({
+      id: "setup-1",
+      kind: "tableSetup",
+      name: "Setup",
+      tableSetup: {
+        backgroundColor: "#6f8b70",
+        grid: {
+          size: 500,
+          snap: true,
+          visible: false
+        },
+        height: 100,
+        items: [
+          {
+            id: "linked-1",
+            name: "Linked",
+            sourceObjectFileNodeId: "object-1",
+            transform: {
+              rotation: 45,
+              scaleX: 0.01,
+              scaleY: 2,
+              x: 0,
+              y: -10
+            },
+            type: "linkedObject",
+            values: {
+              count: 2,
+              empty: ""
+            },
+            visible: false
+          },
+          {
+            object: {
+              id: "local-1",
+              kind: "label",
+              name: "Local label",
+              visible: true
+            },
+            type: "localObject"
+          }
+        ],
+        width: 5000
+      },
+      type: "file"
+    });
+    expect(updatedProject?.fileTree[0]).not.toHaveProperty("objectTree");
+  });
+
   it("normalizes card components and locks preset dimensions", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 

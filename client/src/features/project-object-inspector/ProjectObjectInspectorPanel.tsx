@@ -21,7 +21,10 @@ import type {
   ProjectObjectVariableBindingTarget,
   ProjectObjectVariableDefinition,
   ProjectObjectVariableType,
-  ProjectObjectZone
+  ProjectObjectZone,
+  ProjectTableSetup,
+  ProjectTableSetupItem,
+  ProjectTableSetupItemTransform
 } from "@bg-maker/shared";
 import {
   findProjectFileNodeInTree,
@@ -40,14 +43,14 @@ import {
   isProjectObjectCardSizePresetLocked,
   projectObjectCardCustomSizePresetId,
   projectObjectCardSizePresets,
+  projectTableSetupGridSizeLimits,
+  projectTableSetupSizeLimits,
   resolveProjectObjectFileObjectTree
 } from "@bg-maker/shared";
-import { SlidersHorizontal } from "lucide-react";
-import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { Rows3, SlidersHorizontal } from "lucide-react";
+import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { uploadProjectImageAsset } from "../project-workspace/project-api";
-import {
-  updateProjectFileNode
-} from "../project-files/project-file-tree";
+import { updateProjectFileNode } from "../project-files/project-file-tree";
 import {
   appendProjectImageAssetFileNode,
   getProjectImageAssetOptionById,
@@ -235,6 +238,16 @@ import {
   ProjectObjectLayoutSection,
   ProjectObjectTransformSections
 } from "./ProjectObjectStyleSections";
+import {
+  InspectorBehaviorNumberField,
+  InspectorColorField,
+  InspectorSection,
+  InspectorSwitchField
+} from "./inspector-ui";
+import {
+  getProjectTableSetupWithItemTransform,
+  getProjectTableSetupWithLinkedItemValues
+} from "../project-table-setup/project-table-setup";
 
 type ProjectObjectInspectorPanelProps = {
   className?: string;
@@ -243,8 +256,11 @@ type ProjectObjectInspectorPanelProps = {
   objectTree?: ProjectObjectNode[];
   projectId: string;
   selectedObject: ProjectObjectNode | null;
+  selectedTableSetupItem?: ProjectTableSetupItem | null;
+  tableSetup?: ProjectTableSetup | null;
   onFileTreeChange: (fileTree: ProjectFileNode[]) => void;
   onObjectTreeChange: (fileNodeId: string, objectTree: ProjectObjectNode[]) => void;
+  onTableSetupChange?: (tableSetup: ProjectTableSetup, label?: string) => void;
 };
 
 const cardPresetLockedRectTransformFields = new Set<RectTransformFieldKey>([
@@ -267,6 +283,61 @@ const cardSizePresetOptions: readonly {
   }))
 ];
 
+type TableSetupDraft = {
+  backgroundColor: string;
+  gridSize: string;
+  gridSnap: boolean;
+  gridVisible: boolean;
+  height: string;
+  width: string;
+};
+
+type TableSetupNumberFieldKey = "gridSize" | "height" | "width";
+
+type LinkedItemTransformDraft = Record<keyof ProjectTableSetupItemTransform, string>;
+
+const tableSetupNumberFieldSettings = {
+  gridSize: {
+    max: projectTableSetupGridSizeLimits.max,
+    min: projectTableSetupGridSizeLimits.min,
+    step: 1
+  },
+  height: {
+    max: projectTableSetupSizeLimits.max,
+    min: projectTableSetupSizeLimits.min,
+    step: 1
+  },
+  width: {
+    max: projectTableSetupSizeLimits.max,
+    min: projectTableSetupSizeLimits.min,
+    step: 1
+  }
+} as const satisfies Record<TableSetupNumberFieldKey, { max: number; min: number; step: number }>;
+
+const tableSetupSizeNumberFields = [
+  { key: "width", label: "Width" },
+  { key: "height", label: "Height" }
+] as const;
+
+const tableSetupGridSizeField = { key: "gridSize", label: "Grid size" } as const;
+
+const tableSetupNumberFields = [...tableSetupSizeNumberFields, tableSetupGridSizeField] as const;
+
+const tableSetupNumberDraftDebounceMs = 250;
+
+const tableSetupColorField = {
+  key: "backgroundColor",
+  label: "Surface"
+} as const;
+
+const linkedItemTransformFields = [
+  { key: "x", label: "X" },
+  { key: "y", label: "Y" },
+  { key: "rotation", label: "Rotation" },
+  { key: "scaleX", label: "Scale X" },
+  { key: "scaleY", label: "Scale Y" }
+] as const;
+
 export function ProjectObjectInspectorPanel({
   className,
   contentFileNode,
@@ -274,8 +345,11 @@ export function ProjectObjectInspectorPanel({
   objectTree: resolvedObjectTree,
   projectId,
   selectedObject,
+  selectedTableSetupItem = null,
+  tableSetup = null,
   onFileTreeChange,
-  onObjectTreeChange
+  onObjectTreeChange,
+  onTableSetupChange
 }: ProjectObjectInspectorPanelProps) {
   const objectTree = useMemo(
     () => resolvedObjectTree ?? contentFileNode?.objectTree ?? [],
@@ -315,6 +389,32 @@ export function ProjectObjectInspectorPanel({
           }
         : {},
     [contentFileNode?.sourceRef, sourceObjectTemplate]
+  );
+  const selectedLinkedTableSetupItem =
+    selectedTableSetupItem?.type === "linkedObject" ? selectedTableSetupItem : null;
+  const linkedTableSourceObjectFileNode = useMemo(
+    () =>
+      selectedLinkedTableSetupItem
+        ? findProjectFileNodeInTree(fileTree, selectedLinkedTableSetupItem.sourceObjectFileNodeId)
+        : undefined,
+    [fileTree, selectedLinkedTableSetupItem]
+  );
+  const linkedTableSourceTemplate = useMemo(
+    () =>
+      linkedTableSourceObjectFileNode?.kind === "object"
+        ? ensureProjectObjectTemplate(linkedTableSourceObjectFileNode.template)
+        : null,
+    [linkedTableSourceObjectFileNode]
+  );
+  const linkedTableObjectValues = useMemo(
+    () =>
+      selectedLinkedTableSetupItem && linkedTableSourceTemplate
+        ? {
+            ...getProjectObjectVariableDefaultValues(linkedTableSourceTemplate),
+            ...selectedLinkedTableSetupItem.values
+          }
+        : {},
+    [linkedTableSourceTemplate, selectedLinkedTableSetupItem]
   );
   const rectTransform = useMemo(
     () => (selectedObject ? getProjectObjectNodeRectTransform(selectedObject) : null),
@@ -445,6 +545,15 @@ export function ProjectObjectInspectorPanel({
   const [layoutDraft, setLayoutDraft] = useState<LayoutDraft>(() =>
     layout ? createLayoutDraft(layout) : createLayoutDraft(getFallbackLayoutDraftValue())
   );
+  const [tableSetupDraft, setTableSetupDraft] = useState<TableSetupDraft>(() =>
+    createTableSetupDraft(tableSetup)
+  );
+  const [tableSetupNumberDraftDirty, setTableSetupNumberDraftDirty] = useState(false);
+  const [linkedItemTransformDraft, setLinkedItemTransformDraft] =
+    useState<LinkedItemTransformDraft>(() =>
+      createLinkedItemTransformDraft(selectedLinkedTableSetupItem?.transform)
+    );
+  const tableSetupNumberDraftTimeoutRef = useRef<number | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [uploadingDieFaceImage, setUploadingDieFaceImage] = useState(false);
@@ -550,6 +659,53 @@ export function ProjectObjectInspectorPanel({
       setLayoutDraft(createLayoutDraft(layout));
     }
   }, [layout, selectedObject?.id]);
+
+  useEffect(() => {
+    setTableSetupDraft(createTableSetupDraft(tableSetup));
+    setTableSetupNumberDraftDirty(false);
+  }, [contentFileNode?.id, tableSetup]);
+
+  useEffect(() => {
+    if (tableSetupNumberDraftTimeoutRef.current !== null) {
+      window.clearTimeout(tableSetupNumberDraftTimeoutRef.current);
+      tableSetupNumberDraftTimeoutRef.current = null;
+    }
+
+    if (!tableSetup || !onTableSetupChange || !tableSetupNumberDraftDirty) {
+      return;
+    }
+
+    const nextTableSetup = getTableSetupWithNumberDraft(tableSetup, tableSetupDraft);
+
+    if (nextTableSetup === null) {
+      setTableSetupNumberDraftDirty(false);
+      return;
+    }
+
+    if (!nextTableSetup) {
+      return;
+    }
+
+    tableSetupNumberDraftTimeoutRef.current = window.setTimeout(() => {
+      tableSetupNumberDraftTimeoutRef.current = null;
+      setTableSetupNumberDraftDirty(false);
+      setTableSetupDraft(createTableSetupDraft(nextTableSetup));
+      onTableSetupChange(nextTableSetup, "Update table setup");
+    }, tableSetupNumberDraftDebounceMs);
+
+    return () => {
+      if (tableSetupNumberDraftTimeoutRef.current !== null) {
+        window.clearTimeout(tableSetupNumberDraftTimeoutRef.current);
+        tableSetupNumberDraftTimeoutRef.current = null;
+      }
+    };
+  }, [onTableSetupChange, tableSetup, tableSetupDraft, tableSetupNumberDraftDirty]);
+
+  useEffect(() => {
+    setLinkedItemTransformDraft(
+      createLinkedItemTransformDraft(selectedLinkedTableSetupItem?.transform)
+    );
+  }, [selectedLinkedTableSetupItem?.id, selectedLinkedTableSetupItem?.transform]);
 
   function commitName(value = nameDraft) {
     if (!contentFileNode || !selectedObject) {
@@ -776,6 +932,180 @@ export function ProjectObjectInspectorPanel({
         sourceRef: getProjectObjectSourceRefWithValue(sourceRef, variable, imageAssetId)
       }))
     );
+  }
+
+  function updateTableLinkedObjectVariableValue(
+    variable: ProjectObjectVariableDefinition,
+    value: string
+  ) {
+    if (!tableSetup || !selectedLinkedTableSetupItem) {
+      return;
+    }
+
+    const sourceRef = {
+      sourceObjectFileNodeId: selectedLinkedTableSetupItem.sourceObjectFileNodeId,
+      values: selectedLinkedTableSetupItem.values
+    };
+    const nextSourceRef = getProjectObjectSourceRefWithValue(sourceRef, variable, value);
+    const nextTableSetup = getProjectTableSetupWithLinkedItemValues(
+      tableSetup,
+      selectedLinkedTableSetupItem.id,
+      nextSourceRef.values
+    );
+
+    onTableSetupChange?.(nextTableSetup, "Update table item values");
+  }
+
+  async function uploadTableLinkedObjectVariableImageValue(
+    variable: ProjectObjectVariableDefinition,
+    file: File
+  ) {
+    if (!tableSetup || !selectedLinkedTableSetupItem) {
+      return;
+    }
+
+    await uploadPropertyImageValue(variable, file, (imageAssetId) => {
+      const sourceRef = {
+        sourceObjectFileNodeId: selectedLinkedTableSetupItem.sourceObjectFileNodeId,
+        values: selectedLinkedTableSetupItem.values
+      };
+      const nextSourceRef = getProjectObjectSourceRefWithValue(sourceRef, variable, imageAssetId);
+      const nextTableSetup = getProjectTableSetupWithLinkedItemValues(
+        tableSetup,
+        selectedLinkedTableSetupItem.id,
+        nextSourceRef.values
+      );
+
+      if (!contentFileNode) {
+        return fileTree;
+      }
+
+      return updateProjectFileNode(fileTree, contentFileNode.id, (node) =>
+        node.kind === "tableSetup" ? { ...node, tableSetup: nextTableSetup } : node
+      );
+    });
+  }
+
+  function updateTableSetupColor(fieldKey: "backgroundColor", value: string) {
+    setTableSetupDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+
+    if (tableSetup && /^#[0-9a-fA-F]{6}$/.test(value)) {
+      onTableSetupChange?.({ ...tableSetup, backgroundColor: value }, "Update table setup");
+    }
+  }
+
+  function updateTableSetupSwitch(fieldKey: "gridSnap" | "gridVisible", value: boolean) {
+    setTableSetupDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+
+    if (!tableSetup) {
+      return;
+    }
+
+    onTableSetupChange?.(
+      {
+        ...tableSetup,
+        grid: {
+          ...tableSetup.grid,
+          snap: fieldKey === "gridSnap" ? value : tableSetup.grid.snap,
+          visible: fieldKey === "gridVisible" ? value : tableSetup.grid.visible
+        }
+      },
+      "Update table setup"
+    );
+  }
+
+  function updateTableSetupNumberDraft(fieldKey: TableSetupNumberFieldKey, value: string) {
+    setTableSetupDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    setTableSetupNumberDraftDirty(true);
+  }
+
+  function resetTableSetupDraft() {
+    if (tableSetupNumberDraftTimeoutRef.current !== null) {
+      window.clearTimeout(tableSetupNumberDraftTimeoutRef.current);
+      tableSetupNumberDraftTimeoutRef.current = null;
+    }
+
+    setTableSetupNumberDraftDirty(false);
+    setTableSetupDraft(createTableSetupDraft(tableSetup));
+  }
+
+  function commitTableSetupNumberField(fieldKey: TableSetupNumberFieldKey, value: string) {
+    if (!tableSetup) {
+      return;
+    }
+
+    if (tableSetupNumberDraftTimeoutRef.current !== null) {
+      window.clearTimeout(tableSetupNumberDraftTimeoutRef.current);
+      tableSetupNumberDraftTimeoutRef.current = null;
+    }
+
+    const parsedValue = parseRectTransformDraftValue(value);
+
+    if (parsedValue === null) {
+      setTableSetupNumberDraftDirty(false);
+      setTableSetupDraft(createTableSetupDraft(tableSetup));
+      return;
+    }
+
+    const normalizedValue = normalizeTableSetupNumberValue(fieldKey, parsedValue);
+    const nextTableSetup = getTableSetupWithNumberField(tableSetup, fieldKey, normalizedValue);
+
+    setTableSetupNumberDraftDirty(false);
+    setTableSetupDraft(createTableSetupDraft(nextTableSetup));
+
+    if (nextTableSetup !== tableSetup) {
+      onTableSetupChange?.(nextTableSetup, "Update table setup");
+    }
+  }
+
+  function updateLinkedItemTransformDraft(
+    fieldKey: keyof ProjectTableSetupItemTransform,
+    value: string
+  ) {
+    setLinkedItemTransformDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+  }
+
+  function commitLinkedItemTransformField(
+    fieldKey: keyof ProjectTableSetupItemTransform,
+    value: string
+  ) {
+    if (!tableSetup || !selectedLinkedTableSetupItem) {
+      return;
+    }
+
+    const parsedValue = parseRectTransformDraftValue(value);
+
+    if (parsedValue === null) {
+      setLinkedItemTransformDraft(
+        createLinkedItemTransformDraft(selectedLinkedTableSetupItem.transform)
+      );
+      return;
+    }
+
+    const nextTransform = {
+      ...selectedLinkedTableSetupItem.transform,
+      [fieldKey]: normalizeLinkedItemTransformValue(fieldKey, parsedValue)
+    };
+    const nextTableSetup = getProjectTableSetupWithItemTransform(
+      tableSetup,
+      selectedLinkedTableSetupItem.id,
+      nextTransform
+    );
+
+    setLinkedItemTransformDraft(createLinkedItemTransformDraft(nextTransform));
+    onTableSetupChange?.(nextTableSetup, "Update table item transform");
   }
 
   async function uploadPropertyImageValue(
@@ -1916,7 +2246,56 @@ export function ProjectObjectInspectorPanel({
         </div>
       </div>
 
-      {contentFileNode && selectedObject && rectTransform ? (
+      {contentFileNode?.kind === "tableSetup" &&
+      tableSetup &&
+      (!selectedTableSetupItem || selectedLinkedTableSetupItem) ? (
+        <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
+          {!selectedLinkedTableSetupItem ? (
+            <ProjectTableSetupSection
+              draft={tableSetupDraft}
+              onColorChange={updateTableSetupColor}
+              onCommitNumberField={commitTableSetupNumberField}
+              onDraftNumberChange={updateTableSetupNumberDraft}
+              onGridSnapChange={(value) => updateTableSetupSwitch("gridSnap", value)}
+              onGridVisibleChange={(value) => updateTableSetupSwitch("gridVisible", value)}
+              onReset={resetTableSetupDraft}
+            />
+          ) : (
+            <>
+              <ProjectTableSetupLinkedItemSection
+                item={selectedLinkedTableSetupItem}
+                sourceName={
+                  linkedTableSourceObjectFileNode?.name ??
+                  selectedLinkedTableSetupItem.sourceObjectFileNodeId
+                }
+                transformDraft={linkedItemTransformDraft}
+                onCommitTransformField={commitLinkedItemTransformField}
+                onTransformDraftChange={updateLinkedItemTransformDraft}
+                onTransformReset={() =>
+                  setLinkedItemTransformDraft(
+                    createLinkedItemTransformDraft(selectedLinkedTableSetupItem.transform)
+                  )
+                }
+              />
+              {linkedTableSourceTemplate ? (
+                <ProjectObjectLinkedObjectSection
+                  imageAssets={imageAssets}
+                  sourceName={
+                    linkedTableSourceObjectFileNode?.name ??
+                    selectedLinkedTableSetupItem.sourceObjectFileNodeId
+                  }
+                  template={linkedTableSourceTemplate}
+                  uploadErrors={propertyImageUploadErrors}
+                  uploadingVariableId={uploadingPropertyImageVariableId}
+                  values={linkedTableObjectValues}
+                  onImageUpload={uploadTableLinkedObjectVariableImageValue}
+                  onValueChange={updateTableLinkedObjectVariableValue}
+                />
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : contentFileNode && selectedObject && rectTransform ? (
         <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
           {contentFileNode.sourceRef && sourceObjectTemplate ? (
             <ProjectObjectLinkedObjectSection
@@ -2170,6 +2549,213 @@ function getFallbackAppearanceDraftValue(): ProjectObjectAppearance {
     opacity: 1,
     padding: 0
   };
+}
+
+type ProjectTableSetupSectionProps = {
+  draft: TableSetupDraft;
+  onColorChange: (fieldKey: "backgroundColor", value: string) => void;
+  onCommitNumberField: (fieldKey: TableSetupNumberFieldKey, value: string) => void;
+  onDraftNumberChange: (fieldKey: TableSetupNumberFieldKey, value: string) => void;
+  onGridSnapChange: (value: boolean) => void;
+  onGridVisibleChange: (value: boolean) => void;
+  onReset: () => void;
+};
+
+function ProjectTableSetupSection({
+  draft,
+  onColorChange,
+  onCommitNumberField,
+  onDraftNumberChange,
+  onGridSnapChange,
+  onGridVisibleChange,
+  onReset
+}: ProjectTableSetupSectionProps) {
+  return (
+    <>
+      <InspectorSection icon={<Rows3 size={15} />} title="Table">
+        <InspectorColorField
+          field={tableSetupColorField}
+          value={draft.backgroundColor}
+          onChange={onColorChange}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          {tableSetupSizeNumberFields.map((field) => (
+            <InspectorBehaviorNumberField
+              key={field.key}
+              field={field}
+              settings={tableSetupNumberFieldSettings[field.key]}
+              value={draft[field.key]}
+              onCommit={onCommitNumberField}
+              onDraftChange={onDraftNumberChange}
+              onReset={() => onReset()}
+            />
+          ))}
+        </div>
+      </InspectorSection>
+      <InspectorSection title="Grid">
+        <InspectorBehaviorNumberField
+          field={tableSetupGridSizeField}
+          settings={tableSetupNumberFieldSettings[tableSetupGridSizeField.key]}
+          value={draft.gridSize}
+          onCommit={onCommitNumberField}
+          onDraftChange={onDraftNumberChange}
+          onReset={() => onReset()}
+        />
+        <div className="space-y-1">
+          <InspectorSwitchField
+            checked={draft.gridVisible}
+            label="Show grid"
+            onChange={(event) => onGridVisibleChange(event.currentTarget.checked)}
+          />
+          <InspectorSwitchField
+            checked={draft.gridSnap}
+            label="Snap to grid"
+            onChange={(event) => onGridSnapChange(event.currentTarget.checked)}
+          />
+        </div>
+      </InspectorSection>
+    </>
+  );
+}
+
+type ProjectTableSetupLinkedItemSectionProps = {
+  item: Extract<ProjectTableSetupItem, { type: "linkedObject" }>;
+  sourceName: string;
+  transformDraft: LinkedItemTransformDraft;
+  onCommitTransformField: (fieldKey: keyof ProjectTableSetupItemTransform, value: string) => void;
+  onTransformDraftChange: (fieldKey: keyof ProjectTableSetupItemTransform, value: string) => void;
+  onTransformReset: () => void;
+};
+
+function ProjectTableSetupLinkedItemSection({
+  item,
+  sourceName,
+  transformDraft,
+  onCommitTransformField,
+  onTransformDraftChange,
+  onTransformReset
+}: ProjectTableSetupLinkedItemSectionProps) {
+  return (
+    <>
+      <InspectorSection icon={<Rows3 size={15} />} title="Linked item">
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
+          <span className="block font-semibold text-slate-800">{item.name}</span>
+          <span className="block truncate">{sourceName}</span>
+        </div>
+      </InspectorSection>
+      <InspectorSection title="Placement">
+        <div className="grid grid-cols-2 gap-2">
+          {linkedItemTransformFields.map((field) => (
+            <InspectorBehaviorNumberField
+              key={field.key}
+              field={field}
+              settings={{
+                max: 100000,
+                min: field.key.startsWith("scale") ? 0.01 : -100000,
+                step: 1
+              }}
+              value={transformDraft[field.key]}
+              onCommit={onCommitTransformField}
+              onDraftChange={onTransformDraftChange}
+              onReset={() => onTransformReset()}
+            />
+          ))}
+        </div>
+      </InspectorSection>
+    </>
+  );
+}
+
+function createTableSetupDraft(tableSetup: ProjectTableSetup | null | undefined): TableSetupDraft {
+  return {
+    backgroundColor: tableSetup?.backgroundColor ?? "#6f8b70",
+    gridSize: String(tableSetup?.grid.size ?? 50),
+    gridSnap: tableSetup?.grid.snap ?? false,
+    gridVisible: tableSetup?.grid.visible ?? true,
+    height: String(tableSetup?.height ?? 600),
+    width: String(tableSetup?.width ?? 900)
+  };
+}
+
+function createLinkedItemTransformDraft(
+  transform: ProjectTableSetupItemTransform | null | undefined
+): LinkedItemTransformDraft {
+  return {
+    rotation: formatTableNumberValue(transform?.rotation ?? 0),
+    scaleX: formatTableNumberValue(transform?.scaleX ?? 1),
+    scaleY: formatTableNumberValue(transform?.scaleY ?? 1),
+    x: formatTableNumberValue(transform?.x ?? 0),
+    y: formatTableNumberValue(transform?.y ?? 0)
+  };
+}
+
+function normalizeTableSetupNumberValue(fieldKey: TableSetupNumberFieldKey, value: number) {
+  const settings = tableSetupNumberFieldSettings[fieldKey];
+
+  return Math.min(settings.max, Math.max(settings.min, Math.round(value)));
+}
+
+function getTableSetupWithNumberDraft(
+  tableSetup: ProjectTableSetup,
+  draft: TableSetupDraft
+): ProjectTableSetup | null | undefined {
+  let nextTableSetup = tableSetup;
+
+  for (const field of tableSetupNumberFields) {
+    const parsedValue = parseRectTransformDraftValue(draft[field.key]);
+
+    if (parsedValue === null) {
+      return undefined;
+    }
+
+    nextTableSetup = getTableSetupWithNumberField(
+      nextTableSetup,
+      field.key,
+      normalizeTableSetupNumberValue(field.key, parsedValue)
+    );
+  }
+
+  return nextTableSetup === tableSetup ? null : nextTableSetup;
+}
+
+function getTableSetupWithNumberField(
+  tableSetup: ProjectTableSetup,
+  fieldKey: TableSetupNumberFieldKey,
+  value: number
+): ProjectTableSetup {
+  if (fieldKey === "gridSize") {
+    return tableSetup.grid.size === value
+      ? tableSetup
+      : {
+          ...tableSetup,
+          grid: {
+            ...tableSetup.grid,
+            size: value
+          }
+        };
+  }
+
+  return tableSetup[fieldKey] === value
+    ? tableSetup
+    : {
+        ...tableSetup,
+        [fieldKey]: value
+      };
+}
+
+function normalizeLinkedItemTransformValue(
+  fieldKey: keyof ProjectTableSetupItemTransform,
+  value: number
+) {
+  if (fieldKey === "scaleX" || fieldKey === "scaleY") {
+    return Math.min(100, Math.max(0.01, value));
+  }
+
+  return Math.round(value);
+}
+
+function formatTableNumberValue(value: number) {
+  return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
 }
 
 function getFallbackCardDraftValue(): ProjectObjectCard {

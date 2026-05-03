@@ -1,4 +1,4 @@
-import type { ProjectFileNode, ProjectObjectNode } from "@bg-maker/shared";
+import type { ProjectFileNode, ProjectObjectNode, ProjectTableSetup } from "@bg-maker/shared";
 import {
   getProjectImageAssetOptionById,
   type ProjectImageAssetOption
@@ -17,6 +17,7 @@ type WorkspaceViewportProps = {
   readOnly?: boolean;
   selectedNode?: ProjectFileNode;
   selectedObjectId: string | null;
+  tableSetup: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onSelectObject: (objectId: string | null) => void;
 };
@@ -30,6 +31,7 @@ export function WorkspaceViewport({
   readOnly = false,
   selectedNode,
   selectedObjectId,
+  tableSetup,
   onExecuteCommand,
   onSelectObject
 }: WorkspaceViewportProps) {
@@ -42,6 +44,7 @@ export function WorkspaceViewport({
         objectTree={objectTree}
         readOnly={readOnly}
         selectedObjectId={selectedObjectId}
+        tableSetup={tableSetup}
         onExecuteCommand={onExecuteCommand}
         onSelectObject={onSelectObject}
       />

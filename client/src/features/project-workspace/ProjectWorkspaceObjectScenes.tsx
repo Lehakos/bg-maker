@@ -1,10 +1,14 @@
-import type {
-  ProjectFileNode,
-  ProjectObjectDie,
-  ProjectObjectNode,
-  ProjectObjectSide
+import {
+  getDefaultProjectTableSetup,
+  getProjectTableSetupItemId,
+  normalizeProjectObjectDieActiveFace,
+  type ProjectFileNode,
+  type ProjectObjectDie,
+  type ProjectObjectNode,
+  type ProjectObjectRectTransform,
+  type ProjectObjectSide,
+  type ProjectTableSetup
 } from "@bg-maker/shared";
-import { normalizeProjectObjectDieActiveFace } from "@bg-maker/shared";
 import { Rows3 } from "lucide-react";
 import { useMemo } from "react";
 import type { ProjectImageAssetOption } from "../project-assets/project-image-assets";
@@ -15,12 +19,18 @@ import {
 import {
   createSetProjectObjectSideSelectionCommand,
   createUpdateProjectObjectTreeCommand,
+  createUpdateProjectTableSetupCommand,
   type ProjectEditorCommand
 } from "./project-editor-commands";
 import { cx } from "./project-workspace-css";
 import { getProjectObjectSideSelection } from "./project-object-side-selection";
 import { SceneObjectFrame } from "./SceneObjectFrame";
 import { useProjectWorkspaceStore } from "./use-project-workspace-store";
+import {
+  getProjectFileNodeTableSetup,
+  getProjectTableSetupResolvedItemObject,
+  getProjectTableSetupWithItemTransform
+} from "../project-table-setup/project-table-setup";
 
 type ProjectWorkspaceSceneProps = {
   fileTree: ProjectFileNode[];
@@ -29,6 +39,7 @@ type ProjectWorkspaceSceneProps = {
   objectTree: ProjectObjectNode[];
   readOnly?: boolean;
   selectedObjectId: string | null;
+  tableSetup?: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onSelectObject: (objectId: string | null) => void;
 };
@@ -39,44 +50,106 @@ export function TableLayoutWorkspace({
   fileTree,
   fileNode,
   imageAssets,
-  objectTree,
   readOnly = false,
   selectedObjectId,
+  tableSetup: resolvedTableSetup,
   onExecuteCommand,
   onSelectObject
 }: ProjectWorkspaceSceneProps) {
-  return (
-    <div className="flex h-full min-h-0 items-center justify-center p-6">
-      <section
-        aria-label={fileNode.name}
-        className="relative h-[min(66vh,620px)] min-h-[320px] w-[min(92%,980px)] overflow-hidden rounded-lg border border-emerald-950/20 bg-[#6f8b70] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18),0_24px_60px_rgba(15,23,42,0.18)]"
-      >
-        <div className="absolute left-4 top-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-2 rounded-md border border-white/30 bg-white/20 px-3 py-2 text-white shadow-sm backdrop-blur-sm">
-          <Rows3 size={17} />
-          <span className="truncate text-sm font-semibold">{fileNode.name}</span>
-        </div>
+  const tableSetup =
+    resolvedTableSetup ?? getProjectFileNodeTableSetup(fileNode) ?? getDefaultProjectTableSetup();
+  const canvasScale = useProjectWorkspaceStore((state) => state.canvasScale);
 
-        {objectTree.length > 0 ? (
-          <ObjectScene
-            key={fileNode.id}
-            fileTree={fileTree}
-            fileNodeId={fileNode.id}
-            imageAssets={imageAssets}
-            objectTree={objectTree}
-            readOnly={readOnly}
-            selectedObjectId={selectedObjectId}
-            size="small"
-            onExecuteCommand={onExecuteCommand}
-            onSelectObject={onSelectObject}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center p-8">
-            <div className="flex h-28 w-52 items-center justify-center rounded-md border border-white/30 bg-white/10 text-center text-sm font-medium text-white/85">
-              Empty table layout
+  function updateTableSetup(nextTableSetup: ProjectTableSetup, label: string) {
+    if (nextTableSetup === tableSetup) {
+      return;
+    }
+
+    onExecuteCommand(
+      createUpdateProjectTableSetupCommand({
+        after: nextTableSetup,
+        before: tableSetup,
+        fileNodeId: fileNode.id,
+        label
+      })
+    );
+  }
+
+  function handleTableItemRectTransformChange(
+    objectId: string,
+    _before: ProjectObjectRectTransform,
+    after: ProjectObjectRectTransform,
+    label: string
+  ) {
+    const nextTableSetup = getProjectTableSetupWithItemTransform(tableSetup, objectId, after);
+
+    updateTableSetup(nextTableSetup, label);
+  }
+
+  return (
+    <div className="h-full min-h-0 overflow-auto">
+      <div
+        className="box-border flex items-center justify-center p-6"
+        style={{
+          minHeight: `max(100%, ${tableSetup.height * canvasScale + 48}px)`,
+          minWidth: `max(100%, ${tableSetup.width * canvasScale + 48}px)`
+        }}
+      >
+        <div
+          className="relative shrink-0"
+          style={{
+            height: tableSetup.height * canvasScale,
+            width: tableSetup.width * canvasScale
+          }}
+        >
+          <section
+            aria-label={fileNode.name}
+            className="relative shrink-0 overflow-hidden rounded-lg border border-emerald-950/20 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18),0_24px_60px_rgba(15,23,42,0.18)]"
+            style={{
+              backgroundColor: tableSetup.backgroundColor,
+              height: tableSetup.height,
+              transform: `scale(${canvasScale})`,
+              transformOrigin: "top left",
+              width: tableSetup.width
+            }}
+            onClick={() => onSelectObject(null)}
+          >
+            {tableSetup.grid.visible ? (
+              <>
+                <TableSetupGridOverlay tableSetup={tableSetup} />
+                <TableSetupGridSizeGuide tableSetup={tableSetup} />
+              </>
+            ) : null}
+            <div className="absolute left-4 top-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-2 rounded-md border border-white/30 bg-white/20 px-3 py-2 text-white shadow-sm backdrop-blur-sm">
+              <Rows3 size={17} />
+              <span className="truncate text-sm font-semibold">{fileNode.name}</span>
+              <span className="rounded border border-white/25 bg-white/15 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
+                {tableSetup.width} x {tableSetup.height}
+              </span>
             </div>
-          </div>
-        )}
-      </section>
+
+            {tableSetup.items.length > 0 ? (
+              <TableSetupScene
+                fileTree={fileTree}
+                fileNodeId={fileNode.id}
+                imageAssets={imageAssets}
+                readOnly={readOnly}
+                selectedObjectId={selectedObjectId}
+                tableSetup={tableSetup}
+                onExecuteCommand={onExecuteCommand}
+                onRectTransformChange={handleTableItemRectTransformChange}
+                onSelectObject={onSelectObject}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center p-8">
+                <div className="flex h-28 w-52 items-center justify-center rounded-md border border-white/30 bg-white/10 text-center text-sm font-medium text-white/85">
+                  Empty table layout
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
@@ -113,6 +186,143 @@ export function ObjectFileWorkspace({
   return (
     <div className="flex h-full min-h-0 items-center justify-center p-8 text-sm font-medium text-slate-500">
       No object preview
+    </div>
+  );
+}
+
+type TableSetupGridOverlayProps = {
+  tableSetup: ProjectTableSetup;
+};
+
+function TableSetupGridOverlay({ tableSetup }: TableSetupGridOverlayProps) {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 opacity-70"
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.18) 1px, transparent 1px)",
+        backgroundPosition: "center center",
+        backgroundSize: `${tableSetup.grid.size}px ${tableSetup.grid.size}px`
+      }}
+    />
+  );
+}
+
+function TableSetupGridSizeGuide({ tableSetup }: TableSetupGridOverlayProps) {
+  return (
+    <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex flex-col gap-1 text-white drop-shadow-sm">
+      <span className="w-fit rounded border border-white/25 bg-white/20 px-1.5 py-0.5 text-[10px] font-bold leading-none tabular-nums backdrop-blur-sm">
+        grid {formatTableGuideNumber(tableSetup.grid.size)}
+      </span>
+      <span
+        aria-hidden
+        className="relative block h-2 border-b border-l border-r border-white/85 bg-white/10 shadow-[0_0_0_1px_rgba(15,23,42,0.14)]"
+        style={{ width: tableSetup.grid.size }}
+      />
+    </div>
+  );
+}
+
+function formatTableGuideNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
+}
+
+type TableSetupSceneProps = {
+  fileTree: ProjectFileNode[];
+  fileNodeId: string;
+  imageAssets: ProjectImageAssetOption[];
+  readOnly: boolean;
+  selectedObjectId: string | null;
+  tableSetup: ProjectTableSetup;
+  onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onRectTransformChange: (
+    objectId: string,
+    before: ProjectObjectRectTransform,
+    after: ProjectObjectRectTransform,
+    label: string
+  ) => void;
+  onSelectObject: (objectId: string | null) => void;
+};
+
+function TableSetupScene({
+  fileTree,
+  fileNodeId,
+  imageAssets,
+  readOnly,
+  selectedObjectId,
+  tableSetup,
+  onExecuteCommand,
+  onRectTransformChange,
+  onSelectObject
+}: TableSetupSceneProps) {
+  const imageAssetById = useMemo(
+    () => new Map(imageAssets.map((imageAsset) => [imageAsset.asset.id, imageAsset])),
+    [imageAssets]
+  );
+  const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
+  const snapSize = tableSetup.grid.snap ? tableSetup.grid.size : null;
+
+  function handleDieFaceChange() {
+    // Linked table items follow their source object, and runtime die state is out of scope for MVP.
+  }
+
+  function handleObjectSideChange(objectId: string, activeSide: ProjectObjectSide) {
+    const currentSide = getProjectObjectSideSelection(objectSideSelections, fileNodeId, objectId);
+
+    if (currentSide === activeSide) {
+      return;
+    }
+
+    onExecuteCommand(
+      createSetProjectObjectSideSelectionCommand({
+        after: activeSide,
+        before: currentSide,
+        fileNodeId,
+        objectId
+      })
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 z-0 overflow-visible">
+      <WorkspaceAxes />
+      {tableSetup.items.map((item, index) => {
+        const itemId = getProjectTableSetupItemId(item);
+        const itemObject = getProjectTableSetupResolvedItemObject(fileTree, item);
+        const object = itemObject
+          ? getProjectObjectTreeWithActiveSides([itemObject], (objectNode) =>
+              getProjectObjectSideSelection(objectSideSelections, fileNodeId, objectNode.id)
+            )[0]
+          : null;
+
+        if (!object) {
+          return null;
+        }
+
+        return (
+          <SceneObjectFrame
+            key={object.id}
+            fileTree={fileTree}
+            fileNodeId={fileNodeId}
+            imageAssetById={imageAssetById}
+            object={object}
+            readOnly={readOnly}
+            resizeMode={item.type === "linkedObject" ? "scale" : "size"}
+            root
+            selectionObjectId={itemId}
+            selectedObjectId={selectedObjectId}
+            siblingIndex={index}
+            snapSize={snapSize}
+            stackRootOffset={false}
+            onDieFaceChange={handleDieFaceChange}
+            onExecuteCommand={onExecuteCommand}
+            onObjectSideChange={handleObjectSideChange}
+            onRectTransformChange={onRectTransformChange}
+            onSelectObject={onSelectObject}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -154,10 +364,7 @@ function ObjectScene({
     [fileNodeId, objectSideSelections, objectTree]
   );
 
-  function handleObjectSideChange(
-    objectId: string,
-    activeSide: ProjectObjectSide
-  ) {
+  function handleObjectSideChange(objectId: string, activeSide: ProjectObjectSide) {
     const currentSide = getProjectObjectSideSelection(objectSideSelections, fileNodeId, objectId);
 
     if (currentSide === activeSide) {

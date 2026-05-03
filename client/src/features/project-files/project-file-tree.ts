@@ -7,6 +7,7 @@ import type {
   ProjectObjectTemplate
 } from "@bg-maker/shared";
 import {
+  getDefaultProjectTableSetup,
   getDefaultProjectObjectName,
   projectAssetsFolderId,
   projectAssetsFolderName
@@ -67,7 +68,7 @@ export function createProjectFileNode(
   const nextName = name.trim() || getDefaultProjectFileNodeName(kind, options.objectRootKind);
   const objectTree =
     kind === "tableSetup"
-      ? { objectTree: [] }
+      ? { tableSetup: getDefaultProjectTableSetup() }
       : kind === "object" && options.sourceRef
         ? { sourceRef: options.sourceRef }
         : kind === "object"

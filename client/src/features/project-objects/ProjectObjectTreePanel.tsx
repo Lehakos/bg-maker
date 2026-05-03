@@ -18,12 +18,27 @@ import {
   useSensors
 } from "@dnd-kit/core";
 import {
+  getProjectTableSetupItemId,
+  getProjectTableSetupItemName,
+  getProjectTableSetupItemVisible,
   projectObjectKinds,
   type ProjectFileNode,
   type ProjectObjectKind,
-  type ProjectObjectNode
+  type ProjectObjectNode,
+  type ProjectTableSetup
 } from "@bg-maker/shared";
-import { ChevronDown, ChevronRight, Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Link2,
+  Pencil,
+  Plus,
+  Trash2
+} from "lucide-react";
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -57,6 +72,19 @@ import {
   getProjectObjectKindIconClassName,
   getProjectObjectKindLabel
 } from "./project-object-tree-labels";
+import {
+  createProjectTableSetupLinkedObjectItem,
+  createProjectTableSetupLocalObjectItem,
+  getProjectFileNodeTableSetup,
+  getProjectTableSetupObjectFileOptions,
+  getProjectTableSetupResolvedItemObject,
+  getProjectTableSetupWithAddedItem,
+  getProjectTableSetupWithItemName,
+  getProjectTableSetupWithItemVisibility,
+  getProjectTableSetupWithMovedItem,
+  getProjectTableSetupWithRemovedItem,
+  type ProjectTableSetupObjectFileOption
+} from "../project-table-setup/project-table-setup";
 
 const indentationWidth = 18;
 const rootDropTargetId = "project-object-tree:root";
@@ -79,6 +107,12 @@ type ObjectTreeContextMenuState = {
   y: number;
 };
 
+type TableSetupTreeContextMenuState = {
+  itemId: string | null;
+  x: number;
+  y: number;
+};
+
 type ObjectTreeExpansionState = {
   expandedObjectIds: Set<string>;
   fileNodeId: string | null;
@@ -95,15 +129,61 @@ type ObjectDropIndicator = {
 type ProjectObjectTreePanelProps = {
   className?: string;
   contentFileNode: ProjectFileNode | null;
+  fileTree: ProjectFileNode[];
   objectTree?: ProjectObjectNode[];
   readOnly?: boolean;
   saving: boolean;
   selectedObjectId: string | null;
+  tableSetup?: ProjectTableSetup | null;
   onObjectTreeChange: (fileNodeId: string, objectTree: ProjectObjectNode[]) => void;
+  onTableSetupChange?: (tableSetup: ProjectTableSetup, label?: string) => void;
   onSelectObject: (objectId: string | null) => void;
 };
 
 export function ProjectObjectTreePanel({
+  className,
+  contentFileNode,
+  fileTree,
+  objectTree: resolvedObjectTree,
+  readOnly = false,
+  saving,
+  selectedObjectId,
+  tableSetup: resolvedTableSetup,
+  onObjectTreeChange,
+  onTableSetupChange,
+  onSelectObject
+}: ProjectObjectTreePanelProps) {
+  if (contentFileNode?.kind === "tableSetup") {
+    return (
+      <ProjectTableSetupTreePanel
+        className={className}
+        contentFileNode={contentFileNode}
+        fileTree={fileTree}
+        readOnly={readOnly}
+        saving={saving}
+        selectedObjectId={selectedObjectId}
+        tableSetup={resolvedTableSetup ?? getProjectFileNodeTableSetup(contentFileNode)}
+        onSelectObject={onSelectObject}
+        onTableSetupChange={onTableSetupChange}
+      />
+    );
+  }
+
+  return (
+    <ProjectObjectNodeTreePanel
+      className={className}
+      contentFileNode={contentFileNode}
+      objectTree={resolvedObjectTree}
+      readOnly={readOnly}
+      saving={saving}
+      selectedObjectId={selectedObjectId}
+      onObjectTreeChange={onObjectTreeChange}
+      onSelectObject={onSelectObject}
+    />
+  );
+}
+
+function ProjectObjectNodeTreePanel({
   className,
   contentFileNode,
   objectTree: resolvedObjectTree,
@@ -112,7 +192,7 @@ export function ProjectObjectTreePanel({
   selectedObjectId,
   onObjectTreeChange,
   onSelectObject
-}: ProjectObjectTreePanelProps) {
+}: Omit<ProjectObjectTreePanelProps, "fileTree" | "onTableSetupChange" | "tableSetup">) {
   const objectTree = useMemo(
     () => resolvedObjectTree ?? contentFileNode?.objectTree ?? [],
     [contentFileNode?.objectTree, resolvedObjectTree]
@@ -482,7 +562,7 @@ export function ProjectObjectTreePanel({
             renamingObjectId={renamingObjectId}
             rootExpanded={rootExpanded}
             selectedObjectId={selectedObjectId}
-            showVirtualRoot={contentFileNode.kind === "tableSetup"}
+            showVirtualRoot={false}
             onCancelRename={handleCancelRenameObject}
             onCommitRename={handleCommitRenameObject}
             onContextMenu={handleContextMenu}
@@ -562,6 +642,340 @@ export function ProjectObjectTreePanel({
 
     return pointerYRef.current;
   }
+}
+
+type ProjectTableSetupTreePanelProps = {
+  className?: string;
+  contentFileNode: ProjectFileNode;
+  fileTree: ProjectFileNode[];
+  readOnly: boolean;
+  saving: boolean;
+  selectedObjectId: string | null;
+  tableSetup: ProjectTableSetup | null;
+  onSelectObject: (objectId: string | null) => void;
+  onTableSetupChange?: (tableSetup: ProjectTableSetup, label?: string) => void;
+};
+
+function ProjectTableSetupTreePanel({
+  className,
+  contentFileNode,
+  fileTree,
+  readOnly,
+  saving,
+  selectedObjectId,
+  tableSetup,
+  onSelectObject,
+  onTableSetupChange
+}: ProjectTableSetupTreePanelProps) {
+  const [renamingItemId, setRenamingItemId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [contextMenu, setContextMenu] = useState<TableSetupTreeContextMenuState | null>(null);
+  const items = tableSetup?.items ?? [];
+  const objectFileOptions = useMemo(
+    () => getProjectTableSetupObjectFileOptions(fileTree),
+    [fileTree]
+  );
+  const contextMenuActions = createTableSetupTreeContextMenuActions({
+    disabled: saving || readOnly || !tableSetup,
+    itemId: contextMenu?.itemId ?? null,
+    objectFileOptions,
+    onAddLinkedObject: handleAddLinkedObject,
+    onCreatePrimitive: handleCreatePrimitive,
+    onDelete: handleDeleteItem,
+    onRename: handleRequestRename
+  });
+
+  function updateTableSetup(nextTableSetup: ProjectTableSetup, label: string) {
+    if (!tableSetup || nextTableSetup === tableSetup) {
+      return;
+    }
+
+    onTableSetupChange?.(nextTableSetup, label);
+  }
+
+  function handleContextMenu(event: MouseEvent, itemId: string | null = null) {
+    if (!tableSetup) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    onSelectObject(itemId);
+    setContextMenu({
+      itemId,
+      x: getObjectTreeContextMenuX(event.clientX),
+      y: event.clientY
+    });
+  }
+
+  function handleAddLinkedObject(sourceObjectFileNodeId: string) {
+    if (!tableSetup || readOnly) {
+      return;
+    }
+
+    const item = createProjectTableSetupLinkedObjectItem(fileTree, sourceObjectFileNodeId);
+
+    if (!item) {
+      return;
+    }
+
+    setContextMenu(null);
+    cancelRename();
+    updateTableSetup(getProjectTableSetupWithAddedItem(tableSetup, item), "Add table object");
+    onSelectObject(item.id);
+  }
+
+  function handleCreatePrimitive(kind: ProjectObjectKind) {
+    if (!tableSetup || readOnly) {
+      return;
+    }
+
+    const item = createProjectTableSetupLocalObjectItem(kind);
+    const itemId = getProjectTableSetupItemId(item);
+
+    setContextMenu(null);
+    cancelRename();
+    updateTableSetup(getProjectTableSetupWithAddedItem(tableSetup, item), "Create table primitive");
+    onSelectObject(itemId);
+  }
+
+  function handleRequestRename(itemId: string | null) {
+    if (!itemId || readOnly) {
+      return;
+    }
+
+    const item = items.find((candidate) => getProjectTableSetupItemId(candidate) === itemId);
+
+    if (!item) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      setRenamingItemId(itemId);
+      setRenameDraft(getProjectTableSetupItemName(item));
+      onSelectObject(itemId);
+    }, 0);
+  }
+
+  function commitRename(itemId: string) {
+    if (!tableSetup || readOnly) {
+      return;
+    }
+
+    const nextTableSetup = getProjectTableSetupWithItemName(tableSetup, itemId, renameDraft);
+
+    setRenamingItemId(null);
+    setRenameDraft("");
+    updateTableSetup(nextTableSetup, "Rename table item");
+  }
+
+  function cancelRename() {
+    setRenamingItemId(null);
+    setRenameDraft("");
+  }
+
+  function handleDeleteItem(itemId: string | null) {
+    if (!tableSetup || !itemId || readOnly) {
+      return;
+    }
+
+    const nextTableSetup = getProjectTableSetupWithRemovedItem(tableSetup, itemId);
+
+    if (nextTableSetup === tableSetup) {
+      return;
+    }
+
+    setContextMenu(null);
+    cancelRename();
+    updateTableSetup(nextTableSetup, "Delete table item");
+    onSelectObject(null);
+  }
+
+  return (
+    <aside
+      className={cx(
+        "flex min-h-0 flex-1 basis-0 flex-col overflow-hidden bg-white text-slate-700",
+        className
+      )}
+      onContextMenu={(event) => handleContextMenu(event)}
+    >
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Table setup
+          </h2>
+          <p className="truncate text-[11px] leading-none text-slate-500">{contentFileNode.name}</p>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto py-2">
+        <div className="min-w-max">
+          <ProjectObjectTreeRootRow
+            contentFileNode={contentFileNode}
+            expanded
+            hasChildren={items.length > 0}
+            selected={selectedObjectId === null}
+            onContextMenu={handleContextMenu}
+            onExpandedChange={() => undefined}
+            onSelect={() => onSelectObject(null)}
+          />
+          {items.map((item, index) => {
+            const itemId = getProjectTableSetupItemId(item);
+            const itemName = getProjectTableSetupItemName(item);
+            const itemVisible = getProjectTableSetupItemVisible(item);
+            const resolvedObject = getProjectTableSetupResolvedItemObject(fileTree, item);
+            const itemKind = item.type === "localObject" ? item.object.kind : resolvedObject?.kind;
+            const iconClassName = itemKind
+              ? getProjectObjectKindIconClassName(itemKind)
+              : "text-slate-400";
+            const selected = selectedObjectId === itemId;
+            const renaming = renamingItemId === itemId;
+
+            return (
+              <div
+                key={itemId}
+                className={cx(
+                  "group flex h-7 min-w-max items-center pr-1 text-[13px] leading-none transition-colors",
+                  selected
+                    ? "bg-sky-100 text-slate-950 outline outline-1 -outline-offset-1 outline-sky-500"
+                    : "text-slate-700 hover:bg-slate-100",
+                  !itemVisible && "text-slate-400"
+                )}
+                style={{ paddingLeft: 26 }}
+                onClick={() => {
+                  if (!renaming) {
+                    onSelectObject(itemId);
+                  }
+                }}
+                onContextMenu={(event) => handleContextMenu(event, itemId)}
+                onDoubleClick={() => {
+                  if (!readOnly) {
+                    handleRequestRename(itemId);
+                  }
+                }}
+              >
+                <span className="h-5 w-5 shrink-0" />
+                {item.type === "linkedObject" ? (
+                  <Link2 className="shrink-0 text-sky-700" size={15} />
+                ) : itemKind ? (
+                  <ProjectObjectKindIcon
+                    className={cx("shrink-0", iconClassName)}
+                    kind={itemKind}
+                    size={15}
+                  />
+                ) : (
+                  <ProjectObjectKindIcon
+                    className="shrink-0 text-slate-400"
+                    kind="group"
+                    size={15}
+                  />
+                )}
+                {renaming ? (
+                  <input
+                    autoFocus
+                    className="ml-2 h-5 min-w-32 flex-1 rounded border border-sky-500 bg-white px-1 text-[13px] text-slate-950 outline-none"
+                    value={renameDraft}
+                    onBlur={() => commitRename(itemId)}
+                    onChange={(event) => setRenameDraft(event.currentTarget.value)}
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.currentTarget.blur();
+                      }
+
+                      if (event.key === "Escape") {
+                        cancelRename();
+                      }
+                    }}
+                  />
+                ) : (
+                  <span className="ml-2 min-w-32 flex-1 truncate">{itemName}</span>
+                )}
+                <button
+                  aria-label={`Move ${itemName} up`}
+                  className="ml-2 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
+                  disabled={readOnly || saving || index === 0}
+                  title="Move up"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (tableSetup) {
+                      updateTableSetup(
+                        getProjectTableSetupWithMovedItem(tableSetup, itemId, -1),
+                        "Reorder table item"
+                      );
+                    }
+                  }}
+                >
+                  <ArrowUp size={14} />
+                </button>
+                <button
+                  aria-label={`Move ${itemName} down`}
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
+                  disabled={readOnly || saving || index === items.length - 1}
+                  title="Move down"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (tableSetup) {
+                      updateTableSetup(
+                        getProjectTableSetupWithMovedItem(tableSetup, itemId, 1),
+                        "Reorder table item"
+                      );
+                    }
+                  }}
+                >
+                  <ArrowDown size={14} />
+                </button>
+                <button
+                  aria-label={itemVisible ? `Hide ${itemName}` : `Show ${itemName}`}
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900"
+                  title={itemVisible ? "Hide item" : "Show item"}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (tableSetup) {
+                      updateTableSetup(
+                        getProjectTableSetupWithItemVisibility(tableSetup, itemId, !itemVisible),
+                        itemVisible ? "Hide table item" : "Show table item"
+                      );
+                    }
+                  }}
+                >
+                  {itemVisible ? <Eye size={15} /> : <EyeOff size={15} />}
+                </button>
+                <button
+                  aria-label={`Delete ${itemName}`}
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-35"
+                  disabled={readOnly || saving}
+                  title="Delete item"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleDeleteItem(itemId);
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <ContextMenu
+        actions={contextMenuActions}
+        ariaLabel="Table layout tree context menu"
+        open={Boolean(contextMenu)}
+        x={contextMenu?.x ?? 0}
+        y={contextMenu?.y ?? 0}
+        onOpenChange={(open) => {
+          if (!open) {
+            setContextMenu(null);
+          }
+        }}
+      />
+    </aside>
+  );
 }
 
 type ProjectObjectTreeListProps = {
@@ -1004,6 +1418,85 @@ function createObjectTreeContextMenuActions({
       destructive: true,
       disabled: disabled || !canDelete,
       onSelect: () => onDelete(nodeId)
+    }
+  ];
+}
+
+function createTableSetupTreeContextMenuActions({
+  disabled,
+  itemId,
+  objectFileOptions,
+  onAddLinkedObject,
+  onCreatePrimitive,
+  onDelete,
+  onRename
+}: {
+  disabled: boolean;
+  itemId: string | null;
+  objectFileOptions: readonly ProjectTableSetupObjectFileOption[];
+  onAddLinkedObject: (sourceObjectFileNodeId: string) => void;
+  onCreatePrimitive: (kind: ProjectObjectKind) => void;
+  onDelete: (itemId: string | null) => void;
+  onRename: (itemId: string | null) => void;
+}): ContextMenuAction[] {
+  const hasSelectedItem = Boolean(itemId);
+
+  return [
+    {
+      id: "add-linked-object",
+      label: "Add existing object",
+      icon: <Link2 size={14} />,
+      disabled: disabled || objectFileOptions.length === 0,
+      children: objectFileOptions.map((option) => ({
+        id: `add-linked-object-${option.id}`,
+        label: option.label,
+        icon: option.rootKind ? (
+          <ProjectObjectKindIcon
+            className={getProjectObjectKindIconClassName(option.rootKind)}
+            kind={option.rootKind}
+            size={14}
+          />
+        ) : (
+          <Link2 size={14} />
+        ),
+        disabled,
+        onSelect: () => onAddLinkedObject(option.id)
+      }))
+    },
+    {
+      id: "create-primitive",
+      label: "Create new object",
+      icon: <Plus size={14} />,
+      disabled,
+      children: projectObjectCreateKinds.map((kind) => ({
+        id: `create-primitive-${kind}`,
+        label: getProjectObjectKindLabel(kind),
+        icon: (
+          <ProjectObjectKindIcon
+            className={getProjectObjectKindIconClassName(kind)}
+            kind={kind}
+            size={14}
+          />
+        ),
+        disabled,
+        onSelect: () => onCreatePrimitive(kind)
+      }))
+    },
+    {
+      id: "rename",
+      label: "Rename",
+      icon: <Pencil size={14} />,
+      disabled: disabled || !hasSelectedItem,
+      separatorBefore: true,
+      onSelect: () => onRename(itemId)
+    },
+    {
+      id: "delete",
+      label: "Delete",
+      icon: <Trash2 size={14} />,
+      destructive: true,
+      disabled: disabled || !hasSelectedItem,
+      onSelect: () => onDelete(itemId)
     }
   ];
 }

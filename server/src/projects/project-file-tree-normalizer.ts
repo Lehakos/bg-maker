@@ -6,13 +6,21 @@ import type {
   ProjectObjectTemplate,
   ProjectObjectVariableDefinition,
   ProjectObjectVariableType,
-  ProjectObjectVariableValue
+  ProjectObjectVariableValue,
+  ProjectTableSetup,
+  ProjectTableSetupItem,
+  ProjectTableSetupItemTransform
 } from "@bg-maker/shared";
 import {
+  getDefaultProjectTableSetup,
+  getDefaultProjectTableSetupGrid,
+  getDefaultProjectTableSetupItemTransform,
   getDefaultProjectObjectVariableValue,
   projectAssetsFolderId,
   projectAssetsFolderName,
-  projectObjectVariableTypes
+  projectObjectVariableTypes,
+  projectTableSetupGridSizeLimits,
+  projectTableSetupSizeLimits
 } from "@bg-maker/shared";
 import { normalizeProjectImageAsset } from "./project-image-assets.js";
 import {
@@ -20,7 +28,11 @@ import {
   normalizeProjectObjectTree
 } from "./project-object-tree-normalizer.js";
 import { ProjectValidationError } from "./project-validation-error.js";
-import { normalizeFiniteNumber, normalizeHexColor } from "./project-normalization-utils.js";
+import {
+  normalizeFiniteNumber,
+  normalizeHexColor,
+  normalizeIntegerNumber
+} from "./project-normalization-utils.js";
 
 const maxProjectFileTreeDepth = 12;
 const maxProjectFileTreeNodes = 500;
@@ -28,6 +40,7 @@ const maxProjectObjectSourceValueCount = 100;
 const maxProjectObjectVariableCount = 100;
 const maxProjectObjectVariableNameLength = 80;
 const maxProjectObjectVariableTextValueLength = 2000;
+const maxProjectTableSetupItemCount = 1000;
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
 const projectObjectVariableTypeSet = new Set<ProjectObjectVariableType>(projectObjectVariableTypes);
 
@@ -244,9 +257,7 @@ function normalizeProjectFileNode(
   const objectTree =
     kind === "tableSetup"
       ? {
-          objectTree: Array.isArray(record.objectTree)
-            ? normalizeProjectObjectTree(record.objectTree)
-            : []
+          tableSetup: normalizeProjectTableSetup(record.tableSetup)
         }
       : kind === "object" && sourceRef
         ? {
@@ -273,6 +284,126 @@ function normalizeProjectFileNode(
     kind,
     ...(imageAsset ? { imageAsset } : {}),
     ...objectTree
+  };
+}
+
+function normalizeProjectTableSetup(value: unknown): ProjectTableSetup {
+  const defaultTableSetup = getDefaultProjectTableSetup();
+  const defaultGrid = getDefaultProjectTableSetupGrid();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const grid =
+    record.grid && typeof record.grid === "object" ? (record.grid as Record<string, unknown>) : {};
+
+  return {
+    backgroundColor: normalizeHexColor(record.backgroundColor, defaultTableSetup.backgroundColor),
+    grid: {
+      size: normalizeIntegerNumber(grid.size, defaultGrid.size, projectTableSetupGridSizeLimits),
+      snap: grid.snap === true,
+      visible: grid.visible !== false
+    },
+    height: normalizeIntegerNumber(
+      record.height,
+      defaultTableSetup.height,
+      projectTableSetupSizeLimits
+    ),
+    items: normalizeProjectTableSetupItems(record.items),
+    width: normalizeIntegerNumber(
+      record.width,
+      defaultTableSetup.width,
+      projectTableSetupSizeLimits
+    )
+  };
+}
+
+function normalizeProjectTableSetupItems(value: unknown): ProjectTableSetupItem[] {
+  const items = Array.isArray(value) ? value : [];
+  const itemIds = new Set<string>();
+  const normalizedItems: ProjectTableSetupItem[] = [];
+
+  for (const item of items.slice(0, maxProjectTableSetupItemCount)) {
+    const normalizedItem = normalizeProjectTableSetupItem(item);
+
+    if (!normalizedItem) {
+      continue;
+    }
+
+    const itemId =
+      normalizedItem.type === "linkedObject" ? normalizedItem.id : normalizedItem.object.id;
+
+    if (itemIds.has(itemId)) {
+      continue;
+    }
+
+    itemIds.add(itemId);
+    normalizedItems.push(normalizedItem);
+  }
+
+  return normalizedItems;
+}
+
+function normalizeProjectTableSetupItem(value: unknown): ProjectTableSetupItem | null {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  if (record.type === "linkedObject") {
+    const id = typeof record.id === "string" ? record.id.trim() : "";
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    const sourceObjectFileNodeId =
+      typeof record.sourceObjectFileNodeId === "string" ? record.sourceObjectFileNodeId.trim() : "";
+
+    if (!id || !sourceObjectFileNodeId) {
+      return null;
+    }
+
+    return {
+      id,
+      name: name || "Linked object",
+      sourceObjectFileNodeId,
+      transform: normalizeProjectTableSetupItemTransform(record.transform),
+      type: "linkedObject",
+      values: normalizeLooseProjectObjectVariableValues(record.values),
+      visible: record.visible !== false
+    };
+  }
+
+  if (record.type === "localObject") {
+    try {
+      const objectTree = normalizeProjectObjectTree([record.object]);
+      const object = objectTree[0];
+
+      return object ? { object, type: "localObject" } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function normalizeProjectTableSetupItemTransform(value: unknown): ProjectTableSetupItemTransform {
+  const defaultTransform = getDefaultProjectTableSetupItemTransform();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    rotation: normalizeFiniteNumber(record.rotation, defaultTransform.rotation, {
+      max: 360000,
+      min: -360000
+    }),
+    scaleX: normalizeFiniteNumber(record.scaleX, defaultTransform.scaleX, {
+      max: 100,
+      min: 0.01
+    }),
+    scaleY: normalizeFiniteNumber(record.scaleY, defaultTransform.scaleY, {
+      max: 100,
+      min: 0.01
+    }),
+    x: normalizeFiniteNumber(record.x, defaultTransform.x, {
+      max: 100000,
+      min: -100000
+    }),
+    y: normalizeFiniteNumber(record.y, defaultTransform.y, {
+      max: 100000,
+      min: -100000
+    })
   };
 }
 

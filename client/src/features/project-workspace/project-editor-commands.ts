@@ -2,7 +2,8 @@ import type {
   ProjectFileNode,
   ProjectObjectNode,
   ProjectObjectRectTransform,
-  ProjectObjectSide
+  ProjectObjectSide,
+  ProjectTableSetup
 } from "@bg-maker/shared";
 import type { EditorCommand } from "./editor-command-history";
 import { findProjectFileNode } from "../project-files/project-file-tree";
@@ -11,6 +12,7 @@ import {
   setProjectObjectNodeRectTransform,
   updateProjectFileNodeObjectTree
 } from "../project-objects/project-object-tree";
+import { updateProjectFileNodeTableSetup } from "../project-table-setup/project-table-setup";
 import {
   getProjectObjectSideSelectionsWithSelection,
   type ProjectObjectSideSelections
@@ -59,6 +61,25 @@ export function createUpdateProjectObjectTreeCommand({
   };
 }
 
+export function createUpdateProjectTableSetupCommand({
+  after,
+  before,
+  fileNodeId,
+  label
+}: {
+  after: ProjectTableSetup;
+  before: ProjectTableSetup;
+  fileNodeId: string;
+  label: string;
+}): ProjectEditorCommand {
+  return {
+    execute: (state) => updateProjectEditorStateTableSetup(state, fileNodeId, after),
+    id: crypto.randomUUID(),
+    label,
+    undo: (state) => updateProjectEditorStateTableSetup(state, fileNodeId, before)
+  };
+}
+
 export function createSetProjectObjectSideSelectionCommand({
   after,
   before,
@@ -96,8 +117,7 @@ export function createUpdateProjectObjectRectTransformCommand({
       updateProjectEditorStateWithRectTransform(state, fileNodeId, objectId, after),
     id: crypto.randomUUID(),
     label,
-    undo: (state) =>
-      updateProjectEditorStateWithRectTransform(state, fileNodeId, objectId, before)
+    undo: (state) => updateProjectEditorStateWithRectTransform(state, fileNodeId, objectId, before)
   };
 }
 
@@ -107,6 +127,16 @@ function updateProjectEditorStateObjectTree(
   objectTree: ProjectObjectNode[]
 ): ProjectEditorState {
   const nextFileTree = updateProjectFileNodeObjectTree(state.fileTree, fileNodeId, objectTree);
+
+  return nextFileTree === state.fileTree ? state : { ...state, fileTree: nextFileTree };
+}
+
+function updateProjectEditorStateTableSetup(
+  state: ProjectEditorState,
+  fileNodeId: string,
+  tableSetup: ProjectTableSetup
+): ProjectEditorState {
+  const nextFileTree = updateProjectFileNodeTableSetup(state.fileTree, fileNodeId, tableSetup);
 
   return nextFileTree === state.fileTree ? state : { ...state, fileTree: nextFileTree };
 }

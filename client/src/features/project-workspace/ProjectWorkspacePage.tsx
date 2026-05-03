@@ -1,4 +1,9 @@
-import type { Project, ProjectFileNode, ProjectObjectNode } from "@bg-maker/shared";
+import type {
+  Project,
+  ProjectFileNode,
+  ProjectObjectNode,
+  ProjectTableSetup
+} from "@bg-maker/shared";
 import { Alert, Button, Center, Loader } from "@mantine/core";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft } from "lucide-react";
@@ -16,7 +21,8 @@ import {
 } from "./use-project-workspace-store";
 import {
   createReplaceProjectFileTreeCommand,
-  createUpdateProjectObjectTreeCommand
+  createUpdateProjectObjectTreeCommand,
+  createUpdateProjectTableSetupCommand
 } from "./project-editor-commands";
 import { useProject, useUpdateProjectFileTree } from "./project-hooks";
 import { findProjectFileNode } from "../project-files/project-file-tree";
@@ -31,6 +37,10 @@ import {
   useElementSize,
   useResizablePanelSize
 } from "./resizable-panel-state";
+import {
+  getProjectFileNodeTableSetup,
+  getProjectTableSetupWithLocalObjectTree
+} from "../project-table-setup/project-table-setup";
 
 const sidePanelMinWidth = 260;
 const sidePanelDefaultWidth = 320;
@@ -161,17 +171,24 @@ function ProjectWorkspaceContent({
     effectiveSelectedNodeId,
     selectedContentFileNode,
     selectedObjectId,
-    selectedProjectObject
+    selectedProjectObject,
+    selectedTableSetupItem
   } = useProjectWorkspaceSelection();
-  const selectedContentObjectTree = useMemo(
-    () =>
-      getProjectWorkspaceContentObjectTree(
-        fileTree,
-        selectedContentFileNode,
-        objectSideSelections
-      ),
-    [fileTree, objectSideSelections, selectedContentFileNode]
+  const selectedTableSetup = useMemo(
+    () => getProjectFileNodeTableSetup(selectedContentFileNode),
+    [selectedContentFileNode]
   );
+  const selectedContentObjectTree = useMemo(() => {
+    if (selectedTableSetupItem?.type === "localObject") {
+      return [selectedTableSetupItem.object];
+    }
+
+    return getProjectWorkspaceContentObjectTree(
+      fileTree,
+      selectedContentFileNode,
+      objectSideSelections
+    );
+  }, [fileTree, objectSideSelections, selectedContentFileNode, selectedTableSetupItem]);
   useAppHeaderContent(headerContent);
   const [workspaceElementRef, workspaceSize] = useElementSize<HTMLElement>();
   const [rightPanelElementRef, rightPanelSize] = useElementSize<HTMLDivElement>();
@@ -275,6 +292,23 @@ function ProjectWorkspaceContent({
   function persistObjectTree(fileNodeId: string, objectTree: ProjectObjectNode[]) {
     const fileNode = findProjectFileNode(fileTree, fileNodeId);
 
+    if (fileNode?.kind === "tableSetup") {
+      const tableSetup = getProjectFileNodeTableSetup(fileNode);
+
+      if (!tableSetup || !selectedObjectId) {
+        return;
+      }
+
+      const nextTableSetup = getProjectTableSetupWithLocalObjectTree(
+        tableSetup,
+        selectedObjectId,
+        clearProjectObjectTreeActiveSides(objectTree)
+      );
+
+      persistTableSetup(fileNode.id, nextTableSetup, "Update table item");
+      return;
+    }
+
     if (!isProjectObjectTreeFileNode(fileNode) || fileNode.sourceRef) {
       return;
     }
@@ -287,6 +321,28 @@ function ProjectWorkspaceContent({
         before: fileNode.objectTree ?? [],
         fileNodeId,
         label: "Update object tree"
+      })
+    );
+  }
+
+  function persistTableSetup(
+    fileNodeId: string,
+    tableSetup: ProjectTableSetup,
+    label = "Update table setup"
+  ) {
+    const fileNode = findProjectFileNode(fileTree, fileNodeId);
+    const before = getProjectFileNodeTableSetup(fileNode);
+
+    if (!before || before === tableSetup) {
+      return;
+    }
+
+    executeEditorCommand(
+      createUpdateProjectTableSetupCommand({
+        after: tableSetup,
+        before,
+        fileNodeId,
+        label
       })
     );
   }
@@ -324,6 +380,7 @@ function ProjectWorkspaceContent({
         fileTree={fileTree}
         project={project}
         selectedNodeId={effectiveSelectedNodeId}
+        tableSetup={selectedTableSetup}
         canRedo={canRedo}
         canUndo={canUndo}
         onExecuteCommand={executeEditorCommand}
@@ -354,8 +411,15 @@ function ProjectWorkspaceContent({
             objectTree={selectedContentObjectTree}
             projectId={project.id}
             selectedObject={selectedProjectObject}
+            selectedTableSetupItem={selectedTableSetupItem}
+            tableSetup={selectedTableSetup}
             onFileTreeChange={persistFileTree}
             onObjectTreeChange={persistObjectTree}
+            onTableSetupChange={(tableSetup, label) =>
+              selectedContentFileNode
+                ? persistTableSetup(selectedContentFileNode.id, tableSetup, label)
+                : undefined
+            }
           />
           <PanelResizeHandle
             axis="vertical"
@@ -372,11 +436,18 @@ function ProjectWorkspaceContent({
           <ProjectObjectTreePanel
             className="h-full"
             contentFileNode={selectedContentFileNode}
+            fileTree={fileTree}
             objectTree={selectedContentObjectTree}
             readOnly={Boolean(selectedContentFileNode?.sourceRef)}
             saving={saving}
             selectedObjectId={selectedObjectId}
+            tableSetup={selectedTableSetup}
             onObjectTreeChange={persistObjectTree}
+            onTableSetupChange={(tableSetup, label) =>
+              selectedContentFileNode
+                ? persistTableSetup(selectedContentFileNode.id, tableSetup, label)
+                : undefined
+            }
             onSelectObject={selectObject}
           />
         </div>

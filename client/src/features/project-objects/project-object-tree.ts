@@ -19,7 +19,8 @@ import type {
   ProjectObjectSide,
   ProjectObjectStackDisplay,
   ProjectObjectText,
-  ProjectObjectZone
+  ProjectObjectZone,
+  ProjectTableSetup
 } from "@bg-maker/shared";
 import { hasProjectObjectSides } from "@bg-maker/shared";
 import { projectObjectComponentEngine } from "./project-object-components";
@@ -46,6 +47,7 @@ export function isProjectObjectTreeFileNode(
 ): node is ProjectFileNode & {
   kind: "tableSetup" | "object";
   objectTree?: ProjectObjectNode[];
+  tableSetup?: ProjectTableSetup;
   type: "file";
 } {
   return node?.type === "file" && objectTreeFileKinds.has(node.kind as ProjectFileKind);
