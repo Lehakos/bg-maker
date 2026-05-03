@@ -18,9 +18,10 @@ import {
   type LucideIcon
 } from "lucide-react";
 import type { ChangeEvent } from "react";
+import { cx } from "./class-names";
 import {
   InspectorBehaviorNumberField,
-  InspectorColorGrid,
+  InspectorColorField,
   type InspectorFieldDefinition,
   InspectorIconSegmentedField,
   InspectorSection,
@@ -28,6 +29,10 @@ import {
   InspectorTextareaField,
   TextStyleToggleField
 } from "./inspector-ui";
+import {
+  ProjectObjectVariableBindingField,
+  type VariableBindingFieldState
+} from "./ProjectObjectVariableBindingField";
 import {
   imageNumberFieldSettings,
   textNumberFieldSettings,
@@ -105,9 +110,11 @@ type ProjectObjectImageAssetOption = {
 };
 
 type ProjectObjectTextSectionProps = {
+  contentBinding?: VariableBindingFieldState;
   draft: TextDraft;
   isBold: boolean;
   isItalic: boolean;
+  textColorBinding?: VariableBindingFieldState;
   onBoldChange: (isBold: boolean) => void;
   onCommitNumberField: (fieldKey: keyof typeof textNumberFieldSettings, value: string) => void;
   onDraftChange: (fieldKey: TextFieldKey, value: string) => void;
@@ -116,23 +123,38 @@ type ProjectObjectTextSectionProps = {
 };
 
 export function ProjectObjectTextSection({
+  contentBinding,
   draft,
   isBold,
   isItalic,
+  textColorBinding,
   onBoldChange,
   onCommitNumberField,
   onDraftChange,
   onItalicChange,
   onReset
 }: ProjectObjectTextSectionProps) {
+  const contentBound = Boolean(contentBinding?.value);
+  const textColorBound = Boolean(textColorBinding?.value);
+
   return (
     <InspectorSection icon={<Type size={15} />} title="Text">
       <InspectorTextareaField
+        disabled={contentBound}
+        labelAction={<ProjectObjectVariableBindingField binding={contentBinding} />}
         label="Content"
         value={draft.content}
         onChange={(value) => onDraftChange("content", value)}
       />
-      <InspectorColorGrid fields={textColorFields} value={draft} onChange={onDraftChange} />
+      <div className="grid grid-cols-2 gap-2">
+        <InspectorColorField
+          disabled={textColorBound}
+          field={textColorFields[0]}
+          labelAction={<ProjectObjectVariableBindingField binding={textColorBinding} />}
+          value={draft.color}
+          onChange={onDraftChange}
+        />
+      </div>
       <div className="grid grid-cols-2 gap-2">
         <TextStyleToggleField
           isBold={isBold}
@@ -165,6 +187,7 @@ export function ProjectObjectTextSection({
 }
 
 type ProjectObjectImageSectionProps = {
+  assetBinding?: VariableBindingFieldState;
   draft: ImageDraft;
   imageAssetId: string;
   imageAssetMissing: boolean;
@@ -178,6 +201,7 @@ type ProjectObjectImageSectionProps = {
 };
 
 export function ProjectObjectImageSection({
+  assetBinding,
   draft,
   imageAssetId,
   imageAssetMissing,
@@ -189,9 +213,13 @@ export function ProjectObjectImageSection({
   onImageUpload,
   onReset
 }: ProjectObjectImageSectionProps) {
+  const assetBound = Boolean(assetBinding?.value);
+
   return (
     <InspectorSection icon={<ImagePlus size={15} />} title="Image">
       <InspectorSelectField
+        disabled={assetBound}
+        labelAction={<ProjectObjectVariableBindingField binding={assetBinding} />}
         label="Asset"
         value={draft.assetId}
         options={[
@@ -208,11 +236,18 @@ export function ProjectObjectImageSection({
           Selected image is no longer in the file tree.
         </p>
       ) : null}
-      <label className="flex h-9 cursor-pointer items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 text-sm font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50">
+      <label
+        className={cx(
+          "flex h-9 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 text-sm font-medium text-slate-700",
+          assetBound
+            ? "cursor-not-allowed opacity-60"
+            : "cursor-pointer hover:border-sky-400 hover:bg-sky-50"
+        )}
+      >
         <input
           accept="image/jpeg,image/png,image/webp"
           className="sr-only"
-          disabled={uploadingImage}
+          disabled={uploadingImage || assetBound}
           type="file"
           onChange={onImageUpload}
         />

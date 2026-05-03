@@ -1,8 +1,7 @@
 import type { Project, ProjectFileNode } from "@bg-maker/shared";
+import { resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
 import { useMemo } from "react";
-import {
-  getProjectImageAssetOptions
-} from "../project-assets/project-image-assets";
+import { getProjectImageAssetOptions } from "../project-assets/project-image-assets";
 import {
   findProjectFileNode,
   findProjectFileNodeLocation
@@ -55,8 +54,8 @@ export function ProjectWorkspaceArea({
     ? findProjectFileNode(fileTree, selectedNodeLocation.parentId)
     : undefined;
   const objectTree = useMemo(
-    () => contentFileNode?.objectTree ?? [],
-    [contentFileNode?.objectTree]
+    () => resolveProjectObjectFileObjectTree(fileTree, contentFileNode),
+    [contentFileNode, fileTree]
   );
   const imageAssets = useMemo(
     () => getProjectImageAssetOptions(project.id, fileTree),
@@ -92,6 +91,7 @@ export function ProjectWorkspaceArea({
           fileTree={fileTree}
           imageAssets={imageAssets}
           objectTree={objectTree}
+          readOnly={Boolean(contentFileNode?.sourceRef)}
           parentFolderName={parentFolder?.name}
           selectedNode={selectedNode}
           selectedObjectId={selectedObjectId}

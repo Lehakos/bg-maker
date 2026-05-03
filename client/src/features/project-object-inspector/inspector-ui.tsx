@@ -19,15 +19,24 @@ export type RectTransformFieldDefinition = InspectorFieldDefinition<RectTransfor
 type InspectorSectionProps = {
   children: ReactNode;
   icon?: ReactNode;
+  info?: ReactNode;
+  infoAlign?: "center" | "end" | "start";
   title: string;
 };
 
-export function InspectorSection({ children, icon, title }: InspectorSectionProps) {
+export function InspectorSection({
+  children,
+  icon,
+  info,
+  infoAlign,
+  title
+}: InspectorSectionProps) {
   return (
     <section className="mt-4 border-t border-slate-200 pt-3">
       <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
         {icon}
         <span>{title}</span>
+        {info ? <InfoTip align={infoAlign}>{info}</InfoTip> : null}
       </div>
       <div className="space-y-2">{children}</div>
     </section>
@@ -51,7 +60,7 @@ export function InspectorTextField({
 }: InspectorTextFieldProps) {
   return (
     <label className="block text-xs font-medium text-slate-500">
-      <span>{label}</span>
+      <span className="flex min-h-5 items-center">{label}</span>
       <input
         className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
         value={value}
@@ -76,7 +85,7 @@ export function InspectorInlineTextField({
 }: InspectorInlineTextFieldProps) {
   return (
     <label className="block text-xs font-medium text-slate-500">
-      <span>{label}</span>
+      <span className="flex min-h-5 items-center">{label}</span>
       <input
         className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
         value={value}
@@ -149,25 +158,38 @@ export function InspectorDoubleSidedControls({
 }
 
 type InspectorTextareaFieldProps = {
+  disabled?: boolean;
+  labelAction?: ReactNode;
   label: string;
   value: string;
   onChange: (value: string) => void;
 };
 
 export function InspectorTextareaField({
+  disabled = false,
+  labelAction,
   label,
   value,
   onChange
 }: InspectorTextareaFieldProps) {
+  const textareaId = useId();
+
   return (
-    <label className="block text-xs font-medium text-slate-500">
-      <span>{label}</span>
+    <div className="block text-xs font-medium text-slate-500">
+      <InspectorFieldLabel action={labelAction} htmlFor={textareaId}>
+        {label}
+      </InspectorFieldLabel>
       <textarea
-        className="mt-1 min-h-20 w-full resize-y rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        id={textareaId}
+        className={cx(
+          "mt-1 min-h-20 w-full resize-y rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100",
+          disabled && "cursor-not-allowed bg-slate-50 text-slate-500"
+        )}
+        disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
       />
-    </label>
+    </div>
   );
 }
 
@@ -197,29 +219,54 @@ export function InspectorColorGrid<TField extends string>({
 }
 
 type InspectorColorFieldProps<TField extends string> = {
+  disabled?: boolean;
   field: InspectorFieldDefinition<TField>;
+  labelAction?: ReactNode;
   value: string;
   onChange: (fieldKey: TField, value: string) => void;
 };
 
 export function InspectorColorField<TField extends string>({
+  disabled = false,
   field,
+  labelAction,
   value,
   onChange
 }: InspectorColorFieldProps<TField>) {
+  const colorInputId = useId();
+
   return (
-    <label className="block min-w-0 text-xs font-medium text-slate-500">
-      <span>{field.label}</span>
-      <span className="mt-1 flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2">
+    <div className="block min-w-0 text-xs font-medium text-slate-500">
+      <InspectorFieldLabel action={labelAction} htmlFor={colorInputId}>
+        {field.label}
+      </InspectorFieldLabel>
+      <span
+        className={cx(
+          "mt-1 flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2",
+          disabled && "bg-slate-50"
+        )}
+      >
         <input
-          className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
+          id={colorInputId}
+          className={cx(
+            "h-5 w-6 border-0 bg-transparent p-0",
+            disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+          )}
+          disabled={disabled}
           type="color"
           value={value}
           onChange={(event) => onChange(field.key, event.currentTarget.value)}
         />
-        <span className="truncate text-xs tabular-nums text-slate-600">{value}</span>
+        <span
+          className={cx(
+            "truncate text-xs tabular-nums text-slate-600",
+            disabled && "text-slate-400"
+          )}
+        >
+          {value}
+        </span>
       </span>
-    </label>
+    </div>
   );
 }
 
@@ -244,7 +291,7 @@ export function InspectorIconSegmentedField<TValue extends string>({
 }: InspectorIconSegmentedFieldProps<TValue>) {
   return (
     <div className="block min-w-0 text-xs font-medium text-slate-500">
-      <span>{label}</span>
+      <span className="flex min-h-5 items-center">{label}</span>
       <div className="mt-1 flex h-8 overflow-hidden rounded-md border border-slate-200 bg-white">
         {options.map((option, index) => {
           const Icon = option.icon;
@@ -290,7 +337,7 @@ export function TextStyleToggleField({
 }: TextStyleToggleFieldProps) {
   return (
     <div className="block min-w-0 text-xs font-medium text-slate-500">
-      <span>Style</span>
+      <span className="flex min-h-5 items-center">Style</span>
       <div className="mt-1 flex h-8 overflow-hidden rounded-md border border-slate-200 bg-white">
         <InspectorIconToggleButton
           active={isBold}
@@ -364,8 +411,10 @@ export function InspectorModeInfo({ items }: InspectorModeInfoProps) {
 }
 
 type InspectorSelectFieldProps<TValue extends string> = {
+  disabled?: boolean;
   info?: ReactNode;
   infoAlign?: "center" | "end" | "start";
+  labelAction?: ReactNode;
   label: string;
   options: readonly { label: string; value: TValue }[];
   value: TValue;
@@ -373,8 +422,10 @@ type InspectorSelectFieldProps<TValue extends string> = {
 };
 
 export function InspectorSelectField<TValue extends string>({
+  disabled = false,
   info,
   infoAlign,
+  labelAction,
   label,
   options,
   value,
@@ -384,15 +435,20 @@ export function InspectorSelectField<TValue extends string>({
 
   return (
     <div className="block min-w-0 text-xs font-medium text-slate-500">
-      <span className="flex min-w-0 items-center gap-1.5">
+      <span className="flex min-h-5 min-w-0 items-center gap-1.5">
         <label className="truncate" htmlFor={selectId}>
           {label}
         </label>
         {info ? <InfoTip align={infoAlign}>{info}</InfoTip> : null}
+        {labelAction}
       </span>
       <select
         id={selectId}
-        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        className={cx(
+          "mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100",
+          disabled && "cursor-not-allowed bg-slate-50 text-slate-500"
+        )}
+        disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value as TValue)}
       >
@@ -403,6 +459,23 @@ export function InspectorSelectField<TValue extends string>({
         ))}
       </select>
     </div>
+  );
+}
+
+type InspectorFieldLabelProps = {
+  action?: ReactNode;
+  children: ReactNode;
+  htmlFor: string;
+};
+
+function InspectorFieldLabel({ action, children, htmlFor }: InspectorFieldLabelProps) {
+  return (
+    <span className="flex min-h-5 min-w-0 items-center gap-1.5">
+      <label className="truncate" htmlFor={htmlFor}>
+        {children}
+      </label>
+      {action}
+    </span>
   );
 }
 
@@ -440,7 +513,7 @@ export function InspectorBehaviorNumberField<TFieldKey extends string>({
 
   return (
     <label className="block min-w-0 text-xs font-medium text-slate-500">
-      <span>{field.label}</span>
+      <span className="flex min-h-5 items-center">{field.label}</span>
       <input
         className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm tabular-nums text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
         inputMode="decimal"
@@ -535,7 +608,7 @@ function InspectorNumberField({
       className="block min-w-0 text-xs font-medium text-slate-500"
       title={disabled ? disabledTitle : undefined}
     >
-      <span>{field.label}</span>
+      <span className="flex min-h-5 items-center">{field.label}</span>
       <input
         className={cx(
           "mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm tabular-nums text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100",

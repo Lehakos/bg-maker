@@ -16,6 +16,7 @@ import type {
   ProjectObjectNode,
   ProjectObjectRectTransform,
   ProjectObjectShape,
+  ProjectObjectSide,
   ProjectObjectStackDisplay,
   ProjectObjectText,
   ProjectObjectZone
@@ -33,6 +34,12 @@ export type ProjectObjectTreeLocation = {
 };
 
 const objectTreeFileKinds = new Set<ProjectFileKind>(["tableSetup", "object"]);
+
+type ProjectObjectDoubleSideWithActiveSide = ProjectObjectDoubleSide & {
+  activeSide?: ProjectObjectSide;
+};
+
+export type ProjectObjectActiveSideResolver = (object: ProjectObjectNode) => ProjectObjectSide;
 
 export function isProjectObjectTreeFileNode(
   node: ProjectFileNode | null | undefined
@@ -357,6 +364,39 @@ export function setProjectObjectNodeDoubleSide(
   return result.changed ? result.nodes : objectTree;
 }
 
+export function getProjectObjectNodeWithActiveSide(
+  object: ProjectObjectNode,
+  activeSide: ProjectObjectSide
+): ProjectObjectNode {
+  if (!hasProjectObjectSides(object.kind)) {
+    return object;
+  }
+
+  const doubleSide = getProjectObjectNodeDoubleSide(object);
+
+  if (getProjectObjectNodeActiveSide(object) === activeSide) {
+    return object;
+  }
+
+  return projectObjectComponentEngine.withDoubleSide(object, {
+    ...doubleSide,
+    activeSide
+  } as ProjectObjectDoubleSideWithActiveSide);
+}
+
+export function getProjectObjectTreeWithActiveSides(
+  objectTree: ProjectObjectNode[],
+  getActiveSide: ProjectObjectActiveSideResolver
+): ProjectObjectNode[] {
+  return objectTree.map((node) => getProjectObjectNodeTreeWithActiveSides(node, getActiveSide));
+}
+
+export function clearProjectObjectTreeActiveSides(
+  objectTree: ProjectObjectNode[]
+): ProjectObjectNode[] {
+  return objectTree.map(clearProjectObjectNodeActiveSide);
+}
+
 export function setProjectObjectNodeText(
   objectTree: ProjectObjectNode[],
   nodeId: string,
@@ -601,8 +641,46 @@ function getProjectObjectNodeForParent(
   };
 }
 
-function getProjectObjectNodeActiveSide(object: ProjectObjectNode) {
-  return getProjectObjectNodeDoubleSide(object).activeSide;
+export function getProjectObjectNodeActiveSide(object: ProjectObjectNode) {
+  const activeSide = (object.components?.doubleSide as ProjectObjectDoubleSideWithActiveSide)
+    ?.activeSide;
+
+  return activeSide === "back" ? "back" : "front";
+}
+
+function getProjectObjectNodeTreeWithActiveSides(
+  object: ProjectObjectNode,
+  getActiveSide: ProjectObjectActiveSideResolver
+): ProjectObjectNode {
+  const objectWithActiveSide = hasProjectObjectSides(object.kind)
+    ? getProjectObjectNodeWithActiveSide(object, getActiveSide(object))
+    : object;
+  const children = object.children?.map((child) =>
+    getProjectObjectNodeTreeWithActiveSides(child, getActiveSide)
+  );
+
+  return children ? { ...objectWithActiveSide, children } : objectWithActiveSide;
+}
+
+function clearProjectObjectNodeActiveSide(object: ProjectObjectNode): ProjectObjectNode {
+  const children = object.children?.map(clearProjectObjectNodeActiveSide);
+  const doubleSide = object.components?.doubleSide as ProjectObjectDoubleSideWithActiveSide;
+
+  if (!doubleSide?.activeSide) {
+    return children ? { ...object, children } : object;
+  }
+
+  const nextDoubleSide = { ...doubleSide };
+  delete nextDoubleSide.activeSide;
+
+  return {
+    ...object,
+    ...(children ? { children } : {}),
+    components: {
+      ...object.components,
+      doubleSide: nextDoubleSide
+    }
+  };
 }
 
 function isProjectObjectNodeDescendant(

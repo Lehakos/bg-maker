@@ -8,6 +8,10 @@ import { getDefaultProjectObjectDoubleSide, projectObjectSides } from "@bg-maker
 
 const objectSides = new Set(projectObjectSides);
 
+type ProjectObjectDoubleSideWithActiveSide = ProjectObjectDoubleSide & {
+  activeSide?: ProjectObjectSide;
+};
+
 export function getProjectObjectDoubleSideComponent(
   object: ProjectObjectNode
 ): ProjectObjectDoubleSide {
@@ -18,16 +22,27 @@ export function getProjectObjectDoubleSideComponent(
 }
 
 export function getProjectObjectActiveSide(object: ProjectObjectNode): ProjectObjectSide {
-  return getProjectObjectDoubleSideComponent(object).activeSide;
+  return normalizeProjectObjectActiveSide(
+    (object.components?.doubleSide as ProjectObjectDoubleSideWithActiveSide | undefined)
+      ?.activeSide
+  );
 }
 
 export function normalizeProjectObjectDoubleSide(
   doubleSide: ProjectObjectDoubleSide
 ): ProjectObjectDoubleSide {
-  return {
-    ...doubleSide,
-    activeSide: objectSides.has(doubleSide.activeSide) ? doubleSide.activeSide : "front"
-  };
+  const activeSide = (doubleSide as ProjectObjectDoubleSideWithActiveSide).activeSide;
+  const normalizedDoubleSide: ProjectObjectDoubleSideWithActiveSide = { ...doubleSide };
+
+  if (activeSide) {
+    normalizedDoubleSide.activeSide = normalizeProjectObjectActiveSide(activeSide);
+  }
+
+  return normalizedDoubleSide;
+}
+
+function normalizeProjectObjectActiveSide(side: ProjectObjectSide | undefined): ProjectObjectSide {
+  return objectSides.has(side as ProjectObjectSide) ? (side as ProjectObjectSide) : "front";
 }
 
 export function getProjectObjectSideComponent<

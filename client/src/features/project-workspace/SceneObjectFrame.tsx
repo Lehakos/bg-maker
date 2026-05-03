@@ -1,7 +1,6 @@
 import type {
   ProjectFileNode,
   ProjectObjectDie,
-  ProjectObjectDoubleSide,
   ProjectObjectNode,
   ProjectObjectRectTransform,
   ProjectObjectSide
@@ -27,7 +26,8 @@ import {
   getProjectObjectNodeDoubleSide,
   getProjectObjectNodeLayout,
   getProjectObjectNodeRectTransform,
-  getProjectObjectNodeVisibleChildren
+  getProjectObjectNodeVisibleChildren,
+  getProjectObjectNodeActiveSide
 } from "../project-objects/project-object-tree";
 import { getEffectiveProjectObjectRectTransform } from "../project-objects/project-object-zone";
 import type { ProjectImageAssetOption } from "../project-assets/project-image-assets";
@@ -49,6 +49,7 @@ type SceneObjectFrameProps = {
   fileNodeId: string;
   imageAssetById: Map<string, ProjectImageAssetOption>;
   object: ProjectObjectNode;
+  readOnly?: boolean;
   rectTransformOverride?: ProjectObjectRectTransform;
   root?: boolean;
   selectedObjectId: string | null;
@@ -57,9 +58,7 @@ type SceneObjectFrameProps = {
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onObjectSideChange: (
     objectId: string,
-    doubleSide: ProjectObjectDoubleSide,
-    activeSide: ProjectObjectSide,
-    objectLabel: "card" | "token"
+    activeSide: ProjectObjectSide
   ) => void;
   onSelectObject: (objectId: string | null) => void;
 };
@@ -69,6 +68,7 @@ export function SceneObjectFrame({
   fileNodeId,
   imageAssetById,
   object,
+  readOnly = false,
   rectTransformOverride,
   root = false,
   selectedObjectId,
@@ -80,42 +80,48 @@ export function SceneObjectFrame({
 }: SceneObjectFrameProps) {
   const activeTool = useProjectWorkspaceStore((state) => state.activeTool);
   const canvasScale = useProjectWorkspaceStore((state) => state.canvasScale);
-  const objectRectTransform = getProjectObjectNodeRectTransform(object);
-  const effectiveObjectRectTransform = getEffectiveProjectObjectRectTransform(object, fileTree);
+  const viewObject = object;
+  const objectRectTransform = getProjectObjectNodeRectTransform(viewObject);
+  const effectiveObjectRectTransform = getEffectiveProjectObjectRectTransform(viewObject, fileTree);
   const baseVisibleRectTransform = rectTransformOverride ?? effectiveObjectRectTransform;
   const [dragState, setDragState] = useState<TransformDragState | null>(null);
   const visibleRectTransform = dragState?.current ?? baseVisibleRectTransform;
-  const selected = selectedObjectId === object.id;
+  const selected = selectedObjectId === viewObject.id;
   const layoutManaged = Boolean(rectTransformOverride);
-  const appearance = getProjectObjectNodeAppearance(object);
-  const card = object.kind === "card" ? getProjectObjectNodeCard(object) : null;
-  const die = object.kind === "die" ? getProjectObjectNodeDie(object) : null;
-  const token = object.kind === "token";
+  const appearance = getProjectObjectNodeAppearance(viewObject);
+  const card = viewObject.kind === "card" ? getProjectObjectNodeCard(viewObject) : null;
+  const die = viewObject.kind === "die" ? getProjectObjectNodeDie(viewObject) : null;
+  const token = viewObject.kind === "token";
   const doubleSide =
-    object.kind === "card" || object.kind === "token"
-      ? getProjectObjectNodeDoubleSide(object)
+    viewObject.kind === "card" || viewObject.kind === "token"
+      ? getProjectObjectNodeDoubleSide(viewObject)
       : null;
   const hasTopObjectControls = Boolean(
     (card && doubleSide?.enabled) || die || (token && doubleSide?.enabled)
   );
-  const clipsChildren = doesProjectObjectClipChildren(object.kind);
+  const clipsChildren = doesProjectObjectClipChildren(viewObject.kind);
   const sizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
-  const zoneSizeLocked = object.kind === "zone";
+  const zoneSizeLocked = viewObject.kind === "zone";
   const resizeLocked = activeTool === "resize" && (sizePresetLocked || zoneSizeLocked);
   const interactive =
-    selected && activeTool !== "select" && Boolean(fileNodeId) && !layoutManaged && !resizeLocked;
-  const children = getProjectObjectNodeVisibleChildren(object);
-  const childRectTransformOverrides = hasProjectObjectLayout(object.kind)
+    !readOnly &&
+    selected &&
+    activeTool !== "select" &&
+    Boolean(fileNodeId) &&
+    !layoutManaged &&
+    !resizeLocked;
+  const children = getProjectObjectNodeVisibleChildren(viewObject);
+  const childRectTransformOverrides = hasProjectObjectLayout(viewObject.kind)
     ? getProjectObjectLayoutRectTransformOverrides(
         visibleRectTransform,
         children,
-        getProjectObjectNodeLayout(object),
+        getProjectObjectNodeLayout(viewObject),
         appearance.padding,
         (child) => getEffectiveProjectObjectRectTransform(child, fileTree)
       )
     : new Map<string, ProjectObjectRectTransform>();
 
-  if (!object.visible) {
+  if (!viewObject.visible) {
     return null;
   }
 
@@ -197,7 +203,7 @@ export function SceneObjectFrame({
 
   function handleClick(event: MouseEvent<HTMLDivElement>) {
     event.stopPropagation();
-    onSelectObject(object.id);
+    onSelectObject(viewObject.id);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -207,7 +213,7 @@ export function SceneObjectFrame({
 
     event.preventDefault();
     event.stopPropagation();
-    onSelectObject(object.id);
+    onSelectObject(viewObject.id);
   }
 
   function releasePointerCapture(event: PointerEvent<HTMLDivElement>) {
@@ -218,7 +224,7 @@ export function SceneObjectFrame({
 
   return (
     <div
-      aria-label={object.name}
+      aria-label={viewObject.name}
       className={cx(
         "absolute overflow-visible touch-none",
         activeTool === "move" && interactive && "cursor-move",
@@ -235,7 +241,11 @@ export function SceneObjectFrame({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
-      <ProjectObjectSurface fileTree={fileTree} imageAssetById={imageAssetById} object={object} />
+      <ProjectObjectSurface
+        fileTree={fileTree}
+        imageAssetById={imageAssetById}
+        object={viewObject}
+      />
       <div
         className={cx("absolute inset-0", clipsChildren ? "overflow-hidden" : "overflow-visible")}
         style={{ borderRadius: `${appearance.borderRadius}px` }}
@@ -247,6 +257,7 @@ export function SceneObjectFrame({
             fileNodeId={fileNodeId}
             imageAssetById={imageAssetById}
             object={child}
+            readOnly={readOnly}
             rectTransformOverride={childRectTransformOverrides.get(child.id)}
             selectedObjectId={selectedObjectId}
             siblingIndex={index}
@@ -259,11 +270,11 @@ export function SceneObjectFrame({
       </div>
       {selected && card && doubleSide?.enabled ? (
         <ObjectSideSwitcher
-          activeSide={doubleSide.activeSide}
+          activeSide={getProjectObjectNodeActiveSide(viewObject)}
           canvasScale={canvasScale}
           label="Card side"
           onSideChange={(activeSide) =>
-            onObjectSideChange(object.id, doubleSide, activeSide, "card")
+            onObjectSideChange(viewObject.id, activeSide)
           }
         />
       ) : null}
@@ -272,16 +283,16 @@ export function SceneObjectFrame({
           activeFace={die.activeFace}
           canvasScale={canvasScale}
           die={die}
-          onFaceChange={(activeFace) => onDieFaceChange(object.id, die, activeFace)}
+          onFaceChange={(activeFace) => onDieFaceChange(viewObject.id, die, activeFace)}
         />
       ) : null}
       {selected && token && doubleSide?.enabled ? (
         <ObjectSideSwitcher
-          activeSide={doubleSide.activeSide}
+          activeSide={getProjectObjectNodeActiveSide(viewObject)}
           canvasScale={canvasScale}
           label="Token side"
           onSideChange={(activeSide) =>
-            onObjectSideChange(object.id, doubleSide, activeSide, "token")
+            onObjectSideChange(viewObject.id, activeSide)
           }
         />
       ) : null}

@@ -32,6 +32,10 @@ import {
   type RectTransformFieldDefinition
 } from "./inspector-ui";
 import {
+  ProjectObjectVariableBindingField,
+  type VariableBindingFieldState
+} from "./ProjectObjectVariableBindingField";
+import {
   appearanceNumberFieldSettings,
   layoutNumberFieldSettings,
   type AppearanceDraft,
@@ -183,23 +187,35 @@ const layoutGapField = {
 } as const satisfies LayoutNumberFieldDefinition;
 
 type ProjectObjectAppearanceSectionProps = {
+  backgroundColorBinding?: VariableBindingFieldState;
+  borderColorBinding?: VariableBindingFieldState;
   draft: AppearanceDraft;
-  onCommitNumberField: (fieldKey: keyof typeof appearanceNumberFieldSettings, value: string) => void;
+  onCommitNumberField: (
+    fieldKey: keyof typeof appearanceNumberFieldSettings,
+    value: string
+  ) => void;
   onDraftChange: (fieldKey: AppearanceFieldKey, value: string) => void;
   onReset: (fieldKey: AppearanceFieldKey) => void;
 };
 
 export function ProjectObjectAppearanceSection({
+  backgroundColorBinding,
+  borderColorBinding,
   draft,
   onCommitNumberField,
   onDraftChange,
   onReset
 }: ProjectObjectAppearanceSectionProps) {
+  const backgroundColorBound = Boolean(backgroundColorBinding?.value);
+  const borderColorBound = Boolean(borderColorBinding?.value);
+
   return (
     <InspectorSection icon={<Palette size={15} />} title="Appearance">
       <div className="grid grid-cols-2 gap-2">
         <InspectorColorField
+          disabled={backgroundColorBound}
           field={appearanceFillColorField}
+          labelAction={<ProjectObjectVariableBindingField binding={backgroundColorBinding} />}
           value={draft.backgroundColor}
           onChange={onDraftChange}
         />
@@ -214,7 +230,9 @@ export function ProjectObjectAppearanceSection({
       </div>
       <div className="grid grid-cols-2 gap-2">
         <InspectorColorField
+          disabled={borderColorBound}
           field={appearanceBorderColorField}
+          labelAction={<ProjectObjectVariableBindingField binding={borderColorBinding} />}
           value={draft.borderColor}
           onChange={onDraftChange}
         />

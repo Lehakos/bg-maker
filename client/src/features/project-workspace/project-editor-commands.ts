@@ -1,7 +1,8 @@
 import type {
   ProjectFileNode,
   ProjectObjectNode,
-  ProjectObjectRectTransform
+  ProjectObjectRectTransform,
+  ProjectObjectSide
 } from "@bg-maker/shared";
 import type { EditorCommand } from "./editor-command-history";
 import { findProjectFileNode } from "../project-files/project-file-tree";
@@ -10,8 +11,17 @@ import {
   setProjectObjectNodeRectTransform,
   updateProjectFileNodeObjectTree
 } from "../project-objects/project-object-tree";
+import {
+  getProjectObjectSideSelectionsWithSelection,
+  type ProjectObjectSideSelections
+} from "./project-object-side-selection";
 
-export type ProjectEditorCommand = EditorCommand<ProjectFileNode[]>;
+export type ProjectEditorState = {
+  fileTree: ProjectFileNode[];
+  objectSideSelections: ProjectObjectSideSelections;
+};
+
+export type ProjectEditorCommand = EditorCommand<ProjectEditorState>;
 
 export function createReplaceProjectFileTreeCommand({
   after,
@@ -23,10 +33,10 @@ export function createReplaceProjectFileTreeCommand({
   label: string;
 }): ProjectEditorCommand {
   return {
-    execute: () => after,
+    execute: (state) => (state.fileTree === after ? state : { ...state, fileTree: after }),
     id: crypto.randomUUID(),
     label,
-    undo: () => before
+    undo: (state) => (state.fileTree === before ? state : { ...state, fileTree: before })
   };
 }
 
@@ -42,10 +52,29 @@ export function createUpdateProjectObjectTreeCommand({
   label: string;
 }): ProjectEditorCommand {
   return {
-    execute: (fileTree) => updateProjectFileNodeObjectTree(fileTree, fileNodeId, after),
+    execute: (state) => updateProjectEditorStateObjectTree(state, fileNodeId, after),
     id: crypto.randomUUID(),
     label,
-    undo: (fileTree) => updateProjectFileNodeObjectTree(fileTree, fileNodeId, before)
+    undo: (state) => updateProjectEditorStateObjectTree(state, fileNodeId, before)
+  };
+}
+
+export function createSetProjectObjectSideSelectionCommand({
+  after,
+  before,
+  fileNodeId,
+  objectId
+}: {
+  after: ProjectObjectSide;
+  before: ProjectObjectSide;
+  fileNodeId: string;
+  objectId: string;
+}): ProjectEditorCommand {
+  return {
+    execute: (state) => updateProjectEditorStateObjectSide(state, fileNodeId, objectId, after),
+    id: crypto.randomUUID(),
+    label: `Show ${after}`,
+    undo: (state) => updateProjectEditorStateObjectSide(state, fileNodeId, objectId, before)
   };
 }
 
@@ -63,13 +92,57 @@ export function createUpdateProjectObjectRectTransformCommand({
   objectId: string;
 }): ProjectEditorCommand {
   return {
-    execute: (fileTree) =>
-      updateProjectFileNodeObjectTreeWithRectTransform(fileTree, fileNodeId, objectId, after),
+    execute: (state) =>
+      updateProjectEditorStateWithRectTransform(state, fileNodeId, objectId, after),
     id: crypto.randomUUID(),
     label,
-    undo: (fileTree) =>
-      updateProjectFileNodeObjectTreeWithRectTransform(fileTree, fileNodeId, objectId, before)
+    undo: (state) =>
+      updateProjectEditorStateWithRectTransform(state, fileNodeId, objectId, before)
   };
+}
+
+function updateProjectEditorStateObjectTree(
+  state: ProjectEditorState,
+  fileNodeId: string,
+  objectTree: ProjectObjectNode[]
+): ProjectEditorState {
+  const nextFileTree = updateProjectFileNodeObjectTree(state.fileTree, fileNodeId, objectTree);
+
+  return nextFileTree === state.fileTree ? state : { ...state, fileTree: nextFileTree };
+}
+
+function updateProjectEditorStateObjectSide(
+  state: ProjectEditorState,
+  fileNodeId: string,
+  objectId: string,
+  activeSide: ProjectObjectSide
+): ProjectEditorState {
+  const nextObjectSideSelections = getProjectObjectSideSelectionsWithSelection(
+    state.objectSideSelections,
+    fileNodeId,
+    objectId,
+    activeSide
+  );
+
+  return nextObjectSideSelections === state.objectSideSelections
+    ? state
+    : { ...state, objectSideSelections: nextObjectSideSelections };
+}
+
+function updateProjectEditorStateWithRectTransform(
+  state: ProjectEditorState,
+  fileNodeId: string,
+  objectId: string,
+  rectTransform: ProjectObjectRectTransform
+): ProjectEditorState {
+  const nextFileTree = updateProjectFileNodeObjectTreeWithRectTransform(
+    state.fileTree,
+    fileNodeId,
+    objectId,
+    rectTransform
+  );
+
+  return nextFileTree === state.fileTree ? state : { ...state, fileTree: nextFileTree };
 }
 
 function updateProjectFileNodeObjectTreeWithRectTransform(

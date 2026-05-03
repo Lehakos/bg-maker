@@ -55,6 +55,7 @@ import {
 import {
   ProjectFileCreateModal,
   type ProjectFileCreateData,
+  type ProjectFileCreateObjectSourceOption,
   type ProjectFileCreateType
 } from "./ProjectFileCreateModal";
 import { ProjectFileNodeIcon } from "./project-file-tree-ui";
@@ -124,6 +125,10 @@ export function ProjectFileTreePanel({
   const flattenedFileTree = useMemo(
     () => flattenProjectFileTree(sortedFileTree, expandedFolderIds),
     [expandedFolderIds, sortedFileTree]
+  );
+  const objectSourceOptions = useMemo(
+    () => collectObjectSourceOptions(sortedFileTree),
+    [sortedFileTree]
   );
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -207,7 +212,11 @@ export function ProjectFileTreePanel({
     });
   }
 
-  function handleCreateNode({ name, objectRootKind }: ProjectFileCreateData) {
+  function handleCreateNode({
+    name,
+    objectRootKind,
+    sourceObjectFileNodeId
+  }: ProjectFileCreateData) {
     if (!createRequest) {
       return;
     }
@@ -215,7 +224,14 @@ export function ProjectFileTreePanel({
     const nextNode =
       createRequest.type === "folder"
         ? createFolderNode(name)
-        : createProjectFileNode(createRequest.type, name, { objectRootKind });
+        : createRequest.type === "object" && sourceObjectFileNodeId
+          ? createProjectFileNode("object", name, {
+              sourceRef: {
+                sourceObjectFileNodeId,
+                values: {}
+              }
+            })
+          : createProjectFileNode(createRequest.type, name, { objectRootKind });
     const nextFileTree = appendProjectFileNode(fileTree, createRequest.parentId, nextNode);
 
     if (createRequest.parentId) {
@@ -390,6 +406,7 @@ export function ProjectFileTreePanel({
 
       {createRequest ? (
         <ProjectFileCreateModal
+          objectSourceOptions={createRequest.type === "object" ? objectSourceOptions : []}
           opened
           type={createRequest.type}
           onClose={() => setCreateRequest(null)}
@@ -398,6 +415,32 @@ export function ProjectFileTreePanel({
       ) : null}
     </aside>
   );
+}
+
+function collectObjectSourceOptions(
+  fileTree: readonly ProjectFileNode[]
+): ProjectFileCreateObjectSourceOption[] {
+  const options: ProjectFileCreateObjectSourceOption[] = [];
+
+  for (const node of fileTree) {
+    if (node.type === "folder") {
+      options.push(...collectObjectSourceOptions(node.children ?? []));
+      continue;
+    }
+
+    if (node.kind !== "object" || node.sourceRef) {
+      continue;
+    }
+
+    options.push({
+      id: node.id,
+      name: node.name,
+      propertyCount: node.template?.variables.length ?? 0,
+      rootKind: node.objectTree?.[0]?.kind
+    });
+  }
+
+  return options;
 }
 
 type ProjectFileTreeListProps = {

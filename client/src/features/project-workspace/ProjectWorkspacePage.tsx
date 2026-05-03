@@ -21,7 +21,11 @@ import {
 import { useProject, useUpdateProjectFileTree } from "./project-hooks";
 import { findProjectFileNode } from "../project-files/project-file-tree";
 import { formatProjectDate } from "../project-catalog/project-format";
-import { isProjectObjectTreeFileNode } from "../project-objects/project-object-tree";
+import {
+  clearProjectObjectTreeActiveSides,
+  isProjectObjectTreeFileNode
+} from "../project-objects/project-object-tree";
+import { getProjectWorkspaceContentObjectTree } from "./project-workspace-store";
 import {
   normalizeResizablePanelSize,
   useElementSize,
@@ -152,12 +156,22 @@ function ProjectWorkspaceContent({
   const selectObject = useProjectWorkspaceStore((state) => state.selectObject);
   const setSelectedNodeId = useProjectWorkspaceStore((state) => state.setSelectedNodeId);
   const undo = useProjectWorkspaceStore((state) => state.undo);
+  const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
   const {
     effectiveSelectedNodeId,
     selectedContentFileNode,
     selectedObjectId,
     selectedProjectObject
   } = useProjectWorkspaceSelection();
+  const selectedContentObjectTree = useMemo(
+    () =>
+      getProjectWorkspaceContentObjectTree(
+        fileTree,
+        selectedContentFileNode,
+        objectSideSelections
+      ),
+    [fileTree, objectSideSelections, selectedContentFileNode]
+  );
   useAppHeaderContent(headerContent);
   const [workspaceElementRef, workspaceSize] = useElementSize<HTMLElement>();
   const [rightPanelElementRef, rightPanelSize] = useElementSize<HTMLDivElement>();
@@ -261,13 +275,15 @@ function ProjectWorkspaceContent({
   function persistObjectTree(fileNodeId: string, objectTree: ProjectObjectNode[]) {
     const fileNode = findProjectFileNode(fileTree, fileNodeId);
 
-    if (!isProjectObjectTreeFileNode(fileNode)) {
+    if (!isProjectObjectTreeFileNode(fileNode) || fileNode.sourceRef) {
       return;
     }
 
+    const nextObjectTree = clearProjectObjectTreeActiveSides(objectTree);
+
     executeEditorCommand(
       createUpdateProjectObjectTreeCommand({
-        after: objectTree,
+        after: nextObjectTree,
         before: fileNode.objectTree ?? [],
         fileNodeId,
         label: "Update object tree"
@@ -335,6 +351,7 @@ function ProjectWorkspaceContent({
             className="h-full"
             contentFileNode={selectedContentFileNode}
             fileTree={fileTree}
+            objectTree={selectedContentObjectTree}
             projectId={project.id}
             selectedObject={selectedProjectObject}
             onFileTreeChange={persistFileTree}
@@ -355,6 +372,8 @@ function ProjectWorkspaceContent({
           <ProjectObjectTreePanel
             className="h-full"
             contentFileNode={selectedContentFileNode}
+            objectTree={selectedContentObjectTree}
+            readOnly={Boolean(selectedContentFileNode?.sourceRef)}
             saving={saving}
             selectedObjectId={selectedObjectId}
             onObjectTreeChange={persistObjectTree}
@@ -366,9 +385,7 @@ function ProjectWorkspaceContent({
   );
 }
 
-function useDebouncedProjectFileTreeSave(
-  onSaveFileTree: (fileTree: ProjectFileNode[]) => void
-) {
+function useDebouncedProjectFileTreeSave(onSaveFileTree: (fileTree: ProjectFileNode[]) => void) {
   const onSaveFileTreeRef = useRef(onSaveFileTree);
   const pendingFileTreeRef = useRef<ProjectFileNode[] | null>(null);
   const saveTimeoutRef = useRef<number | null>(null);
@@ -462,7 +479,10 @@ function getSidePanelMaxWidth(workspaceWidth: number, oppositePanelWidth: number
     return unconstrainedPanelMaxSize;
   }
 
-  return Math.max(sidePanelMinWidth, workspaceWidth - oppositePanelWidth - workspaceContentMinWidth);
+  return Math.max(
+    sidePanelMinWidth,
+    workspaceWidth - oppositePanelWidth - workspaceContentMinWidth
+  );
 }
 
 function getNestedPanelMaxSize(containerSize: number, oppositePanelMinSize: number) {

@@ -14,6 +14,7 @@ type WorkspaceViewportProps = {
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
   parentFolderName?: string;
+  readOnly?: boolean;
   selectedNode?: ProjectFileNode;
   selectedObjectId: string | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
@@ -26,6 +27,7 @@ export function WorkspaceViewport({
   imageAssets,
   objectTree,
   parentFolderName,
+  readOnly = false,
   selectedNode,
   selectedObjectId,
   onExecuteCommand,
@@ -38,6 +40,7 @@ export function WorkspaceViewport({
         fileNode={contentFileNode}
         imageAssets={imageAssets}
         objectTree={objectTree}
+        readOnly={readOnly}
         selectedObjectId={selectedObjectId}
         onExecuteCommand={onExecuteCommand}
         onSelectObject={onSelectObject}
@@ -52,6 +55,7 @@ export function WorkspaceViewport({
         fileNode={contentFileNode}
         imageAssets={imageAssets}
         objectTree={objectTree}
+        readOnly={readOnly}
         selectedObjectId={selectedObjectId}
         onExecuteCommand={onExecuteCommand}
         onSelectObject={onSelectObject}

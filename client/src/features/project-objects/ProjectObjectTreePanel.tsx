@@ -95,6 +95,8 @@ type ObjectDropIndicator = {
 type ProjectObjectTreePanelProps = {
   className?: string;
   contentFileNode: ProjectFileNode | null;
+  objectTree?: ProjectObjectNode[];
+  readOnly?: boolean;
   saving: boolean;
   selectedObjectId: string | null;
   onObjectTreeChange: (fileNodeId: string, objectTree: ProjectObjectNode[]) => void;
@@ -104,14 +106,16 @@ type ProjectObjectTreePanelProps = {
 export function ProjectObjectTreePanel({
   className,
   contentFileNode,
+  objectTree: resolvedObjectTree,
+  readOnly = false,
   saving,
   selectedObjectId,
   onObjectTreeChange,
   onSelectObject
 }: ProjectObjectTreePanelProps) {
   const objectTree = useMemo(
-    () => contentFileNode?.objectTree ?? [],
-    [contentFileNode?.objectTree]
+    () => resolvedObjectTree ?? contentFileNode?.objectTree ?? [],
+    [contentFileNode?.objectTree, resolvedObjectTree]
   );
   const fileNodeId = contentFileNode?.id ?? null;
   const defaultExpandedObjectIds = useMemo(
@@ -159,10 +163,11 @@ export function ProjectObjectTreePanel({
     contentFileNode && (!isObjectFile || contextMenuParentId !== null || objectTree.length === 0)
   );
   const contextMenuActions = createObjectTreeContextMenuActions({
-    disabled: saving || !contentFileNode,
-    canCreate: canCreateObject,
-    canDelete: Boolean(contextMenuObject && contextMenuObject.id !== lockedRootObjectId),
-    canRename: Boolean(contextMenuObject),
+    disabled: saving || !contentFileNode || readOnly,
+    canCreate: canCreateObject && !readOnly,
+    canDelete:
+      !readOnly && Boolean(contextMenuObject && contextMenuObject.id !== lockedRootObjectId),
+    canRename: !readOnly && Boolean(contextMenuObject),
     nodeId: contextMenu?.nodeId ?? null,
     parentId: contextMenuParentId,
     onCreate: handleCreateObject,
@@ -207,7 +212,7 @@ export function ProjectObjectTreePanel({
   }
 
   function handleCreateObject(kind: ProjectObjectKind, parentId: ProjectObjectTreeParentId) {
-    if (!contentFileNode) {
+    if (!contentFileNode || readOnly) {
       return;
     }
 
@@ -236,7 +241,7 @@ export function ProjectObjectTreePanel({
   }
 
   function handleRequestRenameObject(nodeId: string | null) {
-    if (!nodeId) {
+    if (!nodeId || readOnly) {
       return;
     }
 
@@ -254,7 +259,7 @@ export function ProjectObjectTreePanel({
   }
 
   function handleCommitRenameObject(objectId: string) {
-    if (!contentFileNode) {
+    if (!contentFileNode || readOnly) {
       return;
     }
 
@@ -281,7 +286,7 @@ export function ProjectObjectTreePanel({
   }
 
   function handleDeleteContextObject(nodeId: string | null) {
-    if (!contentFileNode || !nodeId) {
+    if (!contentFileNode || !nodeId || readOnly) {
       return;
     }
 
@@ -304,7 +309,7 @@ export function ProjectObjectTreePanel({
   function handleDragStart(event: DragStartEvent) {
     const activeId = String(event.active.id);
 
-    if (!findProjectObjectNode(objectTree, activeId)) {
+    if (readOnly || !findProjectObjectNode(objectTree, activeId)) {
       return;
     }
 
@@ -331,7 +336,7 @@ export function ProjectObjectTreePanel({
     setDropIndicator(null);
     dragStartPointerYRef.current = null;
 
-    if (!contentFileNode || !dropTargetId) {
+    if (!contentFileNode || !dropTargetId || readOnly) {
       return;
     }
 

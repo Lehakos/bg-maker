@@ -5,15 +5,7 @@ import type {
   ProjectObjectKind,
   ProjectObjectMeepleVisualVariant
 } from "@bg-maker/shared";
-import {
-  ArrowDown,
-  ArrowUp,
-  Boxes,
-  Plus,
-  Rows3,
-  Scan,
-  Trash2
-} from "lucide-react";
+import { ArrowDown, ArrowUp, Boxes, Plus, Rows3, Scan, Trash2 } from "lucide-react";
 import type { KeyboardEvent } from "react";
 import {
   BagIcon,
@@ -38,6 +30,7 @@ import {
 } from "./inspector-ui";
 import {
   formatContainerEntryQuantityValue,
+  getContainerEntryReferenceValue,
   stackDisplayNumberFieldSettings,
   zoneNumberFieldSettings,
   type BagDraft,
@@ -59,8 +52,7 @@ type SelectOption<TValue extends string = string> = {
 
 type SizePresetOption = SelectOption<ProjectObjectCardSizePresetValue>;
 
-type StackDisplayNumberFieldDefinition =
-  InspectorFieldDefinition<StackDisplayNumberFieldKey>;
+type StackDisplayNumberFieldDefinition = InspectorFieldDefinition<StackDisplayNumberFieldKey>;
 
 const stackDisplayLayerField = {
   key: "visibleItemCount",
@@ -189,12 +181,12 @@ type ProjectObjectContainerSectionProps = {
   quantityDrafts: readonly string[];
   totalCount: number;
   unusedObjectFileOptions: readonly SelectOption[];
-  usedObjectFileNodeIds: ReadonlySet<string>;
+  usedObjectReferenceValues: ReadonlySet<string>;
   onAddEntry: () => void;
-  onCommitDraftEntry: (rowId: number, objectFileNodeId: string) => void;
+  onCommitDraftEntry: (rowId: number, referenceValue: string) => void;
   onCommitQuantity: (entryIndex: number, value: string) => void;
   onMoveEntry: (entryIndex: number, direction: -1 | 1) => void;
-  onObjectFileChange: (entryIndex: number, objectFileNodeId: string) => void;
+  onObjectFileChange: (entryIndex: number, referenceValue: string) => void;
   onQuantityDraftChange: (entryIndex: number, value: string) => void;
   onRemoveDraftEntry: (rowId: number) => void;
   onRemoveEntry: (entryIndex: number) => void;
@@ -211,7 +203,7 @@ export function ProjectObjectContainerSection({
   quantityDrafts,
   totalCount,
   unusedObjectFileOptions,
-  usedObjectFileNodeIds,
+  usedObjectReferenceValues,
   onAddEntry,
   onCommitDraftEntry,
   onCommitQuantity,
@@ -245,20 +237,20 @@ export function ProjectObjectContainerSection({
         <div className="space-y-1.5">
           {container.entries.map((entry, index) => (
             <ContainerEntryRow
-              key={`${entry.objectFileNodeId}:${index}`}
+              key={`${getContainerEntryReferenceValue(entry)}:${index}`}
               canMoveDown={index < container.entries.length - 1}
               canMoveUp={index > 0}
               index={index}
               entry={entry}
               objectFileOptions={getContainerEntryObjectFileOptions(
                 objectFileOptions,
-                usedObjectFileNodeIds,
-                entry.objectFileNodeId
+                usedObjectReferenceValues,
+                getContainerEntryReferenceValue(entry)
               )}
               quantityDraft={
                 quantityDrafts[index] ?? formatContainerEntryQuantityValue(entry.quantity)
               }
-              valid={objectFileOptionById.has(entry.objectFileNodeId)}
+              valid={objectFileOptionById.has(getContainerEntryReferenceValue(entry))}
               onCommitQuantity={onCommitQuantity}
               onMove={onMoveEntry}
               onObjectFileChange={onObjectFileChange}
@@ -271,9 +263,7 @@ export function ProjectObjectContainerSection({
             <ContainerDraftEntryRow
               key={rowId}
               objectFileOptions={unusedObjectFileOptions}
-              onObjectFileChange={(objectFileNodeId) =>
-                onCommitDraftEntry(rowId, objectFileNodeId)
-              }
+              onObjectFileChange={(referenceValue) => onCommitDraftEntry(rowId, referenceValue)}
               onRemove={() => onRemoveDraftEntry(rowId)}
             />
           ))}
@@ -380,7 +370,7 @@ type ContainerEntryRowProps = {
   valid: boolean;
   onCommitQuantity: (entryIndex: number, value: string) => void;
   onMove: (entryIndex: number, direction: -1 | 1) => void;
-  onObjectFileChange: (entryIndex: number, objectFileNodeId: string) => void;
+  onObjectFileChange: (entryIndex: number, referenceValue: string) => void;
   onQuantityDraftChange: (entryIndex: number, value: string) => void;
   onRemove: (entryIndex: number) => void;
   onResetQuantity: (entryIndex: number) => void;
@@ -401,12 +391,13 @@ function ContainerEntryRow({
   onRemove,
   onResetQuantity
 }: ContainerEntryRowProps) {
+  const referenceValue = getContainerEntryReferenceValue(entry);
   const options = valid
     ? objectFileOptions
     : [
         {
-          label: `${entry.objectFileNodeId} (missing)`,
-          value: entry.objectFileNodeId
+          label: `${referenceValue} (missing)`,
+          value: referenceValue
         },
         ...objectFileOptions
       ];
@@ -432,7 +423,7 @@ function ContainerEntryRow({
             valid ? "border-slate-200" : "border-amber-300 text-amber-900"
           )}
           title="Object"
-          value={entry.objectFileNodeId}
+          value={referenceValue}
           onChange={(event) => onObjectFileChange(index, event.currentTarget.value)}
         >
           {options.map((option) => (
@@ -492,7 +483,7 @@ function ContainerEntryRow({
 
 type ContainerDraftEntryRowProps = {
   objectFileOptions: readonly SelectOption[];
-  onObjectFileChange: (objectFileNodeId: string) => void;
+  onObjectFileChange: (referenceValue: string) => void;
   onRemove: () => void;
 };
 
@@ -574,11 +565,11 @@ function StackDisplayNumberGrid({
 
 function getContainerEntryObjectFileOptions(
   objectFileOptions: readonly SelectOption[],
-  usedObjectFileNodeIds: ReadonlySet<string>,
-  currentObjectFileNodeId: string
+  usedObjectReferenceValues: ReadonlySet<string>,
+  currentReferenceValue: string
 ) {
   return objectFileOptions.filter(
     (option) =>
-      option.value === currentObjectFileNodeId || !usedObjectFileNodeIds.has(option.value)
+      option.value === currentReferenceValue || !usedObjectReferenceValues.has(option.value)
   );
 }

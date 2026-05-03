@@ -342,6 +342,89 @@ describe("ProjectService", () => {
     await expect(readStoredProjects()).resolves.toEqual([updatedProject]);
   });
 
+  it("normalizes reusable object templates, bindings, source refs, and linked values", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "template-file",
+        kind: "object",
+        name: "Character Card",
+        template: {
+          variables: [
+            { id: " title ", name: " Title ", type: "text", defaultValue: "Hero" },
+            { id: "power", name: "", type: "number", defaultValue: Number.NaN },
+            { id: "accent", name: "Accent", type: "color", defaultValue: "red" },
+            { id: "title", name: "Duplicate", type: "image", defaultValue: "asset-1" }
+          ]
+        },
+        objectTree: [
+          {
+            bindings: [
+              { target: "text.content", variableId: " title " },
+              { target: "text.content", variableId: " title " },
+              { target: "missing.target", variableId: "bad" },
+              { target: "text.color", variableId: "" }
+            ],
+            id: "label-1",
+            kind: "label",
+            name: "Title",
+            visible: true
+          }
+        ],
+        type: "file"
+      },
+      {
+        id: "linked-file",
+        kind: "object",
+        name: "Warrior Card",
+        objectTree: [{ id: "ignored", kind: "label", name: "Ignored", visible: true }],
+        sourceRef: {
+          sourceObjectFileNodeId: " template-file ",
+          values: {
+            power: 6,
+            title: "Captain"
+          }
+        },
+        type: "file"
+      }
+    ]);
+
+    const templateFile = updatedProject?.fileTree.find((node) => node.id === "template-file");
+    const linkedFile = updatedProject?.fileTree.find((node) => node.id === "linked-file");
+
+    expect(templateFile).toMatchObject({
+      id: "template-file",
+      kind: "object",
+      template: {
+        variables: [
+          { id: "title", name: "Title", type: "text", defaultValue: "Hero" },
+          { id: "power", name: "Property", type: "number", defaultValue: 0 },
+          { id: "accent", name: "Accent", type: "color", defaultValue: "#000000" }
+        ]
+      },
+      objectTree: [
+        {
+          bindings: [{ target: "text.content", variableId: "title" }],
+          id: "label-1",
+          kind: "label"
+        }
+      ]
+    });
+    expect(linkedFile).toMatchObject({
+      id: "linked-file",
+      kind: "object",
+      sourceRef: {
+        sourceObjectFileNodeId: "template-file",
+        values: {
+          power: 6,
+          title: "Captain"
+        }
+      }
+    });
+    expect(linkedFile).not.toHaveProperty("objectTree");
+  });
+
   it("normalizes card components and locks preset dimensions", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 
@@ -426,7 +509,6 @@ describe("ProjectService", () => {
         components: {
           card: { sizePreset: "bridge" },
           doubleSide: {
-            activeSide: "back",
             enabled: false,
             sideComponents: {
               back: {
@@ -460,7 +542,7 @@ describe("ProjectService", () => {
         kind: "card",
         components: {
           card: { sizePreset: "custom" },
-          doubleSide: { activeSide: "front", enabled: true },
+          doubleSide: { enabled: true },
           rectTransform: {
             height: 123,
             scaleX: 2,
@@ -490,6 +572,7 @@ describe("ProjectService", () => {
                 entries: [
                   { objectFileNodeId: " card-file-1 ", quantity: 2 },
                   { objectFileNodeId: "card-file-1", quantity: 9999 },
+                  { objectFileNodeId: "card-file-2", quantity: 3 },
                   { objectFileNodeId: "", quantity: 4 }
                 ]
               },
@@ -526,6 +609,10 @@ describe("ProjectService", () => {
               {
                 objectFileNodeId: "card-file-1",
                 quantity: projectObjectContainerEntryQuantityLimits.max
+              },
+              {
+                objectFileNodeId: "card-file-2",
+                quantity: 3
               }
             ]
           },
@@ -890,7 +977,7 @@ describe("ProjectService", () => {
           }
         ],
         components: {
-          doubleSide: { activeSide: "front", enabled: true },
+          doubleSide: { enabled: true },
           shape: { variant: "hexagon" }
         },
         id: "token-1",
@@ -898,7 +985,7 @@ describe("ProjectService", () => {
       },
       {
         components: {
-          doubleSide: { activeSide: "front", enabled: true },
+          doubleSide: { enabled: true },
           shape: { variant: "ellipse" }
         },
         id: "token-2",

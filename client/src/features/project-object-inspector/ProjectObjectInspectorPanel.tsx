@@ -15,11 +15,17 @@ import type {
   ProjectObjectNode,
   ProjectObjectShape,
   ProjectObjectShapePoint,
+  ProjectObjectTemplate,
   ProjectObjectStackDisplay,
   ProjectObjectText,
+  ProjectObjectVariableBindingTarget,
+  ProjectObjectVariableDefinition,
+  ProjectObjectVariableType,
   ProjectObjectZone
 } from "@bg-maker/shared";
 import {
+  findProjectFileNodeInTree,
+  getDefaultProjectObjectVariableValue,
   getDefaultProjectObjectCounter,
   getDefaultProjectObjectBag,
   getDefaultProjectObjectDeck,
@@ -29,14 +35,19 @@ import {
   getDefaultProjectObjectZone,
   getProjectObjectContainerAcceptedObjectKinds,
   getProjectObjectContainerTotalCount,
+  getProjectObjectVariableDefaultValues,
   hasProjectObjectLayout,
   isProjectObjectCardSizePresetLocked,
   projectObjectCardCustomSizePresetId,
-  projectObjectCardSizePresets
+  projectObjectCardSizePresets,
+  resolveProjectObjectFileObjectTree
 } from "@bg-maker/shared";
 import { SlidersHorizontal } from "lucide-react";
 import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { uploadProjectImageAsset } from "../project-workspace/project-api";
+import {
+  updateProjectFileNode
+} from "../project-files/project-file-tree";
 import {
   appendProjectImageAssetFileNode,
   getProjectImageAssetOptionById,
@@ -96,6 +107,7 @@ import {
   createZoneDraft,
   formatAppearanceNumberValue,
   formatContainerEntryQuantityValue,
+  getContainerEntryReferenceValue,
   formatCounterNumberValue,
   formatDieNumberValue,
   formatImageNumberValue,
@@ -182,6 +194,16 @@ import {
   type ZoneFieldKey,
   type ZoneNumberFieldKey
 } from "./project-object-inspector-state";
+import {
+  ensureProjectObjectTemplate,
+  getCompatibleProjectObjectVariables,
+  getProjectObjectNodeVariableBinding,
+  getProjectObjectSourceRefWithValue,
+  getProjectObjectTemplateWithAddedVariable,
+  getProjectObjectTemplateWithRemovedVariable,
+  getProjectObjectTemplateWithUpdatedVariable,
+  setProjectObjectNodeVariableBinding
+} from "../project-objects/project-object-template";
 import { cx } from "./class-names";
 import {
   ProjectObjectImageSection,
@@ -204,6 +226,11 @@ import {
   ProjectObjectZoneSection
 } from "./ProjectObjectStructureSections";
 import {
+  ProjectObjectLinkedObjectSection,
+  ProjectObjectTemplateSection
+} from "./ProjectObjectTemplateSections";
+import type { VariableBindingFieldState } from "./ProjectObjectVariableBindingField";
+import {
   ProjectObjectAppearanceSection,
   ProjectObjectLayoutSection,
   ProjectObjectTransformSections
@@ -213,6 +240,7 @@ type ProjectObjectInspectorPanelProps = {
   className?: string;
   contentFileNode: ProjectFileNode | null;
   fileTree: ProjectFileNode[];
+  objectTree?: ProjectObjectNode[];
   projectId: string;
   selectedObject: ProjectObjectNode | null;
   onFileTreeChange: (fileTree: ProjectFileNode[]) => void;
@@ -243,18 +271,50 @@ export function ProjectObjectInspectorPanel({
   className,
   contentFileNode,
   fileTree,
+  objectTree: resolvedObjectTree,
   projectId,
   selectedObject,
   onFileTreeChange,
   onObjectTreeChange
 }: ProjectObjectInspectorPanelProps) {
   const objectTree = useMemo(
-    () => contentFileNode?.objectTree ?? [],
-    [contentFileNode?.objectTree]
+    () => resolvedObjectTree ?? contentFileNode?.objectTree ?? [],
+    [contentFileNode?.objectTree, resolvedObjectTree]
   );
   const imageAssets = useMemo(
     () => getProjectImageAssetOptions(projectId, fileTree),
     [fileTree, projectId]
+  );
+  const objectTemplate = useMemo(
+    () =>
+      contentFileNode?.kind === "object" && !contentFileNode.sourceRef
+        ? ensureProjectObjectTemplate(contentFileNode.template)
+        : null,
+    [contentFileNode]
+  );
+  const sourceObjectFileNode = useMemo(
+    () =>
+      contentFileNode?.sourceRef
+        ? findProjectFileNodeInTree(fileTree, contentFileNode.sourceRef.sourceObjectFileNodeId)
+        : undefined,
+    [contentFileNode?.sourceRef, fileTree]
+  );
+  const sourceObjectTemplate = useMemo(
+    () =>
+      sourceObjectFileNode?.kind === "object"
+        ? ensureProjectObjectTemplate(sourceObjectFileNode.template)
+        : null,
+    [sourceObjectFileNode]
+  );
+  const linkedObjectValues = useMemo(
+    () =>
+      contentFileNode?.sourceRef && sourceObjectTemplate
+        ? {
+            ...getProjectObjectVariableDefaultValues(sourceObjectTemplate),
+            ...contentFileNode.sourceRef.values
+          }
+        : {},
+    [contentFileNode?.sourceRef, sourceObjectTemplate]
   );
   const rectTransform = useMemo(
     () => (selectedObject ? getProjectObjectNodeRectTransform(selectedObject) : null),
@@ -269,8 +329,7 @@ export function ProjectObjectInspectorPanel({
     [selectedObject]
   );
   const counter = useMemo(
-    () =>
-      selectedObject?.kind === "counter" ? getProjectObjectNodeCounter(selectedObject) : null,
+    () => (selectedObject?.kind === "counter" ? getProjectObjectNodeCounter(selectedObject) : null),
     [selectedObject]
   );
   const deck = useMemo(
@@ -282,8 +341,7 @@ export function ProjectObjectInspectorPanel({
     [selectedObject]
   );
   const meeple = useMemo(
-    () =>
-      selectedObject?.kind === "meeple" ? getProjectObjectNodeMeeple(selectedObject) : null,
+    () => (selectedObject?.kind === "meeple" ? getProjectObjectNodeMeeple(selectedObject) : null),
     [selectedObject]
   );
   const container = useMemo(
@@ -295,9 +353,7 @@ export function ProjectObjectInspectorPanel({
   );
   const stackDisplay = useMemo(
     () =>
-      selectedObject?.kind === "deck"
-        ? getProjectObjectNodeStackDisplay(selectedObject)
-        : null,
+      selectedObject?.kind === "deck" ? getProjectObjectNodeStackDisplay(selectedObject) : null,
     [selectedObject]
   );
   const zone = useMemo(
@@ -393,8 +449,13 @@ export function ProjectObjectInspectorPanel({
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [uploadingDieFaceImage, setUploadingDieFaceImage] = useState(false);
   const [dieFaceImageUploadError, setDieFaceImageUploadError] = useState<string | null>(null);
+  const [uploadingPropertyImageVariableId, setUploadingPropertyImageVariableId] = useState<
+    string | null
+  >(null);
+  const [propertyImageUploadErrors, setPropertyImageUploadErrors] = useState<
+    Record<string, string>
+  >({});
 
-  /* eslint-disable react-hooks/set-state-in-effect -- Draft fields must reset when the selected object changes. */
   useEffect(() => {
     setNameDraft(selectedObject?.name ?? "");
   }, [selectedObject?.id, selectedObject?.name]);
@@ -489,7 +550,6 @@ export function ProjectObjectInspectorPanel({
       setLayoutDraft(createLayoutDraft(layout));
     }
   }, [layout, selectedObject?.id]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   function commitName(value = nameDraft) {
     if (!contentFileNode || !selectedObject) {
@@ -542,6 +602,215 @@ export function ProjectObjectInspectorPanel({
 
     if (nextObjectTree !== objectTree) {
       onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
+  function updateCurrentObjectFile(updateNode: (node: ProjectFileNode) => ProjectFileNode) {
+    if (!contentFileNode) {
+      return;
+    }
+
+    const nextFileTree = updateProjectFileNode(fileTree, contentFileNode.id, updateNode);
+
+    if (nextFileTree !== fileTree) {
+      onFileTreeChange(nextFileTree);
+    }
+  }
+
+  function updateCurrentObjectTemplate(template: ProjectObjectTemplate) {
+    updateCurrentObjectFile((node) => ({
+      ...node,
+      template
+    }));
+  }
+
+  function addTemplateVariable() {
+    updateCurrentObjectTemplate(
+      getProjectObjectTemplateWithAddedVariable(objectTemplate ?? undefined)
+    );
+  }
+
+  function updateTemplateVariableName(variableId: string, name: string) {
+    updateCurrentObjectTemplate(
+      getProjectObjectTemplateWithUpdatedVariable(
+        objectTemplate ?? undefined,
+        variableId,
+        (variable) => ({
+          ...variable,
+          name
+        })
+      )
+    );
+  }
+
+  function updateTemplateVariableType(variableId: string, type: ProjectObjectVariableType) {
+    updateCurrentObjectTemplate(
+      getProjectObjectTemplateWithUpdatedVariable(
+        objectTemplate ?? undefined,
+        variableId,
+        (variable) => ({
+          ...variable,
+          type,
+          defaultValue: getDefaultProjectObjectVariableValue(type)
+        })
+      )
+    );
+  }
+
+  function updateTemplateVariableDefaultValue(
+    variable: ProjectObjectVariableDefinition,
+    value: string
+  ) {
+    updateCurrentObjectTemplate(
+      getProjectObjectTemplateWithUpdatedVariable(
+        objectTemplate ?? undefined,
+        variable.id,
+        (currentVariable) => ({
+          ...currentVariable,
+          defaultValue: value
+        })
+      )
+    );
+  }
+
+  function removeTemplateVariable(variableId: string) {
+    updateCurrentObjectTemplate(
+      getProjectObjectTemplateWithRemovedVariable(objectTemplate ?? undefined, variableId)
+    );
+  }
+
+  function updateVariableBinding(target: ProjectObjectVariableBindingTarget, variableId: string) {
+    if (!contentFileNode || !selectedObject || contentFileNode.sourceRef) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeVariableBinding(
+      objectTree,
+      selectedObject.id,
+      target,
+      variableId
+    );
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
+  function getVariableBindingField(
+    target: ProjectObjectVariableBindingTarget
+  ): VariableBindingFieldState | undefined {
+    if (!objectTemplate || !selectedObject || contentFileNode?.sourceRef) {
+      return undefined;
+    }
+
+    const options = getCompatibleProjectObjectVariables(objectTemplate, target).map((variable) => ({
+      label: variable.name,
+      value: variable.id
+    }));
+
+    if (!options.length) {
+      return undefined;
+    }
+
+    return {
+      options,
+      value: getProjectObjectNodeVariableBinding(selectedObject, target),
+      onChange: (variableId) => updateVariableBinding(target, variableId)
+    };
+  }
+
+  function updateLinkedObjectVariableValue(
+    variable: ProjectObjectVariableDefinition,
+    value: string
+  ) {
+    const sourceRef = contentFileNode?.sourceRef;
+
+    if (!sourceRef) {
+      return;
+    }
+
+    updateCurrentObjectFile((node) => ({
+      ...node,
+      sourceRef: getProjectObjectSourceRefWithValue(sourceRef, variable, value)
+    }));
+  }
+
+  async function uploadTemplateVariableImageValue(
+    variable: ProjectObjectVariableDefinition,
+    file: File
+  ) {
+    await uploadPropertyImageValue(variable, file, (imageAssetId) => {
+      if (!contentFileNode || contentFileNode.kind !== "object" || contentFileNode.sourceRef) {
+        return fileTree;
+      }
+
+      const nextTemplate = getProjectObjectTemplateWithUpdatedVariable(
+        objectTemplate ?? undefined,
+        variable.id,
+        (currentVariable) => ({
+          ...currentVariable,
+          defaultValue: imageAssetId
+        })
+      );
+
+      return updateProjectFileNode(fileTree, contentFileNode.id, (node) => ({
+        ...node,
+        template: nextTemplate
+      }));
+    });
+  }
+
+  async function uploadLinkedObjectVariableImageValue(
+    variable: ProjectObjectVariableDefinition,
+    file: File
+  ) {
+    const sourceRef = contentFileNode?.sourceRef;
+
+    if (!sourceRef) {
+      return;
+    }
+
+    await uploadPropertyImageValue(variable, file, (imageAssetId) =>
+      updateProjectFileNode(fileTree, contentFileNode.id, (node) => ({
+        ...node,
+        sourceRef: getProjectObjectSourceRefWithValue(sourceRef, variable, imageAssetId)
+      }))
+    );
+  }
+
+  async function uploadPropertyImageValue(
+    variable: ProjectObjectVariableDefinition,
+    file: File,
+    getFileTreeWithValue: (imageAssetId: string) => ProjectFileNode[]
+  ) {
+    if (variable.type !== "image") {
+      return;
+    }
+
+    setUploadingPropertyImageVariableId(variable.id);
+    setPropertyImageUploadErrors((currentErrors) => {
+      const nextErrors = { ...currentErrors };
+      delete nextErrors[variable.id];
+      return nextErrors;
+    });
+
+    try {
+      const imageAsset = await uploadProjectImageAsset(projectId, file);
+      rememberTemporaryProjectImageAssetUrl(imageAsset.id, file);
+      const fileTreeWithValue = getFileTreeWithValue(imageAsset.id);
+      const { fileTree: fileTreeWithImageAsset } = appendProjectImageAssetFileNode(
+        fileTreeWithValue,
+        imageAsset
+      );
+
+      onFileTreeChange(fileTreeWithImageAsset);
+    } catch (error) {
+      setPropertyImageUploadErrors((currentErrors) => ({
+        ...currentErrors,
+        [variable.id]: error instanceof Error ? error.message : "Image upload failed"
+      }));
+    } finally {
+      setUploadingPropertyImageVariableId(null);
     }
   }
 
@@ -767,11 +1036,7 @@ export function ProjectObjectInspectorPanel({
       return;
     }
 
-    const nextObjectTree = setProjectObjectNodeCounter(
-      objectTree,
-      selectedObject.id,
-      nextCounter
-    );
+    const nextObjectTree = setProjectObjectNodeCounter(objectTree, selectedObject.id, nextCounter);
 
     if (nextObjectTree !== objectTree) {
       onObjectTreeChange(contentFileNode.id, nextObjectTree);
@@ -1587,11 +1852,11 @@ export function ProjectObjectInspectorPanel({
         getProjectObjectContainerAcceptedObjectKinds(selectedObject?.kind)
       )
     : [];
-  const usedContainerObjectFileIds = new Set(
-    container?.entries.map((entry) => entry.objectFileNodeId) ?? []
+  const usedContainerObjectReferenceValues = new Set(
+    container?.entries.map((entry) => getContainerEntryReferenceValue(entry)) ?? []
   );
   const unusedContainerObjectFileOptions = containerObjectFileOptions.filter(
-    (option) => !usedContainerObjectFileIds.has(option.value)
+    (option) => !usedContainerObjectReferenceValues.has(option.value)
   );
   const canAddContainerDraftRow =
     containerDraftRowIds.length < unusedContainerObjectFileOptions.length;
@@ -1626,6 +1891,11 @@ export function ProjectObjectInspectorPanel({
   const sizeLockedTitle = zone
     ? "Size is controlled by the selected zone reference, capacity, layout, gap, and padding"
     : "Size is controlled by the selected card preset";
+  const appearanceBackgroundColorBinding = getVariableBindingField("appearance.backgroundColor");
+  const appearanceBorderColorBinding = getVariableBindingField("appearance.borderColor");
+  const imageAssetBinding = getVariableBindingField("image.assetId");
+  const textColorBinding = getVariableBindingField("text.color");
+  const textContentBinding = getVariableBindingField("text.content");
 
   return (
     <aside
@@ -1648,191 +1918,234 @@ export function ProjectObjectInspectorPanel({
 
       {contentFileNode && selectedObject && rectTransform ? (
         <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
-          <ProjectObjectHeaderSection
-            nameDraft={nameDraft}
-            selectedObject={selectedObject}
-            onNameBlur={commitName}
-            onNameChange={setNameDraft}
-            onNameKeyDown={handleNameKeyDown}
-            onVisibilityChange={handleVisibilityChange}
-          />
-
-          {card ? (
-            <ProjectObjectCardSection
-              draft={cardDraft}
-              sizePresetOptions={cardSizePresetOptions}
-              onSizePresetChange={(value) => updateCardDraft("sizePreset", value)}
-            />
-          ) : null}
-
-          {deck ? (
-            <ProjectObjectDeckSection
-              draft={deckDraft}
-              sizePresetOptions={cardSizePresetOptions}
-              onSizePresetChange={(value) => updateDeckDraft("sizePreset", value)}
-            />
-          ) : null}
-
-          {bag ? (
-            <ProjectObjectBagSection
-              draft={bagDraft}
-              onAppearanceVariantChange={(value) => updateBagDraft("appearanceVariant", value)}
-            />
-          ) : null}
-
-          {meeple ? (
-            <ProjectObjectMeepleSection
-              draft={meepleDraft}
-              onVisualVariantChange={(value) => updateMeepleDraft("visualVariant", value)}
-            />
-          ) : null}
-
-          {container ? (
-            <ProjectObjectContainerSection
-              canAddDraftRow={canAddContainerDraftRow}
-              container={container}
-              draftRowIds={containerDraftRowIds}
-              objectFileOptionById={containerObjectFileOptionById}
-              objectFileOptions={containerObjectFileOptions}
-              objectKind={selectedObject.kind}
-              quantityDrafts={containerEntryQuantityDrafts}
-              totalCount={containerTotalCount}
-              unusedObjectFileOptions={unusedContainerObjectFileOptions}
-              usedObjectFileNodeIds={usedContainerObjectFileIds}
-              onAddEntry={addContainerEntry}
-              onCommitDraftEntry={commitContainerDraftEntry}
-              onCommitQuantity={commitContainerEntryQuantity}
-              onMoveEntry={moveContainerEntry}
-              onObjectFileChange={updateContainerEntryObjectFile}
-              onQuantityDraftChange={updateContainerEntryQuantityDraft}
-              onRemoveDraftEntry={removeContainerDraftEntry}
-              onRemoveEntry={removeContainerEntry}
-              onResetQuantity={resetContainerEntryQuantityDraft}
-            />
-          ) : null}
-
-          {stackDisplay ? (
-            <ProjectObjectStackSection
-              draft={stackDisplayDraft}
-              onCommitNumberField={commitStackDisplayNumberField}
-              onDraftChange={updateStackDisplayDraft}
-              onReset={resetStackDisplayDraft}
-            />
-          ) : null}
-
-          {zone ? (
-            <ProjectObjectZoneSection
-              draft={zoneDraft}
-              referenceMissing={!zoneReferenceObjectFileOptionById.has(zone.referenceObjectFileId)}
-              referenceOptions={zoneReferenceObjectFileSelectOptions}
-              zoneReferenceObjectFileId={zone.referenceObjectFileId}
-              onCommitCapacity={commitZoneNumberField}
-              onDraftChange={updateZoneDraft}
-              onReset={resetZoneDraft}
-            />
-          ) : null}
-
-          {doubleSide ? (
-            <ProjectObjectDoubleSidedSection
-              enabled={doubleSide.enabled}
-              onEnabledChange={updateDoubleSideEnabled}
-            />
-          ) : null}
-
-          {counter ? (
-            <ProjectObjectCounterSection
-              draft={counterDraft}
-              onCommitNumberField={commitCounterNumberField}
-              onDraftChange={updateCounterDraft}
-              onReset={resetCounterDraft}
-            />
-          ) : null}
-
-          {die ? (
-            <ProjectObjectDieSection
-              activeFace={activeDieFace}
-              activeFaceImageMissing={!activeDieFaceImageAsset}
-              draft={dieDraft}
+          {contentFileNode.sourceRef && sourceObjectTemplate ? (
+            <ProjectObjectLinkedObjectSection
               imageAssets={imageAssets}
-              uploadError={dieFaceImageUploadError}
-              uploadingImage={uploadingDieFaceImage}
-              onCommitNumberField={commitDieNumberField}
-              onDraftChange={updateDieDraft}
-              onFaceFieldChange={updateDieFaceField}
-              onImageUpload={handleDieFaceImageUpload}
-              onReset={resetDieDraft}
+              sourceName={
+                sourceObjectFileNode?.name ?? contentFileNode.sourceRef.sourceObjectFileNodeId
+              }
+              template={sourceObjectTemplate}
+              uploadErrors={propertyImageUploadErrors}
+              uploadingVariableId={uploadingPropertyImageVariableId}
+              values={linkedObjectValues}
+              onImageUpload={uploadLinkedObjectVariableImageValue}
+              onValueChange={updateLinkedObjectVariableValue}
             />
           ) : null}
 
-          {appearance ? (
-            <ProjectObjectAppearanceSection
-              draft={appearanceDraft}
-              onCommitNumberField={commitAppearanceNumberField}
-              onDraftChange={updateAppearanceDraft}
-              onReset={resetAppearanceDraft}
-            />
-          ) : null}
+          {!contentFileNode.sourceRef ? (
+            <>
+              <ProjectObjectHeaderSection
+                nameDraft={nameDraft}
+                selectedObject={selectedObject}
+                onNameBlur={commitName}
+                onNameChange={setNameDraft}
+                onNameKeyDown={handleNameKeyDown}
+                onVisibilityChange={handleVisibilityChange}
+              />
 
-          {layout ? (
-            <ProjectObjectLayoutSection
-              draft={layoutDraft}
-              isZoneLayout={Boolean(zone)}
-              onCommitNumberField={commitLayoutNumberField}
-              onDraftChange={updateLayoutDraft}
-              onReset={resetLayoutDraft}
-            />
-          ) : null}
+              {objectTemplate ? (
+                <ProjectObjectTemplateSection
+                  imageAssets={imageAssets}
+                  template={objectTemplate}
+                  onAddVariable={addTemplateVariable}
+                  onRemoveVariable={removeTemplateVariable}
+                  onVariableDefaultValueChange={updateTemplateVariableDefaultValue}
+                  onVariableImageUpload={uploadTemplateVariableImageValue}
+                  onVariableNameChange={updateTemplateVariableName}
+                  onVariableTypeChange={updateTemplateVariableType}
+                  uploadErrors={propertyImageUploadErrors}
+                  uploadingVariableId={uploadingPropertyImageVariableId}
+                />
+              ) : null}
 
-          <ProjectObjectTransformSections
-            rectTransformDraft={rectTransformDraft}
-            scaleDisabledFields={sizePresetLocked ? cardPresetLockedRectTransformFields : undefined}
-            scaleDisabledTitle="Scale is controlled by the selected card preset"
-            sizeDisabledFields={sizeLockedRectTransformFields}
-            sizeDisabledTitle={sizeLockedTitle}
-            onCommit={commitRectTransformField}
-            onDraftChange={updateRectTransformDraft}
-            onReset={resetRectTransformDraft}
-          />
+              {card ? (
+                <ProjectObjectCardSection
+                  draft={cardDraft}
+                  sizePresetOptions={cardSizePresetOptions}
+                  onSizePresetChange={(value) => updateCardDraft("sizePreset", value)}
+                />
+              ) : null}
 
-          {text ? (
-            <ProjectObjectTextSection
-              draft={textDraft}
-              isBold={textDraftBold}
-              isItalic={textDraftItalic}
-              onBoldChange={updateTextBold}
-              onCommitNumberField={commitTextNumberField}
-              onDraftChange={updateTextDraft}
-              onItalicChange={updateTextItalic}
-              onReset={resetTextDraft}
-            />
-          ) : null}
+              {deck ? (
+                <ProjectObjectDeckSection
+                  draft={deckDraft}
+                  sizePresetOptions={cardSizePresetOptions}
+                  onSizePresetChange={(value) => updateDeckDraft("sizePreset", value)}
+                />
+              ) : null}
 
-          {image ? (
-            <ProjectObjectImageSection
-              draft={imageDraft}
-              imageAssetId={image.assetId}
-              imageAssetMissing={!selectedImageAsset}
-              imageAssets={imageAssets}
-              uploadError={imageUploadError}
-              uploadingImage={uploadingImage}
-              onCommitNumberField={commitImageNumberField}
-              onDraftChange={updateImageDraft}
-              onImageUpload={handleImageUpload}
-              onReset={resetImageDraft}
-            />
-          ) : null}
+              {bag ? (
+                <ProjectObjectBagSection
+                  draft={bagDraft}
+                  onAppearanceVariantChange={(value) => updateBagDraft("appearanceVariant", value)}
+                />
+              ) : null}
 
-          {shape ? (
-            <ProjectObjectShapeSection
-              polygonPoints={shapePolygonPoints}
-              shape={shape}
-              onAddPolygonPoint={addShapePolygonPoint}
-              onPolygonPointChange={updateShapePolygonPoint}
-              onPolygonPointDraftFieldChange={updateShapePolygonPointDraftField}
-              onRemovePolygonPoint={removeShapePolygonPoint}
-              onResetPolygonPoints={resetShapePolygonPoints}
-              onVariantChange={updateShapeVariant}
-            />
+              {meeple ? (
+                <ProjectObjectMeepleSection
+                  draft={meepleDraft}
+                  onVisualVariantChange={(value) => updateMeepleDraft("visualVariant", value)}
+                />
+              ) : null}
+
+              {container ? (
+                <ProjectObjectContainerSection
+                  canAddDraftRow={canAddContainerDraftRow}
+                  container={container}
+                  draftRowIds={containerDraftRowIds}
+                  objectFileOptionById={containerObjectFileOptionById}
+                  objectFileOptions={containerObjectFileOptions}
+                  objectKind={selectedObject.kind}
+                  quantityDrafts={containerEntryQuantityDrafts}
+                  totalCount={containerTotalCount}
+                  unusedObjectFileOptions={unusedContainerObjectFileOptions}
+                  usedObjectReferenceValues={usedContainerObjectReferenceValues}
+                  onAddEntry={addContainerEntry}
+                  onCommitDraftEntry={commitContainerDraftEntry}
+                  onCommitQuantity={commitContainerEntryQuantity}
+                  onMoveEntry={moveContainerEntry}
+                  onObjectFileChange={updateContainerEntryObjectFile}
+                  onQuantityDraftChange={updateContainerEntryQuantityDraft}
+                  onRemoveDraftEntry={removeContainerDraftEntry}
+                  onRemoveEntry={removeContainerEntry}
+                  onResetQuantity={resetContainerEntryQuantityDraft}
+                />
+              ) : null}
+
+              {stackDisplay ? (
+                <ProjectObjectStackSection
+                  draft={stackDisplayDraft}
+                  onCommitNumberField={commitStackDisplayNumberField}
+                  onDraftChange={updateStackDisplayDraft}
+                  onReset={resetStackDisplayDraft}
+                />
+              ) : null}
+
+              {zone ? (
+                <ProjectObjectZoneSection
+                  draft={zoneDraft}
+                  referenceMissing={
+                    !zoneReferenceObjectFileOptionById.has(zone.referenceObjectFileId)
+                  }
+                  referenceOptions={zoneReferenceObjectFileSelectOptions}
+                  zoneReferenceObjectFileId={zone.referenceObjectFileId}
+                  onCommitCapacity={commitZoneNumberField}
+                  onDraftChange={updateZoneDraft}
+                  onReset={resetZoneDraft}
+                />
+              ) : null}
+
+              {doubleSide ? (
+                <ProjectObjectDoubleSidedSection
+                  enabled={doubleSide.enabled}
+                  onEnabledChange={updateDoubleSideEnabled}
+                />
+              ) : null}
+
+              {counter ? (
+                <ProjectObjectCounterSection
+                  draft={counterDraft}
+                  onCommitNumberField={commitCounterNumberField}
+                  onDraftChange={updateCounterDraft}
+                  onReset={resetCounterDraft}
+                />
+              ) : null}
+
+              {die ? (
+                <ProjectObjectDieSection
+                  activeFace={activeDieFace}
+                  activeFaceImageMissing={!activeDieFaceImageAsset}
+                  draft={dieDraft}
+                  imageAssets={imageAssets}
+                  uploadError={dieFaceImageUploadError}
+                  uploadingImage={uploadingDieFaceImage}
+                  onCommitNumberField={commitDieNumberField}
+                  onDraftChange={updateDieDraft}
+                  onFaceFieldChange={updateDieFaceField}
+                  onImageUpload={handleDieFaceImageUpload}
+                  onReset={resetDieDraft}
+                />
+              ) : null}
+
+              {appearance ? (
+                <ProjectObjectAppearanceSection
+                  backgroundColorBinding={appearanceBackgroundColorBinding}
+                  borderColorBinding={appearanceBorderColorBinding}
+                  draft={appearanceDraft}
+                  onCommitNumberField={commitAppearanceNumberField}
+                  onDraftChange={updateAppearanceDraft}
+                  onReset={resetAppearanceDraft}
+                />
+              ) : null}
+
+              {layout ? (
+                <ProjectObjectLayoutSection
+                  draft={layoutDraft}
+                  isZoneLayout={Boolean(zone)}
+                  onCommitNumberField={commitLayoutNumberField}
+                  onDraftChange={updateLayoutDraft}
+                  onReset={resetLayoutDraft}
+                />
+              ) : null}
+
+              <ProjectObjectTransformSections
+                rectTransformDraft={rectTransformDraft}
+                scaleDisabledFields={
+                  sizePresetLocked ? cardPresetLockedRectTransformFields : undefined
+                }
+                scaleDisabledTitle="Scale is controlled by the selected card preset"
+                sizeDisabledFields={sizeLockedRectTransformFields}
+                sizeDisabledTitle={sizeLockedTitle}
+                onCommit={commitRectTransformField}
+                onDraftChange={updateRectTransformDraft}
+                onReset={resetRectTransformDraft}
+              />
+
+              {text ? (
+                <ProjectObjectTextSection
+                  contentBinding={textContentBinding}
+                  draft={textDraft}
+                  isBold={textDraftBold}
+                  isItalic={textDraftItalic}
+                  textColorBinding={textColorBinding}
+                  onBoldChange={updateTextBold}
+                  onCommitNumberField={commitTextNumberField}
+                  onDraftChange={updateTextDraft}
+                  onItalicChange={updateTextItalic}
+                  onReset={resetTextDraft}
+                />
+              ) : null}
+
+              {image ? (
+                <ProjectObjectImageSection
+                  assetBinding={imageAssetBinding}
+                  draft={imageDraft}
+                  imageAssetId={image.assetId}
+                  imageAssetMissing={!selectedImageAsset}
+                  imageAssets={imageAssets}
+                  uploadError={imageUploadError}
+                  uploadingImage={uploadingImage}
+                  onCommitNumberField={commitImageNumberField}
+                  onDraftChange={updateImageDraft}
+                  onImageUpload={handleImageUpload}
+                  onReset={resetImageDraft}
+                />
+              ) : null}
+
+              {shape ? (
+                <ProjectObjectShapeSection
+                  polygonPoints={shapePolygonPoints}
+                  shape={shape}
+                  onAddPolygonPoint={addShapePolygonPoint}
+                  onPolygonPointChange={updateShapePolygonPoint}
+                  onPolygonPointDraftFieldChange={updateShapePolygonPointDraftField}
+                  onRemovePolygonPoint={removeShapePolygonPoint}
+                  onResetPolygonPoints={resetShapePolygonPoints}
+                  onVariantChange={updateShapeVariant}
+                />
+              ) : null}
+            </>
           ) : null}
         </div>
       ) : (
@@ -1932,7 +2245,7 @@ function getContainerObjectFileOptions(
   const acceptedKindSet = new Set(acceptedObjectKinds);
   const options: { label: string; value: string }[] = [];
 
-  collectContainerObjectFileOptions(fileTree, acceptedKindSet, options);
+  collectContainerObjectFileOptions(fileTree, fileTree, acceptedKindSet, options);
 
   return options;
 }
@@ -1940,18 +2253,19 @@ function getContainerObjectFileOptions(
 function getZoneReferenceObjectFileOptions(fileTree: readonly ProjectFileNode[]) {
   const options: { label: string; value: string }[] = [];
 
-  collectZoneReferenceObjectFileOptions(fileTree, options);
+  collectZoneReferenceObjectFileOptions(fileTree, fileTree, options);
 
   return options;
 }
 
 function collectZoneReferenceObjectFileOptions(
   fileTree: readonly ProjectFileNode[],
+  rootFileTree: readonly ProjectFileNode[],
   options: { label: string; value: string }[]
 ) {
   for (const node of fileTree) {
     if (node.type === "folder") {
-      collectZoneReferenceObjectFileOptions(node.children ?? [], options);
+      collectZoneReferenceObjectFileOptions(node.children ?? [], rootFileTree, options);
       continue;
     }
 
@@ -1959,7 +2273,7 @@ function collectZoneReferenceObjectFileOptions(
       continue;
     }
 
-    const rootObject = node.objectTree?.[0];
+    const rootObject = resolveProjectObjectFileObjectTree(rootFileTree, node)[0];
 
     if (!rootObject || rootObject.kind === "zone") {
       continue;
@@ -1974,12 +2288,18 @@ function collectZoneReferenceObjectFileOptions(
 
 function collectContainerObjectFileOptions(
   fileTree: readonly ProjectFileNode[],
+  rootFileTree: readonly ProjectFileNode[],
   acceptedObjectKinds: ReadonlySet<ProjectObjectKind>,
   options: { label: string; value: string }[]
 ) {
   for (const node of fileTree) {
     if (node.type === "folder") {
-      collectContainerObjectFileOptions(node.children ?? [], acceptedObjectKinds, options);
+      collectContainerObjectFileOptions(
+        node.children ?? [],
+        rootFileTree,
+        acceptedObjectKinds,
+        options
+      );
       continue;
     }
 
@@ -1987,7 +2307,7 @@ function collectContainerObjectFileOptions(
       continue;
     }
 
-    const rootObject = node.objectTree?.[0];
+    const rootObject = resolveProjectObjectFileObjectTree(rootFileTree, node)[0];
 
     if (!rootObject || !acceptedObjectKinds.has(rootObject.kind)) {
       continue;

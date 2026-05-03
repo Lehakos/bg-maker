@@ -4,6 +4,7 @@ import type {
   ProjectObjectBag,
   ProjectObjectBagAppearanceVariant,
   ProjectObjectContainer,
+  ProjectObjectContainerEntry,
   ProjectObjectDeck,
   ProjectObjectMeeple,
   ProjectObjectMeepleVisualVariant,
@@ -156,11 +157,7 @@ export function getDeckWithDraftField(
   return areDecksEqual(deck, nextDeck) ? null : nextDeck;
 }
 
-export function getBagWithDraftField(
-  bag: ProjectObjectBag,
-  fieldKey: BagFieldKey,
-  value: string
-) {
+export function getBagWithDraftField(bag: ProjectObjectBag, fieldKey: BagFieldKey, value: string) {
   const nextBag = createNextBag(bag, fieldKey, value);
 
   if (!nextBag) {
@@ -200,20 +197,20 @@ export function getStackDisplayWithDraftField(
 
 export function getContainerWithAddedEntry(
   container: ProjectObjectContainer,
-  objectFileNodeId: string
+  referenceValue: string
 ) {
-  const normalizedObjectFileNodeId = objectFileNodeId.trim();
+  const reference = parseContainerEntryReferenceValue(referenceValue);
 
-  if (!normalizedObjectFileNodeId) {
+  if (!reference) {
     return null;
   }
 
   const currentEntryIndex = container.entries.findIndex(
-    (entry) => entry.objectFileNodeId === normalizedObjectFileNodeId
+    (entry) => getContainerEntryReferenceValue(entry) === getContainerEntryReferenceValue(reference)
   );
   const entries =
     currentEntryIndex === -1
-      ? [...container.entries, { objectFileNodeId: normalizedObjectFileNodeId, quantity: 1 }]
+      ? [...container.entries, { ...reference, quantity: 1 }]
       : container.entries.map((entry, index) =>
           index === currentEntryIndex
             ? {
@@ -280,15 +277,11 @@ export function getContainerWithMovedEntry(
 export function getContainerWithEntryObjectFileNodeId(
   container: ProjectObjectContainer,
   entryIndex: number,
-  objectFileNodeId: string
+  referenceValue: string
 ) {
-  const normalizedObjectFileNodeId = objectFileNodeId.trim();
+  const reference = parseContainerEntryReferenceValue(referenceValue);
 
-  if (
-    !normalizedObjectFileNodeId ||
-    entryIndex < 0 ||
-    entryIndex >= container.entries.length
-  ) {
+  if (!reference || entryIndex < 0 || entryIndex >= container.entries.length) {
     return null;
   }
 
@@ -297,8 +290,8 @@ export function getContainerWithEntryObjectFileNodeId(
     entries: container.entries.map((entry, index) =>
       index === entryIndex
         ? {
-            ...entry,
-            objectFileNodeId: normalizedObjectFileNodeId
+            objectFileNodeId: reference.objectFileNodeId,
+            quantity: entry.quantity
           }
         : entry
     )
@@ -364,6 +357,32 @@ export function formatStackDisplayNumberValue(
 
 export function formatContainerEntryQuantityValue(value: number) {
   return String(normalizeContainerEntryQuantityValue(value));
+}
+
+export function getContainerEntryReferenceValue(
+  entry: Pick<ProjectObjectContainerEntry, "objectFileNodeId">
+) {
+  return entry.objectFileNodeId;
+}
+
+export function parseContainerEntryReferenceValue(
+  value: string
+): Pick<ProjectObjectContainerEntry, "objectFileNodeId"> | null {
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  const normalizedObjectFileNodeId = normalizedValue.trim();
+
+  if (!normalizedObjectFileNodeId) {
+    return null;
+  }
+
+  return {
+    objectFileNodeId: normalizedObjectFileNodeId
+  };
 }
 
 function createNextCard(
@@ -444,9 +463,7 @@ function createNextStackDisplay(
   });
 }
 
-function normalizeStackDisplay(
-  stackDisplay: ProjectObjectStackDisplay
-): ProjectObjectStackDisplay {
+function normalizeStackDisplay(stackDisplay: ProjectObjectStackDisplay): ProjectObjectStackDisplay {
   const defaultStackDisplay = getDefaultProjectObjectStackDisplay();
 
   return {
@@ -533,10 +550,7 @@ function areMeeplesEqual(left: ProjectObjectMeeple, right: ProjectObjectMeeple) 
   return left.visualVariant === right.visualVariant;
 }
 
-function areStackDisplaysEqual(
-  left: ProjectObjectStackDisplay,
-  right: ProjectObjectStackDisplay
-) {
+function areStackDisplaysEqual(left: ProjectObjectStackDisplay, right: ProjectObjectStackDisplay) {
   return (
     left.showCount === right.showCount &&
     left.stackOffsetX === right.stackOffsetX &&

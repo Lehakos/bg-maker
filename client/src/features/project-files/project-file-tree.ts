@@ -2,7 +2,9 @@ import type {
   ProjectFileKind,
   ProjectFileNode,
   ProjectImageAsset,
-  ProjectObjectKind
+  ProjectObjectKind,
+  ProjectObjectSourceRef,
+  ProjectObjectTemplate
 } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectName,
@@ -23,6 +25,8 @@ export type ProjectFileTreeLocation = {
 export type CreateProjectFileNodeOptions = {
   imageAsset?: ProjectImageAsset;
   objectRootKind?: ProjectObjectKind;
+  sourceRef?: ProjectObjectSourceRef;
+  template?: ProjectObjectTemplate;
 };
 
 const projectFileKindSortOrder: Record<ProjectFileKind, number> = {
@@ -64,9 +68,14 @@ export function createProjectFileNode(
   const objectTree =
     kind === "tableSetup"
       ? { objectTree: [] }
-      : kind === "object"
-        ? { objectTree: [createProjectObjectNode(options.objectRootKind ?? "group", nextName)] }
-        : {};
+      : kind === "object" && options.sourceRef
+        ? { sourceRef: options.sourceRef }
+        : kind === "object"
+          ? {
+              objectTree: [createProjectObjectNode(options.objectRootKind ?? "group", nextName)],
+              ...(options.template ? { template: options.template } : {})
+            }
+          : {};
   const imageAsset =
     kind === "image" && options.imageAsset ? { imageAsset: options.imageAsset } : {};
 
@@ -200,6 +209,16 @@ export function renameProjectFileNode(
   return sortProjectFileTree(renameProjectFileNodeInChildren(fileTree, nodeId, name));
 }
 
+export function updateProjectFileNode(
+  fileTree: ProjectFileNode[],
+  nodeId: string,
+  updateNode: (node: ProjectFileNode) => ProjectFileNode
+): ProjectFileNode[] {
+  const result = updateProjectFileNodeInChildren(fileTree, nodeId, updateNode);
+
+  return result.changed ? sortProjectFileTree(result.nodes) : fileTree;
+}
+
 export function isProtectedProjectFileNode(node: ProjectFileNode | null | undefined) {
   return node?.type === "folder" && node.id === projectAssetsFolderId;
 }
@@ -226,6 +245,36 @@ function renameProjectFileNodeInChildren(
 
     return node;
   });
+}
+
+function updateProjectFileNodeInChildren(
+  fileTree: ProjectFileNode[],
+  nodeId: string,
+  updateNode: (node: ProjectFileNode) => ProjectFileNode
+): { changed: boolean; nodes: ProjectFileNode[] } {
+  let changed = false;
+  const nodes = fileTree.map((node) => {
+    if (node.id === nodeId) {
+      changed = true;
+      return updateNode(node);
+    }
+
+    if (node.type === "folder") {
+      const childResult = updateProjectFileNodeInChildren(node.children ?? [], nodeId, updateNode);
+
+      if (childResult.changed) {
+        changed = true;
+        return {
+          ...node,
+          children: childResult.nodes
+        };
+      }
+    }
+
+    return node;
+  });
+
+  return { changed, nodes };
 }
 
 export function countProjectFileTreeNodes(fileTree: ProjectFileNode[]): number {

@@ -62,7 +62,7 @@ export async function createObjectFileFromFileTree(
   await menu.getByRole("menuitem", { name: "Object" }).click();
 
   const dialog = page.getByRole("dialog", { name: "New object" });
-  await dialog.getByRole("radio", { name: rootType }).click();
+  await dialog.getByRole("radio", { name: rootType, exact: true }).click();
   await dialog.getByLabel("Name").fill(name);
   await dialog.getByRole("button", { name: "Create", exact: true }).click();
 

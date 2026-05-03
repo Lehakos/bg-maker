@@ -33,6 +33,7 @@ import {
   getContainerWithEntryQuantityDraftField,
   getContainerWithMovedEntry,
   getContainerWithRemovedEntry,
+  getContainerEntryReferenceValue,
   getBagWithDraftField,
   getDeckWithDraftField,
   getMeepleWithDraftField,
@@ -427,6 +428,29 @@ describe("project object inspector state", () => {
     expect(getContainerWithAddedEntry(container, " ")).toBeNull();
     expect(getContainerWithEntryObjectFileNodeId(container, 0, " ")).toBeNull();
     expect(getContainerWithEntryQuantityDraftField(container, 0, "nope")).toBeNull();
+  });
+
+  it("uses object file ids as container entry references", () => {
+    const container: ProjectObjectContainer = {
+      entries: [
+        { objectFileNodeId: "card-file-1", quantity: 2 },
+        { objectFileNodeId: "card-file-2", quantity: 3 }
+      ]
+    };
+
+    expect(getContainerWithAddedEntry(container, "card-file-2")).toMatchObject({
+      entries: [
+        { objectFileNodeId: "card-file-1", quantity: 2 },
+        { objectFileNodeId: "card-file-2", quantity: 4 }
+      ]
+    });
+    expect(getContainerWithEntryObjectFileNodeId(container, 1, "card-file-3")).toMatchObject({
+      entries: [
+        { objectFileNodeId: "card-file-1", quantity: 2 },
+        { objectFileNodeId: "card-file-3", quantity: 3 }
+      ]
+    });
+    expect(getContainerEntryReferenceValue(container.entries[1]!)).toBe("card-file-2");
   });
 
   it("creates and updates die drafts and faces", () => {

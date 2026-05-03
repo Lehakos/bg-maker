@@ -1,6 +1,7 @@
 import type { ProjectFileNode } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
+  createSetProjectObjectSideSelectionCommand,
   createReplaceProjectFileTreeCommand,
   createUpdateProjectObjectTreeCommand
 } from "./project-editor-commands";
@@ -8,6 +9,11 @@ import {
   createProjectWorkspaceStore,
   getProjectWorkspaceSelection
 } from "./project-workspace-store";
+import {
+  findProjectObjectNode,
+  getProjectObjectNodeActiveSide,
+  getProjectObjectNodeVisibleChildren
+} from "../project-objects/project-object-tree";
 
 const initialFileTree: ProjectFileNode[] = [
   {
@@ -119,6 +125,83 @@ describe("project workspace store", () => {
       effectiveSelectedNodeId: "object-file",
       selectedObjectId: "root"
     });
+  });
+
+  it("keeps object side selection as workspace UI state", () => {
+    const cardFileTree: ProjectFileNode[] = [
+      {
+        id: "card-file",
+        kind: "object",
+        name: "Card",
+        objectTree: [
+          {
+            children: [
+              {
+                id: "front-label",
+                kind: "label",
+                name: "Front label",
+                parentSide: "front",
+                visible: true
+              },
+              {
+                id: "back-label",
+                kind: "label",
+                name: "Back label",
+                parentSide: "back",
+                visible: true
+              }
+            ],
+            id: "card-root",
+            kind: "card",
+            name: "Card",
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ];
+    const savedFileTrees: ProjectFileNode[][] = [];
+    const store = createProjectWorkspaceStore({
+      initialFileTree: cardFileTree,
+      projectId: "project-1",
+      saveFileTree: (fileTree) => savedFileTrees.push(fileTree)
+    });
+
+    store.getState().setSelectedNodeId("card-file");
+    store.getState().executeCommand(
+      createSetProjectObjectSideSelectionCommand({
+        after: "back",
+        before: "front",
+        fileNodeId: "card-file",
+        objectId: "card-root"
+      })
+    );
+
+    const selection = getProjectWorkspaceSelection(store.getState());
+
+    expect(getProjectObjectNodeActiveSide(selection.selectedProjectObject!)).toBe("back");
+    expect(
+      getProjectObjectNodeVisibleChildren(selection.selectedProjectObject!).map((child) => child.id)
+    ).toEqual(["back-label"]);
+    expect(
+      findProjectObjectNode(store.getState().fileTree[0]?.objectTree ?? [], "card-root")
+        ?.components?.doubleSide
+    ).toBeUndefined();
+    expect(savedFileTrees).toEqual([]);
+
+    store.getState().undo();
+    expect(
+      getProjectObjectNodeVisibleChildren(
+        getProjectWorkspaceSelection(store.getState()).selectedProjectObject!
+      ).map((child) => child.id)
+    ).toEqual(["front-label"]);
+
+    store.getState().redo();
+    expect(
+      getProjectObjectNodeVisibleChildren(
+        getProjectWorkspaceSelection(store.getState()).selectedProjectObject!
+      ).map((child) => child.id)
+    ).toEqual(["back-label"]);
   });
 
   it("keeps selected objects scoped to the currently selected file node", () => {

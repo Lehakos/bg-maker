@@ -153,8 +153,7 @@ export type ProjectObjectDeck = {
 
 export const projectObjectBagAppearanceVariants = ["bag", "box"] as const;
 
-export type ProjectObjectBagAppearanceVariant =
-  (typeof projectObjectBagAppearanceVariants)[number];
+export type ProjectObjectBagAppearanceVariant = (typeof projectObjectBagAppearanceVariants)[number];
 
 export type ProjectObjectBag = {
   appearanceVariant: ProjectObjectBagAppearanceVariant;
@@ -169,8 +168,7 @@ export const projectObjectMeepleVisualVariants = [
   "standee"
 ] as const;
 
-export type ProjectObjectMeepleVisualVariant =
-  (typeof projectObjectMeepleVisualVariants)[number];
+export type ProjectObjectMeepleVisualVariant = (typeof projectObjectMeepleVisualVariants)[number];
 
 export type ProjectObjectMeeple = {
   visualVariant: ProjectObjectMeepleVisualVariant;
@@ -250,7 +248,6 @@ export type ProjectObjectSideComponents = {
 };
 
 export type ProjectObjectDoubleSide = {
-  activeSide: ProjectObjectSide;
   enabled: boolean;
   sideComponents?: Partial<Record<ProjectObjectSide, ProjectObjectSideComponents>>;
 };
@@ -328,12 +325,51 @@ export type ProjectObjectComponents = {
   zone?: ProjectObjectZone;
 };
 
+export const projectObjectVariableTypes = ["text", "image", "number", "color"] as const;
+
+export type ProjectObjectVariableType = (typeof projectObjectVariableTypes)[number];
+
+export type ProjectObjectVariableValue = string | number;
+
+export type ProjectObjectVariableDefinition = {
+  id: string;
+  name: string;
+  type: ProjectObjectVariableType;
+  defaultValue: ProjectObjectVariableValue;
+};
+
+export type ProjectObjectTemplate = {
+  variables: ProjectObjectVariableDefinition[];
+};
+
+export const projectObjectVariableBindingTargets = [
+  "appearance.backgroundColor",
+  "appearance.borderColor",
+  "image.assetId",
+  "text.color",
+  "text.content"
+] as const;
+
+export type ProjectObjectVariableBindingTarget =
+  (typeof projectObjectVariableBindingTargets)[number];
+
+export type ProjectObjectVariableBinding = {
+  variableId: string;
+  target: ProjectObjectVariableBindingTarget;
+};
+
+export type ProjectObjectSourceRef = {
+  sourceObjectFileNodeId: string;
+  values: Record<string, ProjectObjectVariableValue>;
+};
+
 export type ProjectObjectNode = {
   parentSide?: ProjectObjectSide;
   id: string;
   name: string;
   kind: ProjectObjectKind;
   visible: boolean;
+  bindings?: ProjectObjectVariableBinding[];
   components?: ProjectObjectComponents;
   children?: ProjectObjectNode[];
 };
@@ -346,6 +382,8 @@ export type ProjectFileNode = {
   children?: ProjectFileNode[];
   imageAsset?: ProjectImageAsset;
   objectTree?: ProjectObjectNode[];
+  sourceRef?: ProjectObjectSourceRef;
+  template?: ProjectObjectTemplate;
 };
 
 export type Project = ProjectSummary & {
@@ -624,6 +662,26 @@ export function getDefaultProjectObjectContainer(
   };
 }
 
+export function getDefaultProjectObjectTemplate(): ProjectObjectTemplate {
+  return {
+    variables: []
+  };
+}
+
+export function getDefaultProjectObjectVariableValue(
+  type: ProjectObjectVariableType
+): ProjectObjectVariableValue {
+  if (type === "number") {
+    return 0;
+  }
+
+  if (type === "color") {
+    return "#000000";
+  }
+
+  return "";
+}
+
 export function getDefaultProjectObjectStackDisplay(): ProjectObjectStackDisplay {
   return {
     showCount: true,
@@ -706,7 +764,6 @@ export function getDefaultProjectObjectDoubleSide(
   kind: ProjectObjectKind = "card"
 ): ProjectObjectDoubleSide {
   return {
-    activeSide: "front",
     enabled: hasProjectObjectSides(kind)
   };
 }
@@ -923,4 +980,224 @@ export function createDefaultProjectObjectNode(
     children: [],
     components: createDefaultProjectObjectComponents(kind, name)
   };
+}
+
+export function getProjectObjectVariableDefaultValues(
+  template: ProjectObjectTemplate | undefined
+): Record<string, ProjectObjectVariableValue> {
+  const values: Record<string, ProjectObjectVariableValue> = {};
+
+  for (const variable of template?.variables ?? []) {
+    values[variable.id] = variable.defaultValue;
+  }
+
+  return values;
+}
+
+export function resolveProjectObjectFileObjectTree(
+  fileTree: readonly ProjectFileNode[],
+  fileNode: ProjectFileNode | null | undefined
+): ProjectObjectNode[] {
+  if (!fileNode || fileNode.type !== "file") {
+    return [];
+  }
+
+  if (fileNode.kind === "object") {
+    return resolveProjectObjectFileObjectTreeById(fileTree, fileNode.id, undefined, new Set());
+  }
+
+  return fileNode.objectTree ?? [];
+}
+
+export function resolveProjectObjectFileObjectTreeById(
+  fileTree: readonly ProjectFileNode[],
+  objectFileNodeId: string,
+  overrideValues: Record<string, ProjectObjectVariableValue> = {},
+  seenObjectFileNodeIds: Set<string> = new Set()
+): ProjectObjectNode[] {
+  const fileNode = findProjectFileNodeInTree(fileTree, objectFileNodeId);
+
+  if (!fileNode || fileNode.type !== "file" || fileNode.kind !== "object") {
+    return [];
+  }
+
+  if (seenObjectFileNodeIds.has(fileNode.id)) {
+    return [];
+  }
+
+  seenObjectFileNodeIds.add(fileNode.id);
+
+  if (fileNode.sourceRef) {
+    return resolveProjectObjectFileObjectTreeById(
+      fileTree,
+      fileNode.sourceRef.sourceObjectFileNodeId,
+      {
+        ...fileNode.sourceRef.values,
+        ...overrideValues
+      },
+      seenObjectFileNodeIds
+    );
+  }
+
+  const template = fileNode.template;
+  const values = {
+    ...getProjectObjectVariableDefaultValues(template),
+    ...overrideValues
+  };
+
+  return resolveProjectObjectTreeVariables(fileNode.objectTree ?? [], template, values);
+}
+
+export function resolveProjectObjectTreeVariables(
+  objectTree: readonly ProjectObjectNode[],
+  template: ProjectObjectTemplate | undefined,
+  values: Record<string, ProjectObjectVariableValue>
+): ProjectObjectNode[] {
+  const variableById = new Map(
+    (template?.variables ?? []).map((variable) => [variable.id, variable])
+  );
+
+  return objectTree.map((object) =>
+    resolveProjectObjectNodeVariables(object, variableById, values)
+  );
+}
+
+export function findProjectFileNodeInTree(
+  fileTree: readonly ProjectFileNode[],
+  nodeId: string
+): ProjectFileNode | undefined {
+  for (const node of fileTree) {
+    if (node.id === nodeId) {
+      return node;
+    }
+
+    if (node.type === "folder") {
+      const child = findProjectFileNodeInTree(node.children ?? [], nodeId);
+
+      if (child) {
+        return child;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function resolveProjectObjectNodeVariables(
+  object: ProjectObjectNode,
+  variableById: ReadonlyMap<string, ProjectObjectVariableDefinition>,
+  values: Record<string, ProjectObjectVariableValue>
+): ProjectObjectNode {
+  const components = resolveProjectObjectNodeComponentVariables(object, variableById, values);
+  const children = object.children?.map((child) =>
+    resolveProjectObjectNodeVariables(child, variableById, values)
+  );
+
+  return {
+    ...object,
+    ...(components ? { components } : {}),
+    ...(children ? { children } : {})
+  };
+}
+
+function resolveProjectObjectNodeComponentVariables(
+  object: ProjectObjectNode,
+  variableById: ReadonlyMap<string, ProjectObjectVariableDefinition>,
+  values: Record<string, ProjectObjectVariableValue>
+): ProjectObjectComponents | undefined {
+  let components = object.components;
+
+  for (const binding of object.bindings ?? []) {
+    const variable = variableById.get(binding.variableId);
+
+    if (!variable || !isProjectObjectVariableTargetCompatible(variable.type, binding.target)) {
+      continue;
+    }
+
+    const value = values[binding.variableId] ?? variable.defaultValue;
+    components = getProjectObjectComponentsWithBoundValue(components, binding.target, value);
+  }
+
+  return components;
+}
+
+function isProjectObjectVariableTargetCompatible(
+  type: ProjectObjectVariableType,
+  target: ProjectObjectVariableBindingTarget
+) {
+  if (target === "text.content") {
+    return type === "text" || type === "number";
+  }
+
+  if (
+    target === "appearance.backgroundColor" ||
+    target === "appearance.borderColor" ||
+    target === "text.color"
+  ) {
+    return type === "color";
+  }
+
+  return type === "image";
+}
+
+function getProjectObjectComponentsWithBoundValue(
+  components: ProjectObjectComponents | undefined,
+  target: ProjectObjectVariableBindingTarget,
+  value: ProjectObjectVariableValue
+): ProjectObjectComponents | undefined {
+  if (!components) {
+    return components;
+  }
+
+  if (target === "appearance.backgroundColor" && components.appearance) {
+    return {
+      ...components,
+      appearance: {
+        ...components.appearance,
+        backgroundColor: String(value)
+      }
+    };
+  }
+
+  if (target === "appearance.borderColor" && components.appearance) {
+    return {
+      ...components,
+      appearance: {
+        ...components.appearance,
+        borderColor: String(value)
+      }
+    };
+  }
+
+  if (target === "image.assetId" && components.image) {
+    return {
+      ...components,
+      image: {
+        ...components.image,
+        assetId: String(value)
+      }
+    };
+  }
+
+  if (target === "text.color" && components.text) {
+    return {
+      ...components,
+      text: {
+        ...components.text,
+        color: String(value)
+      }
+    };
+  }
+
+  if (target === "text.content" && components.text) {
+    return {
+      ...components,
+      text: {
+        ...components.text,
+        content: String(value)
+      }
+    };
+  }
+
+  return components;
 }

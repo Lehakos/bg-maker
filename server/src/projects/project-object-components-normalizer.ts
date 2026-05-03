@@ -126,7 +126,6 @@ const projectObjectCounterBoundsModeSet = new Set<ProjectObjectCounterBoundsMode
 const projectObjectCounterDisplayModeSet = new Set<ProjectObjectCounterDisplayMode>(
   projectObjectCounterDisplayModes
 );
-const projectObjectSideSet = new Set<ProjectObjectSide>(projectObjectSides);
 const projectObjectLayoutAlignments = new Set<ProjectObjectLayoutAlignment>([
   "center",
   "end",
@@ -577,9 +576,6 @@ function normalizeProjectObjectDoubleSide(
     name
   );
   const doubleSide: ProjectObjectDoubleSide = {
-    activeSide: projectObjectSideSet.has(record.activeSide as ProjectObjectSide)
-      ? (record.activeSide as ProjectObjectSide)
-      : defaultDoubleSide.activeSide,
     enabled: typeof record.enabled === "boolean" ? record.enabled : defaultDoubleSide.enabled
   };
 

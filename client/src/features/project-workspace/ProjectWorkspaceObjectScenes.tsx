@@ -1,7 +1,6 @@
 import type {
   ProjectFileNode,
   ProjectObjectDie,
-  ProjectObjectDoubleSide,
   ProjectObjectNode,
   ProjectObjectSide
 } from "@bg-maker/shared";
@@ -10,14 +9,16 @@ import { Rows3 } from "lucide-react";
 import { useMemo } from "react";
 import type { ProjectImageAssetOption } from "../project-assets/project-image-assets";
 import {
-  setProjectObjectNodeDie,
-  setProjectObjectNodeDoubleSide
+  getProjectObjectTreeWithActiveSides,
+  setProjectObjectNodeDie
 } from "../project-objects/project-object-tree";
 import {
+  createSetProjectObjectSideSelectionCommand,
   createUpdateProjectObjectTreeCommand,
   type ProjectEditorCommand
 } from "./project-editor-commands";
 import { cx } from "./project-workspace-css";
+import { getProjectObjectSideSelection } from "./project-object-side-selection";
 import { SceneObjectFrame } from "./SceneObjectFrame";
 import { useProjectWorkspaceStore } from "./use-project-workspace-store";
 
@@ -26,6 +27,7 @@ type ProjectWorkspaceSceneProps = {
   fileNode: ProjectFileNode;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
+  readOnly?: boolean;
   selectedObjectId: string | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onSelectObject: (objectId: string | null) => void;
@@ -38,6 +40,7 @@ export function TableLayoutWorkspace({
   fileNode,
   imageAssets,
   objectTree,
+  readOnly = false,
   selectedObjectId,
   onExecuteCommand,
   onSelectObject
@@ -55,10 +58,12 @@ export function TableLayoutWorkspace({
 
         {objectTree.length > 0 ? (
           <ObjectScene
+            key={fileNode.id}
             fileTree={fileTree}
             fileNodeId={fileNode.id}
             imageAssets={imageAssets}
             objectTree={objectTree}
+            readOnly={readOnly}
             selectedObjectId={selectedObjectId}
             size="small"
             onExecuteCommand={onExecuteCommand}
@@ -81,6 +86,7 @@ export function ObjectFileWorkspace({
   fileNode,
   imageAssets,
   objectTree,
+  readOnly = false,
   selectedObjectId,
   onExecuteCommand,
   onSelectObject
@@ -89,10 +95,12 @@ export function ObjectFileWorkspace({
     return (
       <div className="flex h-full min-h-0 items-center justify-center p-8">
         <ObjectScene
+          key={fileNode.id}
           fileTree={fileTree}
           fileNodeId={fileNode.id}
           imageAssets={imageAssets}
           objectTree={objectTree}
+          readOnly={readOnly}
           selectedObjectId={selectedObjectId}
           size="large"
           onExecuteCommand={onExecuteCommand}
@@ -114,6 +122,7 @@ type ObjectSceneProps = {
   fileNodeId: string;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
+  readOnly: boolean;
   selectedObjectId: string | null;
   size: ObjectSceneSize;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
@@ -125,6 +134,7 @@ function ObjectScene({
   fileNodeId,
   imageAssets,
   objectTree,
+  readOnly,
   selectedObjectId,
   size,
   onExecuteCommand,
@@ -135,32 +145,31 @@ function ObjectScene({
     () => new Map(imageAssets.map((imageAsset) => [imageAsset.asset.id, imageAsset])),
     [imageAssets]
   );
+  const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
+  const viewObjectTree = useMemo(
+    () =>
+      getProjectObjectTreeWithActiveSides(objectTree, (object) =>
+        getProjectObjectSideSelection(objectSideSelections, fileNodeId, object.id)
+      ),
+    [fileNodeId, objectSideSelections, objectTree]
+  );
 
   function handleObjectSideChange(
     objectId: string,
-    doubleSide: ProjectObjectDoubleSide,
-    activeSide: ProjectObjectSide,
-    objectLabel: "card" | "token"
+    activeSide: ProjectObjectSide
   ) {
-    if (doubleSide.activeSide === activeSide) {
-      return;
-    }
+    const currentSide = getProjectObjectSideSelection(objectSideSelections, fileNodeId, objectId);
 
-    const nextObjectTree = setProjectObjectNodeDoubleSide(objectTree, objectId, {
-      ...doubleSide,
-      activeSide
-    });
-
-    if (nextObjectTree === objectTree) {
+    if (currentSide === activeSide) {
       return;
     }
 
     onExecuteCommand(
-      createUpdateProjectObjectTreeCommand({
-        after: nextObjectTree,
-        before: objectTree,
+      createSetProjectObjectSideSelectionCommand({
+        after: activeSide,
+        before: currentSide,
         fileNodeId,
-        label: `Show ${objectLabel} ${activeSide}`
+        objectId
       })
     );
   }
@@ -169,6 +178,10 @@ function ObjectScene({
     const nextActiveFace = normalizeProjectObjectDieActiveFace(activeFace, die.faceCount);
 
     if (die.activeFace === nextActiveFace) {
+      return;
+    }
+
+    if (readOnly) {
       return;
     }
 
@@ -203,13 +216,14 @@ function ObjectScene({
       }}
     >
       <WorkspaceAxes />
-      {objectTree.map((object, index) => (
+      {viewObjectTree.map((object, index) => (
         <SceneObjectFrame
           key={object.id}
           fileTree={fileTree}
           fileNodeId={fileNodeId}
           imageAssetById={imageAssetById}
           object={object}
+          readOnly={readOnly}
           root
           selectedObjectId={selectedObjectId}
           siblingIndex={index}

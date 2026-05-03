@@ -1,11 +1,17 @@
 import type { ProjectFileNode, ProjectObjectNode } from "@bg-maker/shared";
+import { resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { findProjectFileNode, sortProjectFileTree } from "../project-files/project-file-tree";
 import {
   findProjectObjectNode,
+  getProjectObjectTreeWithActiveSides,
   isProjectObjectTreeFileNode
 } from "../project-objects/project-object-tree";
-import type { ProjectEditorCommand } from "./project-editor-commands";
+import type { ProjectEditorCommand, ProjectEditorState } from "./project-editor-commands";
+import {
+  getProjectObjectSideSelection,
+  type ProjectObjectSideSelections
+} from "./project-object-side-selection";
 import {
   defaultCanvasScale,
   normalizeCanvasScale,
@@ -38,6 +44,7 @@ export type ProjectWorkspaceStoreState = {
   canvasScale: number;
   executeCommand: (command: ProjectEditorCommand) => void;
   fileTree: ProjectFileNode[];
+  objectSideSelections: ProjectObjectSideSelections;
   projectId: string;
   redo: () => void;
   redoStack: ProjectEditorCommand[];
@@ -75,22 +82,28 @@ export function createProjectWorkspaceStore({
     canvasScale: defaultCanvasScale,
     executeCommand: (command) => {
       const state = get();
-      const nextFileTree = command.execute(state.fileTree);
+      const editorState = getProjectEditorState(state);
+      const nextEditorState = command.execute(editorState);
 
-      if (Object.is(nextFileTree, state.fileTree)) {
+      if (Object.is(nextEditorState, editorState)) {
         return;
       }
 
-      state.saveFileTree(nextFileTree);
+      if (nextEditorState.fileTree !== state.fileTree) {
+        state.saveFileTree(nextEditorState.fileTree);
+      }
+
       set({
         canRedo: false,
         canUndo: true,
-        fileTree: nextFileTree,
+        fileTree: nextEditorState.fileTree,
+        objectSideSelections: nextEditorState.objectSideSelections,
         redoStack: [],
         undoStack: [...state.undoStack, command]
       });
     },
     fileTree,
+    objectSideSelections: {},
     projectId,
     redo: () => {
       const state = get();
@@ -100,15 +113,19 @@ export function createProjectWorkspaceStore({
         return;
       }
 
-      const nextFileTree = command.execute(state.fileTree);
+      const nextEditorState = command.execute(getProjectEditorState(state));
       const redoStack = state.redoStack.slice(0, -1);
       const undoStack = [...state.undoStack, command];
 
-      state.saveFileTree(nextFileTree);
+      if (nextEditorState.fileTree !== state.fileTree) {
+        state.saveFileTree(nextEditorState.fileTree);
+      }
+
       set({
         canRedo: redoStack.length > 0,
         canUndo: undoStack.length > 0,
-        fileTree: nextFileTree,
+        fileTree: nextEditorState.fileTree,
+        objectSideSelections: nextEditorState.objectSideSelections,
         redoStack,
         undoStack
       });
@@ -142,15 +159,19 @@ export function createProjectWorkspaceStore({
         return;
       }
 
-      const nextFileTree = command.undo(state.fileTree);
+      const nextEditorState = command.undo(getProjectEditorState(state));
       const redoStack = [...state.redoStack, command];
       const undoStack = state.undoStack.slice(0, -1);
 
-      state.saveFileTree(nextFileTree);
+      if (nextEditorState.fileTree !== state.fileTree) {
+        state.saveFileTree(nextEditorState.fileTree);
+      }
+
       set({
         canRedo: redoStack.length > 0,
         canUndo: undoStack.length > 0,
-        fileTree: nextFileTree,
+        fileTree: nextEditorState.fileTree,
+        objectSideSelections: nextEditorState.objectSideSelections,
         redoStack,
         undoStack
       });
@@ -159,8 +180,18 @@ export function createProjectWorkspaceStore({
   }));
 }
 
+function getProjectEditorState(state: ProjectWorkspaceStoreState): ProjectEditorState {
+  return {
+    fileTree: state.fileTree,
+    objectSideSelections: state.objectSideSelections
+  };
+}
+
 export function getProjectWorkspaceSelection(
-  state: Pick<ProjectWorkspaceStoreState, "fileTree" | "selectedNodeId" | "selectedObject">
+  state: Pick<
+    ProjectWorkspaceStoreState,
+    "fileTree" | "objectSideSelections" | "selectedNodeId" | "selectedObject"
+  >
 ): ProjectWorkspaceSelection {
   const effectiveSelectedNodeId =
     state.selectedNodeId && findProjectFileNode(state.fileTree, state.selectedNodeId)
@@ -174,16 +205,28 @@ export function getProjectWorkspaceSelection(
     : null;
   const defaultSelectedObjectId =
     selectedContentFileNode?.kind === "object"
-      ? (selectedContentFileNode.objectTree?.[0]?.id ?? null)
+      ? (getProjectWorkspaceContentObjectTree(
+          state.fileTree,
+          selectedContentFileNode,
+          state.objectSideSelections
+        )[0]?.id ?? null)
       : null;
   const selectedObjectId = getSelectedObjectId({
     defaultSelectedObjectId,
+    fileTree: state.fileTree,
     selectedContentFileNode,
     selectedObject: state.selectedObject
   });
   const selectedProjectObject =
     selectedContentFileNode && selectedObjectId
-      ? (findProjectObjectNode(selectedContentFileNode.objectTree ?? [], selectedObjectId) ?? null)
+      ? (findProjectObjectNode(
+          getProjectWorkspaceContentObjectTree(
+            state.fileTree,
+            selectedContentFileNode,
+            state.objectSideSelections
+          ),
+          selectedObjectId
+        ) ?? null)
       : null;
 
   return {
@@ -197,10 +240,12 @@ export function getProjectWorkspaceSelection(
 
 function getSelectedObjectId({
   defaultSelectedObjectId,
+  fileTree,
   selectedContentFileNode,
   selectedObject
 }: {
   defaultSelectedObjectId: string | null;
+  fileTree: ProjectFileNode[];
   selectedContentFileNode: ProjectWorkspaceObjectTreeFileNode | null;
   selectedObject: SelectedProjectObject;
 }) {
@@ -212,7 +257,29 @@ function getSelectedObjectId({
     return defaultSelectedObjectId;
   }
 
-  return findProjectObjectNode(selectedContentFileNode.objectTree ?? [], selectedObject.objectId)
+  return findProjectObjectNode(
+    getProjectWorkspaceContentObjectTree(fileTree, selectedContentFileNode, {}),
+    selectedObject.objectId
+  )
     ? selectedObject.objectId
     : defaultSelectedObjectId;
+}
+
+export function getProjectWorkspaceContentObjectTree(
+  fileTree: ProjectFileNode[],
+  contentFileNode: ProjectWorkspaceObjectTreeFileNode | null,
+  objectSideSelections: ProjectObjectSideSelections
+) {
+  const objectTree = contentFileNode?.sourceRef
+    ? resolveProjectObjectFileObjectTree(fileTree, contentFileNode)
+    : (contentFileNode?.objectTree ?? []);
+  const fileNodeId = contentFileNode?.id;
+
+  if (!fileNodeId) {
+    return objectTree;
+  }
+
+  return getProjectObjectTreeWithActiveSides(objectTree, (object) =>
+    getProjectObjectSideSelection(objectSideSelections, fileNodeId, object.id)
+  );
 }

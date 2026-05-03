@@ -1,7 +1,14 @@
-import type { ProjectObjectKind, ProjectObjectNode, ProjectObjectSide } from "@bg-maker/shared";
+import type {
+  ProjectObjectKind,
+  ProjectObjectNode,
+  ProjectObjectSide,
+  ProjectObjectVariableBinding,
+  ProjectObjectVariableBindingTarget
+} from "@bg-maker/shared";
 import {
   createDefaultProjectObjectNode,
   projectObjectKinds as sharedProjectObjectKinds,
+  projectObjectVariableBindingTargets,
   projectObjectSides
 } from "@bg-maker/shared";
 import { normalizeProjectObjectComponents } from "./project-object-components-normalizer.js";
@@ -11,6 +18,9 @@ const maxProjectObjectTreeDepth = 24;
 const maxProjectObjectTreeNodes = 1000;
 const projectObjectKinds = new Set<ProjectObjectKind>(sharedProjectObjectKinds);
 const projectObjectSideSet = new Set<ProjectObjectSide>(projectObjectSides);
+const projectObjectVariableBindingTargetSet = new Set<ProjectObjectVariableBindingTarget>(
+  projectObjectVariableBindingTargets
+);
 
 export function ensureProjectObjectFileRoot(
   objectTree: ProjectObjectNode[],
@@ -86,6 +96,7 @@ function normalizeProjectObjectNode(
     name,
     kind,
     visible: record.visible !== false,
+    ...normalizeProjectObjectVariableBindings(record.bindings),
     components: normalizeProjectObjectComponents(record.components, kind, name),
     children: Array.isArray(record.children)
       ? record.children.map((child) =>
@@ -93,4 +104,41 @@ function normalizeProjectObjectNode(
         )
       : []
   };
+}
+
+function normalizeProjectObjectVariableBindings(value: unknown): {
+  bindings?: ProjectObjectVariableBinding[];
+} {
+  if (!Array.isArray(value)) {
+    return {};
+  }
+
+  const bindings: ProjectObjectVariableBinding[] = [];
+  const bindingKeys = new Set<string>();
+
+  for (const binding of value) {
+    const record =
+      binding && typeof binding === "object" ? (binding as Record<string, unknown>) : {};
+    const variableId = typeof record.variableId === "string" ? record.variableId.trim() : "";
+    const target = projectObjectVariableBindingTargetSet.has(
+      record.target as ProjectObjectVariableBindingTarget
+    )
+      ? (record.target as ProjectObjectVariableBindingTarget)
+      : undefined;
+
+    if (!variableId || !target) {
+      continue;
+    }
+
+    const bindingKey = `${target}:${variableId}`;
+
+    if (bindingKeys.has(bindingKey)) {
+      continue;
+    }
+
+    bindingKeys.add(bindingKey);
+    bindings.push({ variableId, target });
+  }
+
+  return bindings.length ? { bindings } : {};
 }

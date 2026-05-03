@@ -5,7 +5,10 @@ import type {
   ProjectObjectRectTransform,
   ProjectObjectZone
 } from "@bg-maker/shared";
-import { normalizeProjectObjectZoneCapacity } from "@bg-maker/shared";
+import {
+  normalizeProjectObjectZoneCapacity,
+  resolveProjectObjectFileObjectTree
+} from "@bg-maker/shared";
 import {
   getProjectObjectNodeAppearance,
   getProjectObjectNodeLayout,
@@ -38,7 +41,11 @@ export function resolveProjectObjectZoneReference(
   }
 
   for (const node of fileTree) {
-    const reference = resolveProjectObjectZoneReferenceInNode(node, zone.referenceObjectFileId);
+    const reference = resolveProjectObjectZoneReferenceInNode(
+      node,
+      zone.referenceObjectFileId,
+      fileTree
+    );
 
     if (reference) {
       return reference;
@@ -177,11 +184,16 @@ export function getProjectObjectZoneSlotRectsForSize(
 
 function resolveProjectObjectZoneReferenceInNode(
   node: ProjectFileNode,
-  referenceObjectFileId: string
+  referenceObjectFileId: string,
+  fileTree: readonly ProjectFileNode[]
 ): ProjectObjectZoneReference | null {
   if (node.type === "folder") {
     for (const child of node.children ?? []) {
-      const reference = resolveProjectObjectZoneReferenceInNode(child, referenceObjectFileId);
+      const reference = resolveProjectObjectZoneReferenceInNode(
+        child,
+        referenceObjectFileId,
+        fileTree
+      );
 
       if (reference) {
         return reference;
@@ -195,7 +207,7 @@ function resolveProjectObjectZoneReferenceInNode(
     return null;
   }
 
-  const rootObject = node.objectTree?.[0];
+  const rootObject = resolveProjectObjectFileObjectTree(fileTree, node)[0];
 
   if (!rootObject || rootObject.kind === "zone") {
     return null;

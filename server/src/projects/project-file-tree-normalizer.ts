@@ -1,15 +1,35 @@
-import type { Project, ProjectFileKind, ProjectFileNode } from "@bg-maker/shared";
-import { projectAssetsFolderId, projectAssetsFolderName } from "@bg-maker/shared";
+import type {
+  Project,
+  ProjectFileKind,
+  ProjectFileNode,
+  ProjectObjectSourceRef,
+  ProjectObjectTemplate,
+  ProjectObjectVariableDefinition,
+  ProjectObjectVariableType,
+  ProjectObjectVariableValue
+} from "@bg-maker/shared";
+import {
+  getDefaultProjectObjectVariableValue,
+  projectAssetsFolderId,
+  projectAssetsFolderName,
+  projectObjectVariableTypes
+} from "@bg-maker/shared";
 import { normalizeProjectImageAsset } from "./project-image-assets.js";
 import {
   ensureProjectObjectFileRoot,
   normalizeProjectObjectTree
 } from "./project-object-tree-normalizer.js";
 import { ProjectValidationError } from "./project-validation-error.js";
+import { normalizeFiniteNumber, normalizeHexColor } from "./project-normalization-utils.js";
 
 const maxProjectFileTreeDepth = 12;
 const maxProjectFileTreeNodes = 500;
+const maxProjectObjectSourceValueCount = 100;
+const maxProjectObjectVariableCount = 100;
+const maxProjectObjectVariableNameLength = 80;
+const maxProjectObjectVariableTextValueLength = 2000;
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
+const projectObjectVariableTypeSet = new Set<ProjectObjectVariableType>(projectObjectVariableTypes);
 
 export function normalizeStoredProject(value: unknown): Project | null {
   if (!value || typeof value !== "object") {
@@ -220,6 +240,7 @@ function normalizeProjectFileNode(
   const kind = projectFileKinds.has(record.kind as ProjectFileKind)
     ? (record.kind as ProjectFileKind)
     : "document";
+  const sourceRef = kind === "object" ? normalizeProjectObjectSourceRef(record.sourceRef) : null;
   const objectTree =
     kind === "tableSetup"
       ? {
@@ -227,15 +248,22 @@ function normalizeProjectFileNode(
             ? normalizeProjectObjectTree(record.objectTree)
             : []
         }
-      : kind === "object"
+      : kind === "object" && sourceRef
         ? {
-            objectTree: ensureProjectObjectFileRoot(
-              Array.isArray(record.objectTree) ? normalizeProjectObjectTree(record.objectTree) : [],
-              id,
-              name
-            )
+            sourceRef
           }
-        : {};
+        : kind === "object"
+          ? {
+              objectTree: ensureProjectObjectFileRoot(
+                Array.isArray(record.objectTree)
+                  ? normalizeProjectObjectTree(record.objectTree)
+                  : [],
+                id,
+                name
+              ),
+              ...normalizeProjectObjectTemplateField(record.template)
+            }
+          : {};
   const imageAsset = kind === "image" ? normalizeProjectImageAsset(record.imageAsset) : undefined;
 
   return {
@@ -246,4 +274,114 @@ function normalizeProjectFileNode(
     ...(imageAsset ? { imageAsset } : {}),
     ...objectTree
   };
+}
+
+function normalizeProjectObjectTemplateField(value: unknown): {
+  template?: ProjectObjectTemplate;
+} {
+  const template = normalizeProjectObjectTemplate(value);
+
+  return template.variables.length ? { template } : {};
+}
+
+function normalizeProjectObjectTemplate(value: unknown): ProjectObjectTemplate {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const variables = normalizeProjectObjectVariableDefinitions(record.variables);
+
+  return {
+    variables
+  };
+}
+
+function normalizeProjectObjectVariableDefinitions(
+  value: unknown
+): ProjectObjectVariableDefinition[] {
+  const variables = Array.isArray(value) ? value : [];
+  const variableIds = new Set<string>();
+  const normalizedVariables: ProjectObjectVariableDefinition[] = [];
+
+  for (const variable of variables.slice(0, maxProjectObjectVariableCount)) {
+    const record =
+      variable && typeof variable === "object" ? (variable as Record<string, unknown>) : {};
+    const id = typeof record.id === "string" ? record.id.trim() : "";
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    const type = projectObjectVariableTypeSet.has(record.type as ProjectObjectVariableType)
+      ? (record.type as ProjectObjectVariableType)
+      : "text";
+
+    if (!id || variableIds.has(id)) {
+      continue;
+    }
+
+    variableIds.add(id);
+    normalizedVariables.push({
+      id,
+      name: (name || "Property").slice(0, maxProjectObjectVariableNameLength),
+      type,
+      defaultValue: normalizeProjectObjectVariableValue(record.defaultValue, type)
+    });
+  }
+
+  return normalizedVariables;
+}
+
+function normalizeProjectObjectSourceRef(value: unknown): ProjectObjectSourceRef | null {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const sourceObjectFileNodeId =
+    typeof record.sourceObjectFileNodeId === "string" ? record.sourceObjectFileNodeId.trim() : "";
+
+  if (!sourceObjectFileNodeId) {
+    return null;
+  }
+
+  return {
+    sourceObjectFileNodeId,
+    values: normalizeLooseProjectObjectVariableValues(record.values)
+  };
+}
+
+function normalizeLooseProjectObjectVariableValues(
+  value: unknown
+): Record<string, ProjectObjectVariableValue> {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const values: Record<string, ProjectObjectVariableValue> = {};
+
+  for (const [key, rawValue] of Object.entries(record).slice(0, maxProjectObjectSourceValueCount)) {
+    const variableId = key.trim();
+
+    if (!variableId) {
+      continue;
+    }
+
+    values[variableId] =
+      typeof rawValue === "number"
+        ? normalizeFiniteNumber(rawValue, 0, {
+            max: Number.MAX_SAFE_INTEGER,
+            min: -Number.MAX_SAFE_INTEGER
+          })
+        : String(rawValue ?? "").slice(0, maxProjectObjectVariableTextValueLength);
+  }
+
+  return values;
+}
+
+function normalizeProjectObjectVariableValue(
+  value: unknown,
+  type: ProjectObjectVariableType
+): ProjectObjectVariableValue {
+  if (type === "number") {
+    return normalizeFiniteNumber(value, Number(getDefaultProjectObjectVariableValue(type)), {
+      max: Number.MAX_SAFE_INTEGER,
+      min: -Number.MAX_SAFE_INTEGER
+    });
+  }
+
+  if (type === "color") {
+    return normalizeHexColor(value, String(getDefaultProjectObjectVariableValue(type)));
+  }
+
+  return String(value ?? getDefaultProjectObjectVariableValue(type)).slice(
+    0,
+    maxProjectObjectVariableTextValueLength
+  );
 }
