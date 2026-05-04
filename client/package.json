@@ -23,6 +23,7 @@
     "@tanstack/react-router": "^1.168.25",
     "axios": "^1.15.2",
     "lucide-react": "^1.11.0",
+    "modern-screenshot": "^4.7.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "zustand": "^5.0.12"

@@ -5,11 +5,19 @@ import { getDraggedProjectObjectRectTransform } from "../project-workspace/trans
 import {
   createProjectTableSetupLinkedObjectItem,
   createProjectTableSetupLocalObjectItem,
+  getProjectTableSetupWithDuplicatedItems,
   getProjectTableSetupWithAddedItem,
+  getProjectTableSetupWithItemLocked,
   getProjectTableSetupWithItemTransform,
+  getProjectTableSetupWithReorderedItem,
   getProjectTableSetupWithMovedItem,
   getProjectTableSetupWithRemovedItem
 } from "./project-table-setup";
+import {
+  getProjectTableSetupWithAlignedItems,
+  getProjectTableSetupWithDistributedItems,
+  getProjectTableSetupWithTransformedGroupItems
+} from "./project-table-setup-geometry";
 
 function objectFile(id: string, name: string, object: ProjectObjectNode): ProjectFileNode {
   return {
@@ -77,6 +85,31 @@ describe("project table setup helpers", () => {
         item.type === "localObject" ? item.object.id : item.id
       )
     ).toEqual([firstItemId]);
+  });
+
+  it("duplicates, locks, and z-orders table setup items", () => {
+    const firstItem = createProjectTableSetupLocalObjectItem("label");
+    const secondItem = createProjectTableSetupLocalObjectItem("zone");
+    const firstItemId = firstItem.type === "localObject" ? firstItem.object.id : firstItem.id;
+    const secondItemId = secondItem.type === "localObject" ? secondItem.object.id : secondItem.id;
+    const tableSetup = {
+      ...getDefaultProjectTableSetup(),
+      items: [firstItem, secondItem]
+    };
+    const duplicated = getProjectTableSetupWithDuplicatedItems(tableSetup, [firstItemId]);
+    const duplicateId = duplicated.itemIds[0]!;
+    const locked = getProjectTableSetupWithItemLocked(duplicated.tableSetup, duplicateId, true);
+    const reordered = getProjectTableSetupWithReorderedItem(tableSetup, firstItemId, "sendFront");
+
+    expect(duplicated.tableSetup.items.map((item) => getItemId(item))).toEqual([
+      firstItemId,
+      duplicateId,
+      secondItemId
+    ]);
+    expect(duplicateId).not.toBe(firstItemId);
+    expect(getItemId(locked.items[1]!)).toBe(duplicateId);
+    expect(locked.items[1]).toMatchObject({ object: { locked: true } });
+    expect(reordered.items.map(getItemId)).toEqual([secondItemId, firstItemId]);
   });
 
   it("updates linked item scale and local primitive size separately", () => {
@@ -153,4 +186,146 @@ describe("project table setup helpers", () => {
 
     expect(transform).toMatchObject({ x: 50, y: 150 });
   });
+
+  it("aligns selected items to table bounds and distributes unlocked table setup items", () => {
+    const firstItem = createProjectTableSetupLocalObjectItem("label");
+    const secondItem = createProjectTableSetupLocalObjectItem("label");
+    const thirdItem = createProjectTableSetupLocalObjectItem("label");
+    const fileTree: ProjectFileNode[] = [];
+    const tableSetup = {
+      ...getDefaultProjectTableSetup(),
+      items: [firstItem, secondItem, thirdItem]
+    };
+    const ids = tableSetup.items.map(getItemId);
+    const positioned = ids.reduce(
+      (currentTableSetup, itemId, index) =>
+        getProjectTableSetupWithItemTransform(currentTableSetup, itemId, {
+          height: 20,
+          pivotX: 0.5,
+          pivotY: 0.5,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          width: 40,
+          x: index === 2 ? 200 : index * 50,
+          y: index * 30
+        }),
+      tableSetup
+    );
+    const aligned = getProjectTableSetupWithAlignedItems({
+      alignment: "top",
+      fileTree,
+      itemIds: ids,
+      tableSetup: positioned
+    });
+    const alignedSingle = getProjectTableSetupWithAlignedItems({
+      alignment: "right",
+      fileTree,
+      itemIds: [ids[0]!],
+      tableSetup: positioned
+    });
+    const distributed = getProjectTableSetupWithDistributedItems({
+      direction: "horizontal",
+      fileTree,
+      itemIds: ids,
+      tableSetup: positioned
+    });
+    const distributedPair = getProjectTableSetupWithDistributedItems({
+      direction: "horizontal",
+      fileTree,
+      itemIds: ids.slice(0, 2),
+      tableSetup: positioned
+    });
+
+    expect(
+      aligned.items.map((item) =>
+        item.type === "localObject" ? item.object.components?.rectTransform?.y : null
+      )
+    ).toEqual([-290, -290, -290]);
+    expect(
+      alignedSingle.items.map((item) =>
+        item.type === "localObject" ? item.object.components?.rectTransform?.x : null
+      )
+    ).toEqual([430, 50, 200]);
+    expect(
+      distributed.items.map((item) =>
+        item.type === "localObject" ? item.object.components?.rectTransform?.x : null
+      )
+    ).toEqual([-430, 0, 430]);
+    expect(
+      distributedPair.items.map((item) =>
+        item.type === "localObject" ? item.object.components?.rectTransform?.x : null
+      )
+    ).toEqual([-430, 430, 200]);
+  });
+
+  it("transforms unlocked selected table setup items as a group", () => {
+    const firstItem = createProjectTableSetupLocalObjectItem("label");
+    const secondItem = createProjectTableSetupLocalObjectItem("label");
+    const lockedItem = createProjectTableSetupLocalObjectItem("label");
+    const fileTree: ProjectFileNode[] = [];
+    const tableSetup = {
+      ...getDefaultProjectTableSetup(),
+      items: [firstItem, secondItem, lockedItem]
+    };
+    const ids = tableSetup.items.map(getItemId);
+    const positioned = ids.reduce(
+      (currentTableSetup, itemId, index) =>
+        getProjectTableSetupWithItemTransform(currentTableSetup, itemId, {
+          height: 20,
+          pivotX: 0.5,
+          pivotY: 0.5,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          width: 40,
+          x: index * 50,
+          y: index * 30
+        }),
+      tableSetup
+    );
+    const locked = getProjectTableSetupWithItemLocked(positioned, ids[2]!, true);
+    const transformed = getProjectTableSetupWithTransformedGroupItems({
+      after: {
+        height: 30,
+        pivotX: 0.5,
+        pivotY: 0.5,
+        rotation: 15,
+        scaleX: 1,
+        scaleY: 1,
+        width: 50,
+        x: 10,
+        y: 20
+      },
+      before: {
+        height: 20,
+        pivotX: 0.5,
+        pivotY: 0.5,
+        rotation: 0,
+        scaleX: 1,
+        scaleY: 1,
+        width: 40,
+        x: 0,
+        y: 0
+      },
+      fileTree,
+      itemIds: ids,
+      sourceItemId: ids[0]!,
+      tableSetup: locked
+    });
+
+    expect(
+      transformed.items.map((item) =>
+        item.type === "localObject" ? item.object.components?.rectTransform : null
+      )
+    ).toMatchObject([
+      { height: 30, rotation: 15, width: 50, x: 10, y: 20 },
+      { height: 30, rotation: 15, width: 50, x: 60, y: 50 },
+      { height: 20, rotation: 0, width: 40, x: 100, y: 60 }
+    ]);
+  });
 });
+
+function getItemId(item: ReturnType<typeof createProjectTableSetupLocalObjectItem>) {
+  return item.type === "localObject" ? item.object.id : item.id;
+}

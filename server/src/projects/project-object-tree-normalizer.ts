@@ -95,6 +95,7 @@ function normalizeProjectObjectNode(
     id,
     name,
     kind,
+    locked: record.locked === true,
     visible: record.visible !== false,
     ...normalizeProjectObjectVariableBindings(record.bindings),
     components: normalizeProjectObjectComponents(record.components, kind, name),

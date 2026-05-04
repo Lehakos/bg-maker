@@ -361,6 +361,7 @@ function normalizeProjectTableSetupItem(value: unknown): ProjectTableSetupItem |
       transform: normalizeProjectTableSetupItemTransform(record.transform),
       type: "linkedObject",
       values: normalizeLooseProjectObjectVariableValues(record.values),
+      locked: record.locked === true,
       visible: record.visible !== false
     };
   }

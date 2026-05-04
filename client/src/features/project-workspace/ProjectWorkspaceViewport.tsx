@@ -17,9 +17,11 @@ type WorkspaceViewportProps = {
   readOnly?: boolean;
   selectedNode?: ProjectFileNode;
   selectedObjectId: string | null;
+  selectedObjectIds: string[];
   tableSetup: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onSelectObject: (objectId: string | null) => void;
+  onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
 
 export function WorkspaceViewport({
@@ -31,9 +33,11 @@ export function WorkspaceViewport({
   readOnly = false,
   selectedNode,
   selectedObjectId,
+  selectedObjectIds,
   tableSetup,
   onExecuteCommand,
-  onSelectObject
+  onSelectObject,
+  onSelectObjects
 }: WorkspaceViewportProps) {
   if (contentFileNode?.kind === "tableSetup") {
     return (
@@ -44,9 +48,11 @@ export function WorkspaceViewport({
         objectTree={objectTree}
         readOnly={readOnly}
         selectedObjectId={selectedObjectId}
+        selectedObjectIds={selectedObjectIds}
         tableSetup={tableSetup}
         onExecuteCommand={onExecuteCommand}
         onSelectObject={onSelectObject}
+        onSelectObjects={onSelectObjects}
       />
     );
   }
@@ -60,8 +66,10 @@ export function WorkspaceViewport({
         objectTree={objectTree}
         readOnly={readOnly}
         selectedObjectId={selectedObjectId}
+        selectedObjectIds={selectedObjectIds}
         onExecuteCommand={onExecuteCommand}
         onSelectObject={onSelectObject}
+        onSelectObjects={onSelectObjects}
       />
     );
   }

@@ -2,8 +2,11 @@ import type {
   Project,
   ProjectFileNode,
   ProjectObjectNode,
+  ProjectObjectKind,
+  ProjectTableSetupItem,
   ProjectTableSetup
 } from "@bg-maker/shared";
+import { getProjectTableSetupItemId, resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
 import { Alert, Button, Center, Loader } from "@mantine/core";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { AlertCircle, ArrowLeft } from "lucide-react";
@@ -21,6 +24,7 @@ import {
 } from "./use-project-workspace-store";
 import {
   createReplaceProjectFileTreeCommand,
+  createUpdateProjectObjectRectTransformCommand,
   createUpdateProjectObjectTreeCommand,
   createUpdateProjectTableSetupCommand
 } from "./project-editor-commands";
@@ -28,7 +32,13 @@ import { useProject, useUpdateProjectFileTree } from "./project-hooks";
 import { findProjectFileNode } from "../project-files/project-file-tree";
 import { formatProjectDate } from "../project-catalog/project-format";
 import {
+  appendProjectObjectNode,
   clearProjectObjectTreeActiveSides,
+  cloneProjectObjectNode,
+  findProjectObjectNode,
+  findProjectObjectNodeLocation,
+  getProjectObjectNodeRectTransform,
+  insertProjectObjectNodeAfter,
   isProjectObjectTreeFileNode
 } from "../project-objects/project-object-tree";
 import { getProjectWorkspaceContentObjectTree } from "./project-workspace-store";
@@ -39,8 +49,18 @@ import {
 } from "./resizable-panel-state";
 import {
   getProjectFileNodeTableSetup,
+  getProjectTableSetupWithDuplicatedItems,
+  getProjectTableSetupWithInsertedItems,
   getProjectTableSetupWithLocalObjectTree
 } from "../project-table-setup/project-table-setup";
+import {
+  getProjectTableSetupWithAlignedItems,
+  getProjectTableSetupWithDistributedItems,
+  getProjectTableSetupWithNudgedItems,
+  type TableSetupAlignment,
+  type TableSetupDistribution
+} from "../project-table-setup/project-table-setup-geometry";
+import { domToPng } from "modern-screenshot";
 
 const sidePanelMinWidth = 260;
 const sidePanelDefaultWidth = 320;
@@ -164,13 +184,18 @@ function ProjectWorkspaceContent({
   const executeEditorCommand = useProjectWorkspaceStore((state) => state.executeCommand);
   const redo = useProjectWorkspaceStore((state) => state.redo);
   const selectObject = useProjectWorkspaceStore((state) => state.selectObject);
+  const selectObjects = useProjectWorkspaceStore((state) => state.selectObjects);
+  const clipboard = useProjectWorkspaceStore((state) => state.clipboard);
+  const setClipboard = useProjectWorkspaceStore((state) => state.setClipboard);
   const setSelectedNodeId = useProjectWorkspaceStore((state) => state.setSelectedNodeId);
   const undo = useProjectWorkspaceStore((state) => state.undo);
   const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
   const {
     effectiveSelectedNodeId,
     selectedContentFileNode,
+    selectedFileNode,
     selectedObjectId,
+    selectedObjectIds,
     selectedProjectObject,
     selectedTableSetupItem
   } = useProjectWorkspaceSelection();
@@ -247,12 +272,322 @@ function ProjectWorkspaceContent({
     "--workspace-right-panel-width": `${Math.round(effectiveRightPanelWidth)}px`
   };
 
+  const persistTableSetup = useCallback(
+    (fileNodeId: string, tableSetup: ProjectTableSetup, label = "Update table setup") => {
+      const fileNode = findProjectFileNode(fileTree, fileNodeId);
+      const before = getProjectFileNodeTableSetup(fileNode);
+
+      if (!before || before === tableSetup) {
+        return;
+      }
+
+      executeEditorCommand(
+        createUpdateProjectTableSetupCommand({
+          after: tableSetup,
+          before,
+          fileNodeId,
+          label
+        })
+      );
+    },
+    [executeEditorCommand, fileTree]
+  );
+
+  const handleWorkspaceCopy = useCallback(() => {
+    if (!selectedContentFileNode) {
+      return false;
+    }
+
+    if (selectedContentFileNode.kind === "tableSetup" && selectedTableSetup) {
+      const copiedItems = getTableSetupItemsByIds(selectedTableSetup, selectedObjectIds);
+
+      if (!copiedItems.length) {
+        return false;
+      }
+
+      setClipboard({
+        items: copiedItems,
+        type: "tableSetupItems"
+      });
+      return true;
+    }
+
+    if (
+      selectedContentFileNode.kind !== "object" ||
+      !selectedObjectId ||
+      !selectedProjectObject
+    ) {
+      return false;
+    }
+
+    const object = clearProjectObjectTreeActiveSides([selectedProjectObject])[0];
+
+    if (!object) {
+      return false;
+    }
+
+    setClipboard({
+      objects: [object],
+      type: "objectNodes"
+    });
+    return true;
+  }, [
+    selectedContentFileNode,
+    selectedObjectId,
+    selectedObjectIds,
+    selectedProjectObject,
+    selectedTableSetup,
+    setClipboard
+  ]);
+
+  const handleWorkspaceDuplicate = useCallback(() => {
+    if (!selectedContentFileNode) {
+      return false;
+    }
+
+    if (selectedContentFileNode.kind === "tableSetup" && selectedTableSetup) {
+      const result = getProjectTableSetupWithDuplicatedItems(
+        selectedTableSetup,
+        selectedObjectIds
+      );
+
+      if (result.tableSetup === selectedTableSetup) {
+        return false;
+      }
+
+      persistTableSetup(selectedContentFileNode.id, result.tableSetup, "Duplicate table item");
+      selectObjects(result.itemIds, result.itemIds.at(-1) ?? null);
+      return true;
+    }
+
+    if (
+      selectedContentFileNode.kind !== "object" ||
+      selectedContentFileNode.sourceRef ||
+      !selectedObjectId
+    ) {
+      return false;
+    }
+
+    const objectTree = selectedContentFileNode.objectTree ?? [];
+    const selectedLocation = findProjectObjectNodeLocation(objectTree, selectedObjectId);
+    const selectedObject = selectedLocation?.node;
+
+    if (!selectedObject || isSingleObjectFileRoot(objectTree, selectedObject.id)) {
+      return false;
+    }
+
+    const duplicate = cloneProjectObjectNode(selectedObject, { offset: 24 });
+    const nextObjectTree = insertProjectObjectNodeAfter(objectTree, selectedObject.id, duplicate);
+
+    if (nextObjectTree === objectTree) {
+      return false;
+    }
+
+    executeEditorCommand(
+      createUpdateProjectObjectTreeCommand({
+        after: nextObjectTree,
+        before: objectTree,
+        fileNodeId: selectedContentFileNode.id,
+        label: "Duplicate object"
+      })
+    );
+    selectObject(duplicate.id);
+    return true;
+  }, [
+    executeEditorCommand,
+    persistTableSetup,
+    selectObject,
+    selectObjects,
+    selectedContentFileNode,
+    selectedObjectId,
+    selectedObjectIds,
+    selectedTableSetup
+  ]);
+
+  const handleWorkspacePaste = useCallback(() => {
+    if (!selectedContentFileNode || !clipboard) {
+      return false;
+    }
+
+    if (
+      selectedContentFileNode.kind === "tableSetup" &&
+      selectedTableSetup &&
+      clipboard.type === "tableSetupItems"
+    ) {
+      const result = getProjectTableSetupWithInsertedItems(
+        selectedTableSetup,
+        selectedObjectIds,
+        clipboard.items
+      );
+
+      if (result.tableSetup === selectedTableSetup) {
+        return false;
+      }
+
+      persistTableSetup(selectedContentFileNode.id, result.tableSetup, "Paste table item");
+      selectObjects(result.itemIds, result.itemIds.at(-1) ?? null);
+      return true;
+    }
+
+    if (
+      selectedContentFileNode.kind !== "object" ||
+      selectedContentFileNode.sourceRef ||
+      clipboard.type !== "objectNodes"
+    ) {
+      return false;
+    }
+
+    const objectTree = selectedContentFileNode.objectTree ?? [];
+    const parentId =
+      selectedObjectId && findProjectObjectNode(objectTree, selectedObjectId)
+        ? selectedObjectId
+        : null;
+
+    if (parentId === null && objectTree.length > 0) {
+      return false;
+    }
+
+    let nextObjectTree = objectTree;
+    const pastedIds: string[] = [];
+
+    for (const object of clipboard.objects) {
+      const pastedObject = cloneProjectObjectNode(object, { offset: 24 });
+      nextObjectTree = appendProjectObjectNode(nextObjectTree, parentId, pastedObject);
+      pastedIds.push(pastedObject.id);
+    }
+
+    if (nextObjectTree === objectTree || !pastedIds.length) {
+      return false;
+    }
+
+    executeEditorCommand(
+      createUpdateProjectObjectTreeCommand({
+        after: nextObjectTree,
+        before: objectTree,
+        fileNodeId: selectedContentFileNode.id,
+        label: "Paste object"
+      })
+    );
+    selectObject(pastedIds.at(-1) ?? null);
+    return true;
+  }, [
+    clipboard,
+    executeEditorCommand,
+    persistTableSetup,
+    selectObject,
+    selectObjects,
+    selectedContentFileNode,
+    selectedObjectId,
+    selectedObjectIds,
+    selectedTableSetup
+  ]);
+
   useEffect(() => {
+    function handleWorkspaceNudgeKey(event: KeyboardEvent) {
+      const delta = getKeyboardNudgeDelta(event, selectedTableSetup?.grid.size);
+
+      if (!delta) {
+        return false;
+      }
+
+      if (!selectedContentFileNode || !selectedObjectId) {
+        return false;
+      }
+
+      if (selectedContentFileNode.kind === "tableSetup" && selectedTableSetup) {
+        const nextTableSetup = getProjectTableSetupWithNudgedItems({
+          fileTree,
+          itemIds: selectedObjectIds,
+          tableSetup: selectedTableSetup,
+          x: delta.x,
+          y: delta.y
+        });
+
+        if (nextTableSetup === selectedTableSetup) {
+          return false;
+        }
+
+        event.preventDefault();
+        persistTableSetup(selectedContentFileNode.id, nextTableSetup, "Nudge table item");
+        return true;
+      }
+
+      if (
+        selectedContentFileNode.kind === "object" &&
+        selectedProjectObject &&
+        selectedProjectObject.locked !== true
+      ) {
+        const before = getProjectObjectNodeRectTransform(selectedProjectObject);
+        const after = {
+          ...before,
+          x: before.x + delta.x,
+          y: before.y + delta.y
+        };
+
+        event.preventDefault();
+        executeEditorCommand(
+          createUpdateProjectObjectRectTransformCommand({
+            after,
+            before,
+            fileNodeId: selectedContentFileNode.id,
+            label: "Nudge object",
+            objectId: selectedObjectId
+          })
+        );
+        return true;
+      }
+
+      return false;
+    }
+
     function handleKeyDown(event: KeyboardEvent) {
-      const key = event.key.toLowerCase();
+      const key = getKeyboardShortcutKey(event);
       const commandModifierPressed = event.metaKey || event.ctrlKey;
 
       if (!commandModifierPressed || isEditableKeyboardTarget(event.target)) {
+        if (!commandModifierPressed) {
+          const nudged = handleWorkspaceNudgeKey(event);
+
+          if (nudged) {
+            return;
+          }
+
+          if (event.key === "Escape" && selectedContentFileNode?.kind === "tableSetup") {
+            event.preventDefault();
+            selectObject(null);
+          }
+        }
+
+        return;
+      }
+
+      if (key === "c") {
+        const copied = handleWorkspaceCopy();
+
+        if (copied) {
+          event.preventDefault();
+        }
+
+        return;
+      }
+
+      if (key === "v") {
+        const pasted = handleWorkspacePaste();
+
+        if (pasted) {
+          event.preventDefault();
+        }
+
+        return;
+      }
+
+      if (key === "d") {
+        const duplicated = handleWorkspaceDuplicate();
+
+        if (duplicated) {
+          event.preventDefault();
+        }
+
         return;
       }
 
@@ -277,7 +612,22 @@ function ProjectWorkspaceContent({
     window.addEventListener("keydown", handleKeyDown);
 
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [redo, undo]);
+  }, [
+    fileTree,
+    executeEditorCommand,
+    handleWorkspaceCopy,
+    handleWorkspaceDuplicate,
+    handleWorkspacePaste,
+    persistTableSetup,
+    redo,
+    selectObject,
+    selectedContentFileNode,
+    selectedObjectId,
+    selectedObjectIds,
+    selectedProjectObject,
+    selectedTableSetup,
+    undo
+  ]);
 
   function persistFileTree(nextFileTree: ProjectFileNode[]) {
     executeEditorCommand(
@@ -325,27 +675,127 @@ function ProjectWorkspaceContent({
     );
   }
 
-  function persistTableSetup(
-    fileNodeId: string,
-    tableSetup: ProjectTableSetup,
-    label = "Update table setup"
-  ) {
-    const fileNode = findProjectFileNode(fileTree, fileNodeId);
-    const before = getProjectFileNodeTableSetup(fileNode);
-
-    if (!before || before === tableSetup) {
+  function handleAlignTableItems(alignment: TableSetupAlignment) {
+    if (!selectedContentFileNode || !selectedTableSetup) {
       return;
     }
 
-    executeEditorCommand(
-      createUpdateProjectTableSetupCommand({
-        after: tableSetup,
-        before,
-        fileNodeId,
-        label
-      })
-    );
+    const nextTableSetup = getProjectTableSetupWithAlignedItems({
+      alignment,
+      fileTree,
+      itemIds: selectedObjectIds,
+      tableSetup: selectedTableSetup
+    });
+
+    persistTableSetup(selectedContentFileNode.id, nextTableSetup, "Align table items");
   }
+
+  function handleDistributeTableItems(direction: TableSetupDistribution) {
+    if (!selectedContentFileNode || !selectedTableSetup) {
+      return;
+    }
+
+    const nextTableSetup = getProjectTableSetupWithDistributedItems({
+      direction,
+      fileTree,
+      itemIds: selectedObjectIds,
+      tableSetup: selectedTableSetup
+    });
+
+    persistTableSetup(selectedContentFileNode.id, nextTableSetup, "Distribute table items");
+  }
+
+  async function handleExportPng() {
+    const exportRoot = document.querySelector<HTMLElement>("[data-workspace-export-root='true']");
+
+    if (!exportRoot) {
+      return;
+    }
+
+    const dataUrl = await domToPng(exportRoot, {
+      backgroundColor: getComputedStyle(exportRoot).backgroundColor,
+      filter: (node) =>
+        !(node instanceof HTMLElement) || node.closest("[data-export-exclude='true']") === null,
+      scale: 2
+    });
+    const link = document.createElement("a");
+    const fileName = `${selectedContentFileNode?.name ?? selectedFileNode?.name ?? "workspace"}.png`;
+
+    link.download = fileName.replace(/[^\w.-]+/g, "-");
+    link.href = dataUrl;
+    link.click();
+  }
+
+  async function handlePrintSheets() {
+    const exportRoot = document.querySelector<HTMLElement>("[data-workspace-export-root='true']");
+
+    if (!exportRoot) {
+      return;
+    }
+
+    const dataUrl = await domToPng(exportRoot, {
+      backgroundColor: getComputedStyle(exportRoot).backgroundColor,
+      filter: (node) =>
+        !(node instanceof HTMLElement) || node.closest("[data-export-exclude='true']") === null,
+      scale: 2
+    });
+    const printFrame = document.createElement("iframe");
+    const title = escapeHtml(selectedFileNode?.name ?? "Print sheets");
+
+    printFrame.setAttribute("aria-hidden", "true");
+    printFrame.style.border = "0";
+    printFrame.style.height = "1px";
+    printFrame.style.left = "-10000px";
+    printFrame.style.position = "fixed";
+    printFrame.style.top = "0";
+    printFrame.style.width = "1px";
+    printFrame.srcdoc = `
+      <!doctype html>
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            @page { size: letter; margin: 0.5in; }
+            body { margin: 0; background: white; color: #0f172a; font-family: Inter, system-ui, sans-serif; }
+            main { align-items: flex-start; display: flex; justify-content: center; min-height: 100vh; }
+            img { display: block; max-height: calc(100vh - 1in); max-width: 100%; object-fit: contain; }
+          </style>
+        </head>
+        <body><main><img alt="${title}" src="${dataUrl}" /></main></body>
+      </html>
+    `;
+
+    printFrame.addEventListener(
+      "load",
+      () => {
+        const printWindow = printFrame.contentWindow;
+
+        if (!printWindow) {
+          printFrame.remove();
+          return;
+        }
+
+        const cleanup = () => {
+          window.setTimeout(() => printFrame.remove(), 250);
+        };
+
+        printWindow.addEventListener("afterprint", cleanup, { once: true });
+        window.setTimeout(cleanup, 15000);
+        printWindow.focus();
+        printWindow.print();
+      },
+      { once: true }
+    );
+    document.body.append(printFrame);
+  }
+
+  const canArrangeTableItems =
+    selectedContentFileNode?.kind === "tableSetup" && selectedObjectIds.length >= 1;
+  const canDistributeTableItems =
+    selectedContentFileNode?.kind === "tableSetup" && selectedObjectIds.length >= 2;
+  const canExport =
+    selectedContentFileNode?.kind === "object" || selectedContentFileNode?.kind === "tableSetup";
+  const canPrint = getPrintableObjectFileNodes(fileTree, selectedFileNode).length > 0 || canExport;
 
   return (
     <section
@@ -386,7 +836,18 @@ function ProjectWorkspaceContent({
         onExecuteCommand={executeEditorCommand}
         onRedo={redo}
         selectedObjectId={selectedObjectId}
+        selectedObjectIds={selectedObjectIds}
+        canAlign={canArrangeTableItems}
+        canDistribute={canDistributeTableItems}
+        showArrangeControls={selectedContentFileNode?.kind === "tableSetup"}
+        canExport={canExport}
+        canPrint={canPrint}
+        onAlign={handleAlignTableItems}
+        onDistribute={handleDistributeTableItems}
+        onExportPng={handleExportPng}
+        onPrintSheets={handlePrintSheets}
         onSelectObject={selectObject}
+        onSelectObjects={selectObjects}
         onUndo={undo}
       />
       <div
@@ -441,6 +902,7 @@ function ProjectWorkspaceContent({
             readOnly={Boolean(selectedContentFileNode?.sourceRef)}
             saving={saving}
             selectedObjectId={selectedObjectId}
+            selectedObjectIds={selectedObjectIds}
             tableSetup={selectedTableSetup}
             onObjectTreeChange={persistObjectTree}
             onTableSetupChange={(tableSetup, label) =>
@@ -449,6 +911,7 @@ function ProjectWorkspaceContent({
                 : undefined
             }
             onSelectObject={selectObject}
+            onSelectObjects={selectObjects}
           />
         </div>
       </div>
@@ -543,6 +1006,114 @@ function isEditableKeyboardTarget(target: EventTarget | null) {
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLSelectElement
   );
+}
+
+function getKeyboardShortcutKey(event: KeyboardEvent) {
+  if (event.code === "KeyC") {
+    return "c";
+  }
+
+  if (event.code === "KeyD") {
+    return "d";
+  }
+
+  if (event.code === "KeyV") {
+    return "v";
+  }
+
+  if (event.code === "KeyY") {
+    return "y";
+  }
+
+  if (event.code === "KeyZ") {
+    return "z";
+  }
+
+  return event.key.toLowerCase();
+}
+
+function getKeyboardNudgeDelta(event: KeyboardEvent, gridSize = 10) {
+  const step = event.shiftKey ? Math.max(1, gridSize) : 1;
+
+  if (event.key === "ArrowLeft") {
+    return { x: -step, y: 0 };
+  }
+
+  if (event.key === "ArrowRight") {
+    return { x: step, y: 0 };
+  }
+
+  if (event.key === "ArrowUp") {
+    return { x: 0, y: -step };
+  }
+
+  if (event.key === "ArrowDown") {
+    return { x: 0, y: step };
+  }
+
+  return null;
+}
+
+function getTableSetupItemsByIds(
+  tableSetup: ProjectTableSetup,
+  itemIds: readonly string[]
+): ProjectTableSetupItem[] {
+  const selectedIds = new Set(itemIds);
+
+  return tableSetup.items.filter((item) => selectedIds.has(getProjectTableSetupItemId(item)));
+}
+
+function isSingleObjectFileRoot(objectTree: readonly ProjectObjectNode[], objectId: string) {
+  return objectTree.length === 1 && objectTree[0]?.id === objectId;
+}
+
+function getPrintableObjectFileNodes(
+  fileTree: ProjectFileNode[],
+  selectedFileNode: ProjectFileNode | undefined
+) {
+  if (!selectedFileNode) {
+    return [];
+  }
+
+  const printableNodes: ProjectFileNode[] = [];
+  collectPrintableObjectFileNodes(fileTree, selectedFileNode, printableNodes);
+  return printableNodes;
+}
+
+function collectPrintableObjectFileNodes(
+  fileTree: ProjectFileNode[],
+  node: ProjectFileNode,
+  printableNodes: ProjectFileNode[]
+) {
+  if (node.type === "folder") {
+    for (const child of node.children ?? []) {
+      collectPrintableObjectFileNodes(fileTree, child, printableNodes);
+    }
+
+    return;
+  }
+
+  if (node.kind !== "object") {
+    return;
+  }
+
+  const rootKind = resolveProjectObjectFileObjectTree(fileTree, node)[0]?.kind;
+
+  if (rootKind && isPrintableObjectKind(rootKind)) {
+    printableNodes.push(node);
+  }
+}
+
+function isPrintableObjectKind(kind: ProjectObjectKind) {
+  return kind === "card" || kind === "shape" || kind === "token";
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 function getSidePanelMaxWidth(workspaceWidth: number, oppositePanelWidth: number) {

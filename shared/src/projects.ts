@@ -368,6 +368,7 @@ export type ProjectObjectNode = {
   id: string;
   name: string;
   kind: ProjectObjectKind;
+  locked?: boolean;
   visible: boolean;
   bindings?: ProjectObjectVariableBinding[];
   components?: ProjectObjectComponents;
@@ -395,6 +396,7 @@ export type ProjectTableSetupLinkedObjectItem = {
   transform: ProjectTableSetupItemTransform;
   type: "linkedObject";
   values: Record<string, ProjectObjectVariableValue>;
+  locked?: boolean;
   visible: boolean;
 };
 
@@ -1018,6 +1020,7 @@ export function createDefaultProjectObjectNode(
     id,
     name: name.trim() || getDefaultProjectObjectName(kind),
     kind,
+    locked: false,
     visible: true,
     children: [],
     components: createDefaultProjectObjectComponents(kind, name)
@@ -1142,6 +1145,10 @@ export function getProjectTableSetupItemVisible(item: ProjectTableSetupItem) {
   return item.type === "linkedObject" ? item.visible : item.object.visible;
 }
 
+export function getProjectTableSetupItemLocked(item: ProjectTableSetupItem) {
+  return item.type === "linkedObject" ? item.locked === true : item.object.locked === true;
+}
+
 export function resolveProjectTableSetupItemObject(
   fileTree: readonly ProjectFileNode[],
   item: ProjectTableSetupItem
@@ -1169,6 +1176,7 @@ export function resolveProjectTableSetupItemObject(
   return {
     ...sourceRoot,
     id: item.id,
+    locked: item.locked === true,
     name: item.name,
     visible: item.visible,
     components: {

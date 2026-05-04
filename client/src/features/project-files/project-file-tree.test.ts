@@ -6,6 +6,7 @@ import {
   createProjectAssetsFolderNode,
   createProjectFileNode,
   deleteProjectFileNode,
+  duplicateProjectFileNode,
   ensureProjectAssetsFolder,
   findProjectFileNode,
   findProjectFileNodeLocation,
@@ -74,6 +75,39 @@ describe("project file tree helpers", () => {
       "root-object",
       "root-doc"
     ]);
+  });
+
+  it("duplicates file tree nodes with new ids and remaps internal object references", () => {
+    const sourceObject = file("source-object", "Source", "object");
+    const derivedObject: ProjectFileNode = {
+      id: "derived-object",
+      kind: "object",
+      name: "Derived",
+      sourceRef: {
+        sourceObjectFileNodeId: "source-object",
+        values: {}
+      },
+      type: "file"
+    };
+    const fileTree = [folder("bundle", "Bundle", [sourceObject, derivedObject])];
+    const result = duplicateProjectFileNode(fileTree, "bundle");
+
+    expect(result).not.toBeNull();
+    expect(result?.node).toMatchObject({
+      name: "Bundle Copy",
+      type: "folder"
+    });
+    expect(result?.node.id).not.toBe("bundle");
+
+    const duplicatedChildren = result?.node.type === "folder" ? (result.node.children ?? []) : [];
+    const duplicatedSource = duplicatedChildren.find((node) => node.name === "Source");
+    const duplicatedDerived = duplicatedChildren.find((node) => node.name === "Derived");
+
+    expect(duplicatedSource?.id).toBeTruthy();
+    expect(duplicatedSource?.id).not.toBe("source-object");
+    expect(duplicatedDerived?.id).not.toBe("derived-object");
+    expect(duplicatedDerived?.sourceRef?.sourceObjectFileNodeId).toBe(duplicatedSource?.id);
+    expect(findProjectFileNode(fileTree, result!.node.id)).toBeUndefined();
   });
 
   it("finds nested nodes with parent, index, and ancestor metadata", () => {

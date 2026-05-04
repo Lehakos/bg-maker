@@ -15,6 +15,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
+  useRef,
   useState
 } from "react";
 import { ProjectObjectSurface } from "../project-objects/ProjectObjectSurface";
@@ -49,19 +50,28 @@ type SceneObjectFrameProps = {
   fileTree: ProjectFileNode[];
   fileNodeId: string;
   imageAssetById: Map<string, ProjectImageAssetOption>;
+  multiSelectEnabled?: boolean;
   object: ProjectObjectNode;
+  previewRectTransform?: ProjectObjectRectTransform;
   readOnly?: boolean;
   rectTransformOverride?: ProjectObjectRectTransform;
   resizeMode?: TransformDragOptions["resizeMode"];
   root?: boolean;
   selectionObjectId?: string;
   selectedObjectId: string | null;
+  selectedObjectIds: string[];
   siblingIndex: number;
   snapSize?: number | null;
   stackRootOffset?: boolean;
   onDieFaceChange: (objectId: string, die: ProjectObjectDie, activeFace: number) => void;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onObjectSideChange: (objectId: string, activeSide: ProjectObjectSide) => void;
+  onRectTransformPreviewChange?: (
+    objectId: string,
+    before: ProjectObjectRectTransform,
+    after: ProjectObjectRectTransform
+  ) => void;
+  onRectTransformPreviewEnd?: () => void;
   onRectTransformChange?: (
     objectId: string,
     before: ProjectObjectRectTransform,
@@ -69,39 +79,50 @@ type SceneObjectFrameProps = {
     label: string
   ) => void;
   onSelectObject: (objectId: string | null) => void;
+  onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
 
 export function SceneObjectFrame({
   fileTree,
   fileNodeId,
   imageAssetById,
+  multiSelectEnabled = false,
   object,
+  previewRectTransform,
   readOnly = false,
   rectTransformOverride,
   resizeMode = "size",
   root = false,
   selectionObjectId,
   selectedObjectId,
+  selectedObjectIds,
   siblingIndex,
   snapSize = null,
   stackRootOffset = true,
   onDieFaceChange,
   onExecuteCommand,
   onObjectSideChange,
+  onRectTransformPreviewChange,
+  onRectTransformPreviewEnd,
   onRectTransformChange,
-  onSelectObject
+  onSelectObject,
+  onSelectObjects
 }: SceneObjectFrameProps) {
   const activeTool = useProjectWorkspaceStore((state) => state.activeTool);
   const canvasScale = useProjectWorkspaceStore((state) => state.canvasScale);
   const viewObject = object;
   const objectRectTransform = getProjectObjectNodeRectTransform(viewObject);
   const effectiveObjectRectTransform = getEffectiveProjectObjectRectTransform(viewObject, fileTree);
-  const baseVisibleRectTransform = rectTransformOverride ?? effectiveObjectRectTransform;
+  const baseVisibleRectTransform =
+    previewRectTransform ?? rectTransformOverride ?? effectiveObjectRectTransform;
   const [dragState, setDragState] = useState<TransformDragState | null>(null);
+  const dragStateRef = useRef<TransformDragState | null>(null);
+  const suppressNextClickRef = useRef(false);
   const visibleRectTransform = dragState?.current ?? baseVisibleRectTransform;
   const selectableObjectId = selectionObjectId ?? viewObject.id;
   const handlesOwnInteraction = selectableObjectId === viewObject.id;
   const selected = selectedObjectId === selectableObjectId && handlesOwnInteraction;
+  const multiSelected = selectedObjectIds.includes(selectableObjectId) && handlesOwnInteraction;
   const layoutManaged = Boolean(rectTransformOverride);
   const appearance = getProjectObjectNodeAppearance(viewObject);
   const card = viewObject.kind === "card" ? getProjectObjectNodeCard(viewObject) : null;
@@ -118,13 +139,16 @@ export function SceneObjectFrame({
   const sizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
   const zoneSizeLocked = viewObject.kind === "zone";
   const resizeLocked = activeTool === "resize" && (sizePresetLocked || zoneSizeLocked);
+  const groupMoveInteractive = multiSelectEnabled && multiSelected && activeTool === "move";
   const interactive =
     !readOnly &&
-    selected &&
+    (selected || groupMoveInteractive) &&
     activeTool !== "select" &&
+    activeTool !== "pan" &&
     Boolean(fileNodeId) &&
     !layoutManaged &&
-    !resizeLocked;
+    !resizeLocked &&
+    !viewObject.locked;
   const children = getProjectObjectNodeVisibleChildren(viewObject);
   const childRectTransformOverrides = hasProjectObjectLayout(viewObject.kind)
     ? getProjectObjectLayoutRectTransformOverrides(
@@ -145,6 +169,10 @@ export function SceneObjectFrame({
       return;
     }
 
+    if (activeTool === "pan") {
+      return;
+    }
+
     event.stopPropagation();
 
     if (!interactive) {
@@ -159,7 +187,7 @@ export function SceneObjectFrame({
         ? getRotateDragState(event.currentTarget, event.clientX, event.clientY)
         : {};
 
-    setDragState({
+    setActiveDragState({
       before: objectRectTransform,
       current: objectRectTransform,
       pointerId: event.pointerId,
@@ -170,27 +198,28 @@ export function SceneObjectFrame({
   }
 
   function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
-    if (!dragState || dragState.pointerId !== event.pointerId) {
+    const activeDragState = dragStateRef.current;
+
+    if (!activeDragState || activeDragState.pointerId !== event.pointerId) {
       return;
     }
 
     event.preventDefault();
 
-    setDragState((currentState) =>
-      currentState
-        ? getNextTransformDragState(
-            currentState,
-            activeTool,
-            canvasScale,
-            event.clientX,
-            event.clientY,
-            {
-              resizeMode,
-              snapSize
-            }
-          )
-        : currentState
+    const nextDragState = getNextTransformDragState(
+      activeDragState,
+      activeTool,
+      canvasScale,
+      event.clientX,
+      event.clientY,
+      {
+        resizeMode,
+        snapSize
+      }
     );
+
+    setActiveDragState(nextDragState);
+    onRectTransformPreviewChange?.(object.id, nextDragState.before, nextDragState.current);
   }
 
   function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
@@ -199,26 +228,34 @@ export function SceneObjectFrame({
 
   function handlePointerCancel(event: PointerEvent<HTMLDivElement>) {
     releasePointerCapture(event);
-    setDragState(null);
+    setActiveDragState(null);
+    onRectTransformPreviewEnd?.();
   }
 
   function commitDrag(event: PointerEvent<HTMLDivElement>) {
-    if (!dragState || dragState.pointerId !== event.pointerId) {
+    const activeDragState = dragStateRef.current;
+
+    if (!activeDragState || activeDragState.pointerId !== event.pointerId) {
       return;
     }
 
     releasePointerCapture(event);
 
-    if (fileNodeId && !areProjectObjectRectTransformsEqual(dragState.before, dragState.current)) {
+    if (
+      fileNodeId &&
+      !areProjectObjectRectTransformsEqual(activeDragState.before, activeDragState.current)
+    ) {
       const label = getRectTransformCommandLabel(activeTool);
 
+      suppressNextClickRef.current = true;
+
       if (onRectTransformChange) {
-        onRectTransformChange(object.id, dragState.before, dragState.current, label);
+        onRectTransformChange(object.id, activeDragState.before, activeDragState.current, label);
       } else {
         onExecuteCommand(
           createUpdateProjectObjectRectTransformCommand({
-            after: dragState.current,
-            before: dragState.before,
+            after: activeDragState.current,
+            before: activeDragState.before,
             fileNodeId,
             label,
             objectId: object.id
@@ -227,7 +264,8 @@ export function SceneObjectFrame({
       }
     }
 
-    setDragState(null);
+    setActiveDragState(null);
+    onRectTransformPreviewEnd?.();
   }
 
   function handleClick(event: MouseEvent<HTMLDivElement>) {
@@ -236,6 +274,24 @@ export function SceneObjectFrame({
     }
 
     event.stopPropagation();
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
+
+    if (multiSelectEnabled && (event.metaKey || event.ctrlKey || event.shiftKey)) {
+      const nextSelectedObjectIds = new Set(selectedObjectIds);
+
+      if (nextSelectedObjectIds.has(selectableObjectId)) {
+        nextSelectedObjectIds.delete(selectableObjectId);
+      } else {
+        nextSelectedObjectIds.add(selectableObjectId);
+      }
+
+      onSelectObjects([...nextSelectedObjectIds], selectableObjectId);
+      return;
+    }
+
     onSelectObject(selectableObjectId);
   }
 
@@ -259,11 +315,16 @@ export function SceneObjectFrame({
     }
   }
 
+  function setActiveDragState(nextDragState: TransformDragState | null) {
+    dragStateRef.current = nextDragState;
+    setDragState(nextDragState);
+  }
+
   return (
     <div
       aria-label={viewObject.name}
       className={cx(
-        "absolute overflow-visible touch-none",
+        "absolute select-none overflow-visible touch-none",
         activeTool === "move" && interactive && "cursor-move",
         activeTool === "rotate" && interactive && "cursor-grab",
         activeTool === "resize" && interactive && "cursor-nwse-resize"
@@ -293,17 +354,22 @@ export function SceneObjectFrame({
             fileTree={fileTree}
             fileNodeId={fileNodeId}
             imageAssetById={imageAssetById}
+            multiSelectEnabled={multiSelectEnabled}
             object={child}
             readOnly={readOnly}
             rectTransformOverride={childRectTransformOverrides.get(child.id)}
             selectionObjectId={selectionObjectId}
             selectedObjectId={selectedObjectId}
+            selectedObjectIds={selectedObjectIds}
             siblingIndex={index}
             onDieFaceChange={onDieFaceChange}
             onExecuteCommand={onExecuteCommand}
             onObjectSideChange={onObjectSideChange}
+            onRectTransformPreviewChange={onRectTransformPreviewChange}
+            onRectTransformPreviewEnd={onRectTransformPreviewEnd}
             onRectTransformChange={onRectTransformChange}
             onSelectObject={onSelectObject}
+            onSelectObjects={onSelectObjects}
           />
         ))}
       </div>
@@ -331,10 +397,11 @@ export function SceneObjectFrame({
           onSideChange={(activeSide) => onObjectSideChange(viewObject.id, activeSide)}
         />
       ) : null}
-      {selected ? (
+      {multiSelected ? (
         <ObjectSelectionOverlay
           activeTool={layoutManaged || resizeLocked ? "select" : activeTool}
           canvasScale={canvasScale}
+          muted={!selected}
           topControlsOffset={hasTopObjectControls ? 44 : 0}
         />
       ) : null}
@@ -359,6 +426,7 @@ function ObjectSideSwitcher({
     <div
       aria-label={label}
       className="absolute left-1/2 z-[60] flex h-8 items-center rounded-md border border-sky-200 bg-white p-0.5 shadow-lg shadow-slate-900/10"
+      data-export-exclude="true"
       style={{
         bottom: `calc(100% + ${10 / canvasScale}px)`,
         transform: `translateX(-50%) scale(${1 / canvasScale})`,
@@ -406,6 +474,7 @@ function DieFaceSwitcher({ activeFace, canvasScale, die, onFaceChange }: DieFace
     <label
       aria-label="Die face"
       className="absolute left-1/2 z-[60] flex h-8 items-center gap-1 rounded-md border border-amber-200 bg-white px-1.5 text-xs font-semibold text-slate-600 shadow-lg shadow-slate-900/10"
+      data-export-exclude="true"
       style={{
         bottom: `calc(100% + ${10 / canvasScale}px)`,
         transform: `translateX(-50%) scale(${1 / canvasScale})`,

@@ -24,6 +24,7 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   appendProjectObjectNode,
+  cloneProjectObjectNode,
   clearProjectObjectTreeActiveSides,
   deleteProjectObjectNode,
   findProjectObjectNode,
@@ -50,8 +51,11 @@ import {
   getProjectObjectNodeZone,
   getProjectObjectNodeWithActiveSide,
   getProjectObjectTreeWithActiveSides,
+  insertProjectObjectNodeAfter,
   moveProjectObjectNode,
   renameProjectObjectNode,
+  reorderProjectObjectNode,
+  setProjectObjectNodeLocked,
   setProjectObjectNodeAppearance,
   setProjectObjectNodeBag,
   setProjectObjectNodeCard,
@@ -172,6 +176,34 @@ describe("project object tree helpers", () => {
     expect(findProjectObjectNode(objectTree, "label-1")?.name).toBe("Label");
     expect(findProjectObjectNode(deletedTree, "group-2")).toBeUndefined();
     expect(deleteProjectObjectNode(objectTree, "missing-object")).toBe(objectTree);
+  });
+
+  it("clones objects with fresh ids and inserts duplicates after the source", () => {
+    const objectTree = createObjectTree();
+    const source = findProjectObjectNode(objectTree, "group-1")!;
+    const clonedObject = cloneProjectObjectNode(source, { offset: 24 });
+    const duplicatedTree = insertProjectObjectNodeAfter(objectTree, "group-1", clonedObject);
+
+    expect(clonedObject.id).not.toBe(source.id);
+    expect(clonedObject.name).toBe("Group Copy");
+    expect(clonedObject.children?.map((child) => child.id)).not.toEqual(
+      source.children?.map((child) => child.id)
+    );
+    expect(duplicatedTree.map((node) => node.id)).toEqual([
+      "shape-1",
+      "group-1",
+      clonedObject.id
+    ]);
+  });
+
+  it("locks objects and reorders unlocked siblings", () => {
+    const objectTree = createObjectTree();
+    const lockedTree = setProjectObjectNodeLocked(objectTree, "shape-1", true);
+    const reorderedTree = reorderProjectObjectNode(objectTree, "shape-1", "sendFront");
+
+    expect(findProjectObjectNode(lockedTree, "shape-1")?.locked).toBe(true);
+    expect(reorderedTree.map((node) => node.id)).toEqual(["group-1", "shape-1"]);
+    expect(reorderProjectObjectNode(objectTree, "shape-1", "sendBack")).toBe(objectTree);
   });
 
   it("moves objects to valid positions and rejects invalid moves", () => {

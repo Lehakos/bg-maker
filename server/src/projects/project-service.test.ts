@@ -458,6 +458,7 @@ describe("ProjectService", () => {
                 count: 2,
                 empty: null
               },
+              locked: true,
               visible: false
             },
             {
@@ -465,6 +466,7 @@ describe("ProjectService", () => {
                 id: "local-1",
                 kind: "label",
                 name: " Local label ",
+                locked: true,
                 visible: true
               },
               type: "localObject"
@@ -511,6 +513,7 @@ describe("ProjectService", () => {
               count: 2,
               empty: ""
             },
+            locked: true,
             visible: false
           },
           {
@@ -518,6 +521,7 @@ describe("ProjectService", () => {
               id: "local-1",
               kind: "label",
               name: "Local label",
+              locked: true,
               visible: true
             },
             type: "localObject"
@@ -543,6 +547,7 @@ describe("ProjectService", () => {
             id: "card-1",
             kind: "card",
             name: "Card 1",
+            locked: true,
             children: [
               {
                 parentSide: "back",
@@ -604,6 +609,7 @@ describe("ProjectService", () => {
       {
         id: "card-1",
         kind: "card",
+        locked: true,
         children: [
           {
             parentSide: "back",

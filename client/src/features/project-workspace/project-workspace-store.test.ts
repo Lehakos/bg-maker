@@ -222,6 +222,63 @@ describe("project workspace store", () => {
     expect(getProjectWorkspaceSelection(store.getState()).selectedObjectId).toBe("child");
   });
 
+  it("stores table setup multi-selection and workspace clipboard state", () => {
+    const tableFileTree: ProjectFileNode[] = [
+      {
+        id: "setup-file",
+        kind: "tableSetup",
+        name: "Setup",
+        tableSetup: {
+          backgroundColor: "#6f8b70",
+          grid: { size: 50, snap: false, visible: true },
+          height: 600,
+          items: [
+            {
+              id: "linked-1",
+              name: "Linked 1",
+              sourceObjectFileNodeId: "object-file",
+              transform: { rotation: 0, scaleX: 1, scaleY: 1, x: 0, y: 0 },
+              type: "linkedObject",
+              values: {},
+              visible: true
+            },
+            {
+              id: "linked-2",
+              name: "Linked 2",
+              sourceObjectFileNodeId: "object-file",
+              transform: { rotation: 0, scaleX: 1, scaleY: 1, x: 50, y: 0 },
+              type: "linkedObject",
+              values: {},
+              visible: true
+            }
+          ],
+          width: 900
+        },
+        type: "file"
+      }
+    ];
+    const store = createProjectWorkspaceStore({
+      initialFileTree: tableFileTree,
+      projectId: "project-1",
+      saveFileTree: () => undefined
+    });
+
+    store.getState().setSelectedNodeId("setup-file");
+    store.getState().selectObjects(["linked-1", "linked-2"], "linked-2");
+    store.getState().setClipboard({
+      items: tableFileTree[0]!.tableSetup!.items,
+      type: "tableSetupItems"
+    });
+
+    expect(getProjectWorkspaceSelection(store.getState())).toMatchObject({
+      selectedObjectId: "linked-2",
+      selectedObjectIds: ["linked-1", "linked-2"]
+    });
+    expect(store.getState().clipboard).toMatchObject({
+      type: "tableSetupItems"
+    });
+  });
+
   it("reconciles selected files and objects after file tree mutations", () => {
     const store = createProjectWorkspaceStore({
       initialFileTree,

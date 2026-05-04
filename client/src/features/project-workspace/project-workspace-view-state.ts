@@ -1,4 +1,4 @@
-export type WorkspaceTool = "select" | "move" | "rotate" | "resize";
+export type WorkspaceTool = "pan" | "select" | "move" | "rotate" | "resize";
 
 export const defaultCanvasScale = 2;
 export const minCanvasScale = 0.5;

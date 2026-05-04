@@ -4,6 +4,7 @@ import type {
   ProjectTableSetup,
   ProjectTableSetupItem
 } from "@bg-maker/shared";
+import { getProjectTableSetupItemId } from "@bg-maker/shared";
 import { resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { findProjectFileNode, sortProjectFileTree } from "../project-files/project-file-tree";
@@ -27,7 +28,19 @@ import {
 type SelectedProjectObject = {
   fileNodeId: string;
   objectId: string | null;
+  objectIds?: string[];
 } | null;
+
+export type ProjectWorkspaceClipboard =
+  | {
+      items: ProjectTableSetupItem[];
+      type: "tableSetupItems";
+    }
+  | {
+      objects: ProjectObjectNode[];
+      type: "objectNodes";
+    }
+  | null;
 
 export type ProjectWorkspaceObjectTreeFileNode = ProjectFileNode & {
   kind: "object" | "tableSetup";
@@ -41,6 +54,7 @@ export type ProjectWorkspaceSelection = {
   selectedContentFileNode: ProjectWorkspaceObjectTreeFileNode | null;
   selectedFileNode: ProjectFileNode | undefined;
   selectedObjectId: string | null;
+  selectedObjectIds: string[];
   selectedProjectObject: ProjectObjectNode | null;
   selectedTableSetupItem: ProjectTableSetupItem | null;
 };
@@ -50,6 +64,7 @@ export type ProjectWorkspaceStoreState = {
   canRedo: boolean;
   canUndo: boolean;
   canvasScale: number;
+  clipboard: ProjectWorkspaceClipboard;
   executeCommand: (command: ProjectEditorCommand) => void;
   fileTree: ProjectFileNode[];
   objectSideSelections: ProjectObjectSideSelections;
@@ -58,10 +73,12 @@ export type ProjectWorkspaceStoreState = {
   redoStack: ProjectEditorCommand[];
   saveFileTree: (fileTree: ProjectFileNode[]) => void;
   selectObject: (objectId: string | null) => void;
+  selectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
   selectedNodeId: string | null;
   selectedObject: SelectedProjectObject;
   setActiveTool: (tool: WorkspaceTool) => void;
   setCanvasScale: (scale: number) => void;
+  setClipboard: (clipboard: ProjectWorkspaceClipboard) => void;
   setSaveFileTree: (saveFileTree: (fileTree: ProjectFileNode[]) => void) => void;
   setSelectedNodeId: (nodeId: string | null) => void;
   undo: () => void;
@@ -88,6 +105,7 @@ export function createProjectWorkspaceStore({
     canRedo: false,
     canUndo: false,
     canvasScale: defaultCanvasScale,
+    clipboard: null,
     executeCommand: (command) => {
       const state = get();
       const editorState = getProjectEditorState(state);
@@ -148,7 +166,27 @@ export function createProjectWorkspaceStore({
         selectedObject: selectedContentFileNode
           ? {
               fileNodeId: selectedContentFileNode.id,
-              objectId
+              objectId,
+              objectIds: objectId ? [objectId] : []
+            }
+          : null
+      });
+    },
+    selectObjects: (objectIds, primaryObjectId) => {
+      const state = get();
+      const { selectedContentFileNode } = getProjectWorkspaceSelection(state);
+      const normalizedObjectIds = [...new Set(objectIds)];
+      const nextPrimaryObjectId =
+        primaryObjectId === null
+          ? null
+          : (primaryObjectId ?? normalizedObjectIds.at(-1) ?? null);
+
+      set({
+        selectedObject: selectedContentFileNode
+          ? {
+              fileNodeId: selectedContentFileNode.id,
+              objectId: nextPrimaryObjectId,
+              objectIds: normalizedObjectIds
             }
           : null
       });
@@ -157,6 +195,7 @@ export function createProjectWorkspaceStore({
     selectedObject: null,
     setActiveTool: (activeTool) => set({ activeTool }),
     setCanvasScale: (canvasScale) => set({ canvasScale: normalizeCanvasScale(canvasScale) }),
+    setClipboard: (clipboard) => set({ clipboard }),
     setSaveFileTree: (nextSaveFileTree) => set({ saveFileTree: nextSaveFileTree }),
     setSelectedNodeId: (nodeId) => set({ selectedNodeId: nodeId }),
     undo: () => {
@@ -225,6 +264,12 @@ export function getProjectWorkspaceSelection(
     selectedContentFileNode,
     selectedObject: state.selectedObject
   });
+  const selectedObjectIds = getSelectedObjectIds({
+    defaultSelectedObjectId: selectedObjectId,
+    fileTree: state.fileTree,
+    selectedContentFileNode,
+    selectedObject: state.selectedObject
+  });
   const selectedProjectObject =
     selectedContentFileNode?.kind === "object" && selectedObjectId
       ? (findProjectObjectNode(
@@ -250,6 +295,7 @@ export function getProjectWorkspaceSelection(
     selectedContentFileNode,
     selectedFileNode,
     selectedObjectId,
+    selectedObjectIds,
     selectedProjectObject: selectedProjectObject ?? selectedTableSetupLocalObject,
     selectedTableSetupItem
   };
@@ -271,24 +317,80 @@ function getSelectedObjectId({
   }
 
   if (!selectedObject.objectId) {
-    return defaultSelectedObjectId;
+    return selectedObject.objectIds?.[0] ?? defaultSelectedObjectId;
   }
 
   if (selectedContentFileNode.kind === "tableSetup") {
-    return getProjectFileNodeTableSetup(selectedContentFileNode)?.items.some(
-      (item) =>
-        (item.type === "linkedObject" ? item.id : item.object.id) === selectedObject.objectId
-    )
-      ? selectedObject.objectId
-      : defaultSelectedObjectId;
+    const validItemIds = new Set(
+      (getProjectFileNodeTableSetup(selectedContentFileNode)?.items ?? []).map(
+        getProjectTableSetupItemId
+      )
+    );
+
+    if (validItemIds.has(selectedObject.objectId)) {
+      return selectedObject.objectId;
+    }
+
+    return selectedObject.objectIds?.find((objectId) => validItemIds.has(objectId)) ?? defaultSelectedObjectId;
   }
 
-  return findProjectObjectNode(
-    getProjectWorkspaceContentObjectTree(fileTree, selectedContentFileNode, {}),
-    selectedObject.objectId
-  )
-    ? selectedObject.objectId
-    : defaultSelectedObjectId;
+  const objectTree = getProjectWorkspaceContentObjectTree(fileTree, selectedContentFileNode, {});
+
+  if (findProjectObjectNode(objectTree, selectedObject.objectId)) {
+    return selectedObject.objectId;
+  }
+
+  return (
+    selectedObject.objectIds?.find((objectId) => findProjectObjectNode(objectTree, objectId)) ??
+    defaultSelectedObjectId
+  );
+}
+
+function getSelectedObjectIds({
+  defaultSelectedObjectId,
+  fileTree,
+  selectedContentFileNode,
+  selectedObject
+}: {
+  defaultSelectedObjectId: string | null;
+  fileTree: ProjectFileNode[];
+  selectedContentFileNode: ProjectWorkspaceObjectTreeFileNode | null;
+  selectedObject: SelectedProjectObject;
+}) {
+  if (!selectedContentFileNode) {
+    return [];
+  }
+
+  const candidateIds =
+    selectedObject?.fileNodeId === selectedContentFileNode.id
+      ? (selectedObject.objectIds ?? (selectedObject.objectId ? [selectedObject.objectId] : []))
+      : defaultSelectedObjectId
+        ? [defaultSelectedObjectId]
+        : [];
+  const uniqueCandidateIds = [...new Set(candidateIds)];
+
+  if (selectedContentFileNode.kind === "tableSetup") {
+    const tableSetup = getProjectFileNodeTableSetup(selectedContentFileNode);
+    const validItemIds = new Set((tableSetup?.items ?? []).map(getProjectTableSetupItemId));
+    const selectedItemIds = uniqueCandidateIds.filter((itemId) => validItemIds.has(itemId));
+
+    return selectedItemIds.length
+      ? selectedItemIds
+      : defaultSelectedObjectId
+        ? [defaultSelectedObjectId]
+        : [];
+  }
+
+  const objectTree = getProjectWorkspaceContentObjectTree(fileTree, selectedContentFileNode, {});
+  const selectedObjectIds = uniqueCandidateIds.filter((objectId) =>
+    findProjectObjectNode(objectTree, objectId)
+  );
+
+  return selectedObjectIds.length
+    ? selectedObjectIds
+    : defaultSelectedObjectId
+      ? [defaultSelectedObjectId]
+      : [];
 }
 
 export function getProjectWorkspaceContentObjectTree(

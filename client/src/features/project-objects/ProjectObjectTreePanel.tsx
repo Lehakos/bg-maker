@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/core";
 import {
   getProjectTableSetupItemId,
+  getProjectTableSetupItemLocked,
   getProjectTableSetupItemName,
   getProjectTableSetupItemVisible,
   projectObjectKinds,
@@ -32,8 +33,12 @@ import {
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  Clipboard,
+  Copy,
   Eye,
   EyeOff,
+  Lock,
+  LockOpen,
   Link2,
   Pencil,
   Plus,
@@ -52,14 +57,17 @@ import {
 import { ContextMenu, type ContextMenuAction } from "../../components/ContextMenu";
 import {
   appendProjectObjectNode,
+  cloneProjectObjectNode,
   createProjectObjectNode,
   deleteProjectObjectNode,
   findProjectObjectNode,
   findProjectObjectNodeLocation,
   getExpandableProjectObjectNodeIds,
   getProjectObjectNodeVisibleChildren,
+  insertProjectObjectNodeAfter,
   moveProjectObjectNode,
   renameProjectObjectNode,
+  setProjectObjectNodeLocked,
   setProjectObjectNodeVisibility,
   type ProjectObjectTreeParentId
 } from "./project-object-tree";
@@ -79,12 +87,16 @@ import {
   getProjectTableSetupObjectFileOptions,
   getProjectTableSetupResolvedItemObject,
   getProjectTableSetupWithAddedItem,
+  getProjectTableSetupWithDuplicatedItems,
   getProjectTableSetupWithItemName,
+  getProjectTableSetupWithInsertedItems,
+  getProjectTableSetupWithItemLocked,
   getProjectTableSetupWithItemVisibility,
   getProjectTableSetupWithMovedItem,
   getProjectTableSetupWithRemovedItem,
   type ProjectTableSetupObjectFileOption
 } from "../project-table-setup/project-table-setup";
+import { useProjectWorkspaceStore } from "../project-workspace/use-project-workspace-store";
 
 const indentationWidth = 18;
 const rootDropTargetId = "project-object-tree:root";
@@ -134,10 +146,12 @@ type ProjectObjectTreePanelProps = {
   readOnly?: boolean;
   saving: boolean;
   selectedObjectId: string | null;
+  selectedObjectIds?: string[];
   tableSetup?: ProjectTableSetup | null;
   onObjectTreeChange: (fileNodeId: string, objectTree: ProjectObjectNode[]) => void;
   onTableSetupChange?: (tableSetup: ProjectTableSetup, label?: string) => void;
   onSelectObject: (objectId: string | null) => void;
+  onSelectObjects?: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
 
 export function ProjectObjectTreePanel({
@@ -148,10 +162,12 @@ export function ProjectObjectTreePanel({
   readOnly = false,
   saving,
   selectedObjectId,
+  selectedObjectIds = selectedObjectId ? [selectedObjectId] : [],
   tableSetup: resolvedTableSetup,
   onObjectTreeChange,
   onTableSetupChange,
-  onSelectObject
+  onSelectObject,
+  onSelectObjects
 }: ProjectObjectTreePanelProps) {
   if (contentFileNode?.kind === "tableSetup") {
     return (
@@ -162,8 +178,10 @@ export function ProjectObjectTreePanel({
         readOnly={readOnly}
         saving={saving}
         selectedObjectId={selectedObjectId}
+        selectedObjectIds={selectedObjectIds}
         tableSetup={resolvedTableSetup ?? getProjectFileNodeTableSetup(contentFileNode)}
         onSelectObject={onSelectObject}
+        onSelectObjects={onSelectObjects}
         onTableSetupChange={onTableSetupChange}
       />
     );
@@ -215,6 +233,8 @@ function ProjectObjectNodeTreePanel({
     expansionState.fileNodeId === fileNodeId ? expansionState.rootExpanded : true;
   const [activeObjectId, setActiveObjectId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ObjectTreeContextMenuState | null>(null);
+  const clipboard = useProjectWorkspaceStore((state) => state.clipboard);
+  const setClipboard = useProjectWorkspaceStore((state) => state.setClipboard);
   const [dropIndicator, setDropIndicator] = useState<ObjectDropIndicator | null>(null);
   const [renamingObjectId, setRenamingObjectId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -242,17 +262,32 @@ function ProjectObjectNodeTreePanel({
   const canCreateObject = Boolean(
     contentFileNode && (!isObjectFile || contextMenuParentId !== null || objectTree.length === 0)
   );
+  const contextMenuObjectLocked = contextMenuObject?.locked === true;
   const contextMenuActions = createObjectTreeContextMenuActions({
     disabled: saving || !contentFileNode || readOnly,
     canCreate: canCreateObject && !readOnly,
     canDelete:
       !readOnly && Boolean(contextMenuObject && contextMenuObject.id !== lockedRootObjectId),
+    canDuplicate:
+      !readOnly && Boolean(contextMenuObject && contextMenuObject.id !== lockedRootObjectId),
+    canPaste:
+      !readOnly &&
+      clipboard?.type === "objectNodes" &&
+      Boolean(
+        contentFileNode && (!isObjectFile || contextMenuParentId !== null || objectTree.length === 0)
+      ),
     canRename: !readOnly && Boolean(contextMenuObject),
+    canToggleLock: !readOnly && Boolean(contextMenuObject),
+    locked: contextMenuObjectLocked,
     nodeId: contextMenu?.nodeId ?? null,
     parentId: contextMenuParentId,
+    onCopy: handleCopyObject,
     onCreate: handleCreateObject,
     onDelete: handleDeleteContextObject,
-    onRename: handleRequestRenameObject
+    onDuplicate: handleDuplicateObject,
+    onPaste: handlePasteObject,
+    onRename: handleRequestRenameObject,
+    onToggleLock: handleToggleObjectLocked
   });
 
   useEffect(() => {
@@ -318,6 +353,94 @@ function ProjectObjectNodeTreePanel({
     handleCancelRenameObject();
     onSelectObject(nextObject.id);
     onObjectTreeChange(contentFileNode.id, nextObjectTree);
+  }
+
+  function handleDuplicateObject(nodeId: string | null) {
+    if (!contentFileNode || !nodeId || readOnly || nodeId === lockedRootObjectId) {
+      return;
+    }
+
+    const object = findProjectObjectNode(objectTree, nodeId);
+
+    if (!object) {
+      return;
+    }
+
+    const duplicate = cloneProjectObjectNode(object, { offset: 24 });
+    const nextObjectTree = insertProjectObjectNodeAfter(objectTree, nodeId, duplicate);
+
+    if (nextObjectTree === objectTree) {
+      return;
+    }
+
+    setContextMenu(null);
+    handleCancelRenameObject();
+    onSelectObject(duplicate.id);
+    onObjectTreeChange(contentFileNode.id, nextObjectTree);
+  }
+
+  function handleCopyObject(nodeId: string | null) {
+    if (!nodeId) {
+      return;
+    }
+
+    const object = findProjectObjectNode(objectTree, nodeId);
+
+    if (!object) {
+      return;
+    }
+
+    setClipboard({
+      objects: [object],
+      type: "objectNodes"
+    });
+  }
+
+  function handlePasteObject(parentId: ProjectObjectTreeParentId) {
+    if (!contentFileNode || readOnly || clipboard?.type !== "objectNodes") {
+      return;
+    }
+
+    if (contentFileNode.kind === "object" && parentId === null && objectTree.length > 0) {
+      return;
+    }
+
+    let nextObjectTree = objectTree;
+    const pastedIds: string[] = [];
+
+    for (const object of clipboard.objects) {
+      const pastedObject = cloneProjectObjectNode(object, { offset: 24 });
+      nextObjectTree = appendProjectObjectNode(nextObjectTree, parentId, pastedObject);
+      pastedIds.push(pastedObject.id);
+    }
+
+    if (nextObjectTree === objectTree) {
+      return;
+    }
+
+    if (parentId) {
+      updateExpansionState((currentState) => ({
+        ...currentState,
+        expandedObjectIds: new Set(currentState.expandedObjectIds).add(parentId)
+      }));
+    }
+
+    setContextMenu(null);
+    handleCancelRenameObject();
+    onSelectObject(pastedIds.at(-1) ?? null);
+    onObjectTreeChange(contentFileNode.id, nextObjectTree);
+  }
+
+  function handleToggleObjectLocked(nodeId: string | null, locked: boolean) {
+    if (!contentFileNode || !nodeId || readOnly) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeLocked(objectTree, nodeId, locked);
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
   }
 
   function handleRequestRenameObject(nodeId: string | null) {
@@ -388,8 +511,9 @@ function ProjectObjectNodeTreePanel({
 
   function handleDragStart(event: DragStartEvent) {
     const activeId = String(event.active.id);
+    const activeObject = findProjectObjectNode(objectTree, activeId);
 
-    if (readOnly || !findProjectObjectNode(objectTree, activeId)) {
+    if (readOnly || !activeObject || activeObject.locked) {
       return;
     }
 
@@ -570,6 +694,7 @@ function ProjectObjectNodeTreePanel({
             onRootExpandedChange={handleRootExpandedChange}
             onSelectObject={onSelectObject}
             onToggleObjectExpanded={handleToggleObjectExpanded}
+            onToggleObjectLocked={handleToggleObjectLocked}
             onToggleObjectVisibility={handleToggleObjectVisibility}
           />
         </DndContext>
@@ -651,8 +776,10 @@ type ProjectTableSetupTreePanelProps = {
   readOnly: boolean;
   saving: boolean;
   selectedObjectId: string | null;
+  selectedObjectIds: string[];
   tableSetup: ProjectTableSetup | null;
   onSelectObject: (objectId: string | null) => void;
+  onSelectObjects?: (objectIds: string[], primaryObjectId?: string | null) => void;
   onTableSetupChange?: (tableSetup: ProjectTableSetup, label?: string) => void;
 };
 
@@ -663,26 +790,43 @@ function ProjectTableSetupTreePanel({
   readOnly,
   saving,
   selectedObjectId,
+  selectedObjectIds,
   tableSetup,
   onSelectObject,
+  onSelectObjects,
   onTableSetupChange
 }: ProjectTableSetupTreePanelProps) {
   const [renamingItemId, setRenamingItemId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [contextMenu, setContextMenu] = useState<TableSetupTreeContextMenuState | null>(null);
+  const clipboard = useProjectWorkspaceStore((state) => state.clipboard);
+  const setClipboard = useProjectWorkspaceStore((state) => state.setClipboard);
   const items = tableSetup?.items ?? [];
+  const selectedItemIds = useMemo(() => new Set(selectedObjectIds), [selectedObjectIds]);
   const objectFileOptions = useMemo(
     () => getProjectTableSetupObjectFileOptions(fileTree),
     [fileTree]
   );
+  const contextMenuItem = contextMenu?.itemId
+    ? items.find((item) => getProjectTableSetupItemId(item) === contextMenu.itemId)
+    : null;
+  const contextMenuItemLocked = contextMenuItem
+    ? getProjectTableSetupItemLocked(contextMenuItem)
+    : false;
   const contextMenuActions = createTableSetupTreeContextMenuActions({
     disabled: saving || readOnly || !tableSetup,
     itemId: contextMenu?.itemId ?? null,
+    canPaste: clipboard?.type === "tableSetupItems",
+    locked: contextMenuItemLocked,
     objectFileOptions,
     onAddLinkedObject: handleAddLinkedObject,
+    onCopy: handleCopyItem,
     onCreatePrimitive: handleCreatePrimitive,
     onDelete: handleDeleteItem,
-    onRename: handleRequestRename
+    onDuplicate: handleDuplicateItem,
+    onPaste: handlePasteItems,
+    onRename: handleRequestRename,
+    onToggleLock: handleToggleItemLocked
   });
 
   function updateTableSetup(nextTableSetup: ProjectTableSetup, label: string) {
@@ -701,7 +845,9 @@ function ProjectTableSetupTreePanel({
     event.preventDefault();
     event.stopPropagation();
 
-    onSelectObject(itemId);
+    if (!itemId || !selectedItemIds.has(itemId)) {
+      onSelectObject(itemId);
+    }
     setContextMenu({
       itemId,
       x: getObjectTreeContextMenuX(event.clientX),
@@ -738,6 +884,96 @@ function ProjectTableSetupTreePanel({
     cancelRename();
     updateTableSetup(getProjectTableSetupWithAddedItem(tableSetup, item), "Create table primitive");
     onSelectObject(itemId);
+  }
+
+  function getActiveTableItemIds(itemId: string | null) {
+    if (!itemId) {
+      return [];
+    }
+
+    return selectedItemIds.has(itemId) && selectedObjectIds.length > 1
+      ? selectedObjectIds
+      : [itemId];
+  }
+
+  function selectTableItems(itemIds: string[], primaryItemId: string | null = itemIds.at(-1) ?? null) {
+    if (onSelectObjects) {
+      onSelectObjects(itemIds, primaryItemId);
+    } else {
+      onSelectObject(primaryItemId);
+    }
+  }
+
+  function handleDuplicateItem(itemId: string | null) {
+    if (!tableSetup || !itemId || readOnly) {
+      return;
+    }
+
+    const result = getProjectTableSetupWithDuplicatedItems(
+      tableSetup,
+      getActiveTableItemIds(itemId)
+    );
+
+    if (result.tableSetup === tableSetup) {
+      return;
+    }
+
+    setContextMenu(null);
+    cancelRename();
+    updateTableSetup(result.tableSetup, "Duplicate table item");
+    selectTableItems(result.itemIds);
+  }
+
+  function handleCopyItem(itemId: string | null) {
+    if (!tableSetup || !itemId) {
+      return;
+    }
+
+    const activeItemIds = new Set(getActiveTableItemIds(itemId));
+    const copiedItems = tableSetup.items.filter((item) =>
+      activeItemIds.has(getProjectTableSetupItemId(item))
+    );
+
+    if (!copiedItems.length) {
+      return;
+    }
+
+    setClipboard({
+      items: copiedItems,
+      type: "tableSetupItems"
+    });
+  }
+
+  function handlePasteItems(itemId: string | null) {
+    if (!tableSetup || readOnly || clipboard?.type !== "tableSetupItems") {
+      return;
+    }
+
+    const result = getProjectTableSetupWithInsertedItems(
+      tableSetup,
+      itemId ? getActiveTableItemIds(itemId) : [],
+      clipboard.items
+    );
+
+    if (result.tableSetup === tableSetup) {
+      return;
+    }
+
+    setContextMenu(null);
+    cancelRename();
+    updateTableSetup(result.tableSetup, "Paste table item");
+    selectTableItems(result.itemIds);
+  }
+
+  function handleToggleItemLocked(itemId: string | null, locked: boolean) {
+    if (!tableSetup || !itemId || readOnly) {
+      return;
+    }
+
+    updateTableSetup(
+      getProjectTableSetupWithItemLocked(tableSetup, itemId, locked),
+      locked ? "Lock table item" : "Unlock table item"
+    );
   }
 
   function handleRequestRename(itemId: string | null) {
@@ -823,12 +1059,13 @@ function ProjectTableSetupTreePanel({
             const itemId = getProjectTableSetupItemId(item);
             const itemName = getProjectTableSetupItemName(item);
             const itemVisible = getProjectTableSetupItemVisible(item);
+            const itemLocked = getProjectTableSetupItemLocked(item);
             const resolvedObject = getProjectTableSetupResolvedItemObject(fileTree, item);
             const itemKind = item.type === "localObject" ? item.object.kind : resolvedObject?.kind;
             const iconClassName = itemKind
               ? getProjectObjectKindIconClassName(itemKind)
               : "text-slate-400";
-            const selected = selectedObjectId === itemId;
+            const selected = selectedItemIds.has(itemId);
             const renaming = renamingItemId === itemId;
 
             return (
@@ -842,9 +1079,21 @@ function ProjectTableSetupTreePanel({
                   !itemVisible && "text-slate-400"
                 )}
                 style={{ paddingLeft: 26 }}
-                onClick={() => {
+                onClick={(event) => {
                   if (!renaming) {
-                    onSelectObject(itemId);
+                    if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                      const nextIds = new Set(selectedObjectIds);
+
+                      if (nextIds.has(itemId)) {
+                        nextIds.delete(itemId);
+                      } else {
+                        nextIds.add(itemId);
+                      }
+
+                      selectTableItems([...nextIds], itemId);
+                    } else {
+                      onSelectObject(itemId);
+                    }
                   }
                 }}
                 onContextMenu={(event) => handleContextMenu(event, itemId)}
@@ -894,7 +1143,7 @@ function ProjectTableSetupTreePanel({
                 <button
                   aria-label={`Move ${itemName} up`}
                   className="ml-2 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
-                  disabled={readOnly || saving || index === 0}
+                  disabled={readOnly || saving || itemLocked || index === 0}
                   title="Move up"
                   type="button"
                   onClick={(event) => {
@@ -912,7 +1161,7 @@ function ProjectTableSetupTreePanel({
                 <button
                   aria-label={`Move ${itemName} down`}
                   className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
-                  disabled={readOnly || saving || index === items.length - 1}
+                  disabled={readOnly || saving || itemLocked || index === items.length - 1}
                   title="Move down"
                   type="button"
                   onClick={(event) => {
@@ -926,6 +1175,23 @@ function ProjectTableSetupTreePanel({
                   }}
                 >
                   <ArrowDown size={14} />
+                </button>
+                <button
+                  aria-label={itemLocked ? `Unlock ${itemName}` : `Lock ${itemName}`}
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900"
+                  title={itemLocked ? "Unlock item" : "Lock item"}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (tableSetup) {
+                      updateTableSetup(
+                        getProjectTableSetupWithItemLocked(tableSetup, itemId, !itemLocked),
+                        itemLocked ? "Unlock table item" : "Lock table item"
+                      );
+                    }
+                  }}
+                >
+                  {itemLocked ? <Lock size={15} /> : <LockOpen size={15} />}
                 </button>
                 <button
                   aria-label={itemVisible ? `Hide ${itemName}` : `Show ${itemName}`}
@@ -997,6 +1263,7 @@ type ProjectObjectTreeListProps = {
   onRootExpandedChange: (expanded: boolean) => void;
   onSelectObject: (objectId: string | null) => void;
   onToggleObjectExpanded: (objectId: string) => void;
+  onToggleObjectLocked: (objectId: string | null, locked: boolean) => void;
   onToggleObjectVisibility: (objectId: string, visible: boolean) => void;
 };
 
@@ -1019,6 +1286,7 @@ function ProjectObjectTreeList({
   onRootExpandedChange,
   onSelectObject,
   onToggleObjectExpanded,
+  onToggleObjectLocked,
   onToggleObjectVisibility
 }: ProjectObjectTreeListProps) {
   const treeExpanded = showVirtualRoot ? rootExpanded : true;
@@ -1073,6 +1341,7 @@ function ProjectObjectTreeList({
             onRenameDraftChange={onRenameDraftChange}
             onSelectObject={onSelectObject}
             onToggleObjectExpanded={onToggleObjectExpanded}
+            onToggleObjectLocked={onToggleObjectLocked}
             onToggleObjectVisibility={onToggleObjectVisibility}
           />
         ))}
@@ -1165,6 +1434,7 @@ type ProjectObjectTreeNodeProps = {
   onRenameDraftChange: (value: string) => void;
   onSelectObject: (objectId: string | null) => void;
   onToggleObjectExpanded: (objectId: string) => void;
+  onToggleObjectLocked: (objectId: string | null, locked: boolean) => void;
   onToggleObjectVisibility: (objectId: string, visible: boolean) => void;
 };
 
@@ -1183,8 +1453,10 @@ function ProjectObjectTreeNode({
   onRenameDraftChange,
   onSelectObject,
   onToggleObjectExpanded,
+  onToggleObjectLocked,
   onToggleObjectVisibility
 }: ProjectObjectTreeNodeProps) {
+  const { node } = item;
   const {
     attributes,
     isDragging,
@@ -1194,7 +1466,7 @@ function ProjectObjectTreeNode({
     transform
   } = useDraggable({
     id: item.id,
-    disabled: renaming
+    disabled: renaming || node.locked
   });
   const { setNodeRef: setDroppableNodeRef } = useDroppable({
     id: getObjectDropTargetId(item),
@@ -1210,7 +1482,6 @@ function ProjectObjectTreeNode({
   const style: CSSProperties = {
     transform: getDragTransformStyle(transform)
   };
-  const { node } = item;
   const hasChildren = getProjectObjectNodeVisibleChildren(node).length > 0;
   const canHighlightDrop = Boolean(
     activeObjectId && activeObjectId !== node.id && !item.ancestorIds.includes(activeObjectId)
@@ -1266,7 +1537,8 @@ function ProjectObjectTreeNode({
             : selected
               ? "bg-sky-100 text-slate-950 outline outline-1 -outline-offset-1 outline-sky-500"
               : "text-slate-700 hover:bg-slate-100",
-          !node.visible && "text-slate-400"
+          !node.visible && "text-slate-400",
+          node.locked && "text-slate-500"
         )}
         style={{ paddingLeft: `${8 + (depth + 1) * indentationWidth}px` }}
         {...(renaming ? {} : attributes)}
@@ -1332,8 +1604,21 @@ function ProjectObjectTreeNode({
         )}
 
         <button
-          aria-label={node.visible ? `Hide ${node.name}` : `Show ${node.name}`}
+          aria-label={node.locked ? `Unlock ${node.name}` : `Lock ${node.name}`}
           className="ml-2 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900"
+          title={node.locked ? "Unlock object" : "Lock object"}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleObjectLocked(node.id, node.locked !== true);
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {node.locked ? <Lock size={15} /> : <LockOpen size={15} />}
+        </button>
+        <button
+          aria-label={node.visible ? `Hide ${node.name}` : `Show ${node.name}`}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900"
           title={node.visible ? "Hide object" : "Show object"}
           type="button"
           onClick={(event) => {
@@ -1366,22 +1651,38 @@ function createObjectTreeContextMenuActions({
   disabled,
   canCreate,
   canDelete,
+  canDuplicate,
+  canPaste,
   canRename,
+  canToggleLock,
+  locked,
   nodeId,
   parentId,
+  onCopy,
   onCreate,
   onDelete,
-  onRename
+  onDuplicate,
+  onPaste,
+  onRename,
+  onToggleLock
 }: {
   disabled: boolean;
   canCreate: boolean;
   canDelete: boolean;
+  canDuplicate: boolean;
+  canPaste: boolean;
   canRename: boolean;
+  canToggleLock: boolean;
+  locked: boolean;
   nodeId: string | null;
   parentId: ProjectObjectTreeParentId;
+  onCopy: (nodeId: string | null) => void;
   onCreate: (kind: ProjectObjectKind, parentId: ProjectObjectTreeParentId) => void;
   onDelete: (nodeId: string | null) => void;
+  onDuplicate: (nodeId: string | null) => void;
+  onPaste: (parentId: ProjectObjectTreeParentId) => void;
   onRename: (nodeId: string | null) => void;
+  onToggleLock: (nodeId: string | null, locked: boolean) => void;
 }): ContextMenuAction[] {
   return [
     {
@@ -1402,6 +1703,36 @@ function createObjectTreeContextMenuActions({
         disabled: disabled || !canCreate,
         onSelect: () => onCreate(kind, parentId)
       }))
+    },
+    {
+      id: "duplicate",
+      label: "Duplicate",
+      icon: <Copy size={14} />,
+      disabled: disabled || !canDuplicate,
+      separatorBefore: true,
+      onSelect: () => onDuplicate(nodeId)
+    },
+    {
+      id: "copy",
+      label: "Copy",
+      icon: <Copy size={14} />,
+      disabled: disabled || !nodeId,
+      onSelect: () => onCopy(nodeId)
+    },
+    {
+      id: "paste",
+      label: "Paste",
+      icon: <Clipboard size={14} />,
+      disabled: disabled || !canPaste,
+      onSelect: () => onPaste(parentId)
+    },
+    {
+      id: "lock",
+      label: locked ? "Unlock" : "Lock",
+      icon: locked ? <LockOpen size={14} /> : <Lock size={14} />,
+      disabled: disabled || !canToggleLock,
+      separatorBefore: true,
+      onSelect: () => onToggleLock(nodeId, !locked)
     },
     {
       id: "rename",
@@ -1425,19 +1756,31 @@ function createObjectTreeContextMenuActions({
 function createTableSetupTreeContextMenuActions({
   disabled,
   itemId,
+  canPaste,
+  locked,
   objectFileOptions,
   onAddLinkedObject,
+  onCopy,
   onCreatePrimitive,
   onDelete,
-  onRename
+  onDuplicate,
+  onPaste,
+  onRename,
+  onToggleLock
 }: {
   disabled: boolean;
   itemId: string | null;
+  canPaste: boolean;
+  locked: boolean;
   objectFileOptions: readonly ProjectTableSetupObjectFileOption[];
   onAddLinkedObject: (sourceObjectFileNodeId: string) => void;
+  onCopy: (itemId: string | null) => void;
   onCreatePrimitive: (kind: ProjectObjectKind) => void;
   onDelete: (itemId: string | null) => void;
+  onDuplicate: (itemId: string | null) => void;
+  onPaste: (itemId: string | null) => void;
   onRename: (itemId: string | null) => void;
+  onToggleLock: (itemId: string | null, locked: boolean) => void;
 }): ContextMenuAction[] {
   const hasSelectedItem = Boolean(itemId);
 
@@ -1481,6 +1824,36 @@ function createTableSetupTreeContextMenuActions({
         disabled,
         onSelect: () => onCreatePrimitive(kind)
       }))
+    },
+    {
+      id: "duplicate",
+      label: "Duplicate",
+      icon: <Copy size={14} />,
+      disabled: disabled || !hasSelectedItem,
+      separatorBefore: true,
+      onSelect: () => onDuplicate(itemId)
+    },
+    {
+      id: "copy",
+      label: "Copy",
+      icon: <Copy size={14} />,
+      disabled: disabled || !hasSelectedItem,
+      onSelect: () => onCopy(itemId)
+    },
+    {
+      id: "paste",
+      label: "Paste",
+      icon: <Clipboard size={14} />,
+      disabled: disabled || !canPaste,
+      onSelect: () => onPaste(itemId)
+    },
+    {
+      id: "lock",
+      label: locked ? "Unlock" : "Lock",
+      icon: locked ? <LockOpen size={14} /> : <Lock size={14} />,
+      disabled: disabled || !hasSelectedItem,
+      separatorBefore: true,
+      onSelect: () => onToggleLock(itemId, !locked)
     },
     {
       id: "rename",

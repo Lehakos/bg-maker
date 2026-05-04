@@ -74,6 +74,28 @@ export function appendProjectObjectNode(
   return result.changed ? result.nodes : objectTree;
 }
 
+export function cloneProjectObjectNode(
+  node: ProjectObjectNode,
+  options: { name?: string; offset?: number } = {}
+): ProjectObjectNode {
+  const idMap = new Map<string, string>();
+  const rootName = options.name ?? `${node.name} Copy`;
+  const clonedNode = cloneProjectObjectNodeWithIdMap(node, idMap, rootName);
+  const offset = options.offset ?? 0;
+
+  if (!offset) {
+    return clonedNode;
+  }
+
+  const rectTransform = getProjectObjectNodeRectTransform(clonedNode);
+
+  return projectObjectComponentEngine.withRectTransform(clonedNode, {
+    ...rectTransform,
+    x: rectTransform.x + offset,
+    y: rectTransform.y + offset
+  });
+}
+
 export function deleteProjectObjectNode(
   objectTree: ProjectObjectNode[],
   nodeId: string
@@ -170,6 +192,27 @@ export function moveProjectObjectNode(
   return inserted.changed ? inserted.nodes : objectTree;
 }
 
+export function insertProjectObjectNodeAfter(
+  objectTree: ProjectObjectNode[],
+  targetNodeId: string,
+  node: ProjectObjectNode
+): ProjectObjectNode[] {
+  const targetLocation = findProjectObjectNodeLocation(objectTree, targetNodeId);
+
+  if (!targetLocation) {
+    return objectTree;
+  }
+
+  const inserted = insertProjectObjectNode(
+    objectTree,
+    targetLocation.parentId,
+    node,
+    targetLocation.index + 1
+  );
+
+  return inserted.changed ? inserted.nodes : objectTree;
+}
+
 export function renameProjectObjectNode(
   objectTree: ProjectObjectNode[],
   nodeId: string,
@@ -180,12 +223,48 @@ export function renameProjectObjectNode(
   return result.changed ? result.nodes : objectTree;
 }
 
+export type ProjectObjectZOrderCommand = "backward" | "forward" | "sendBack" | "sendFront";
+
+export function reorderProjectObjectNode(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  command: ProjectObjectZOrderCommand
+): ProjectObjectNode[] {
+  const location = findProjectObjectNodeLocation(objectTree, nodeId);
+
+  if (!location) {
+    return objectTree;
+  }
+
+  const siblings = getProjectObjectNodeChildren(objectTree, location.parentId);
+  const targetIndex = getZOrderTargetIndex(location.index, siblings.length, command);
+
+  if (targetIndex === location.index) {
+    return objectTree;
+  }
+
+  return moveProjectObjectNode(objectTree, nodeId, location.parentId, targetIndex);
+}
+
 export function setProjectObjectNodeVisibility(
   objectTree: ProjectObjectNode[],
   nodeId: string,
   visible: boolean
 ): ProjectObjectNode[] {
   const result = setProjectObjectNodeVisibilityInChildren(objectTree, nodeId, visible);
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeLocked(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  locked: boolean
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) => ({
+    ...node,
+    locked
+  }));
 
   return result.changed ? result.nodes : objectTree;
 }
@@ -540,6 +619,24 @@ function collectExpandableProjectObjectNodeIds(
   });
 }
 
+function cloneProjectObjectNodeWithIdMap(
+  node: ProjectObjectNode,
+  idMap: Map<string, string>,
+  name: string
+): ProjectObjectNode {
+  const nextId = crypto.randomUUID();
+  idMap.set(node.id, nextId);
+
+  return {
+    ...node,
+    id: nextId,
+    name,
+    children: (node.children ?? []).map((child) =>
+      cloneProjectObjectNodeWithIdMap(child, idMap, child.name)
+    )
+  };
+}
+
 function findProjectObjectNodeLocationInChildren(
   objectTree: ProjectObjectNode[],
   nodeId: string,
@@ -575,6 +672,26 @@ function insertAt<T>(items: T[], item: T, index: number) {
   const clampedIndex = Math.max(0, Math.min(index, items.length));
 
   return [...items.slice(0, clampedIndex), item, ...items.slice(clampedIndex)];
+}
+
+function getZOrderTargetIndex(
+  currentIndex: number,
+  siblingCount: number,
+  command: ProjectObjectZOrderCommand
+) {
+  if (command === "sendBack") {
+    return 0;
+  }
+
+  if (command === "backward") {
+    return Math.max(0, currentIndex - 1);
+  }
+
+  if (command === "forward") {
+    return Math.min(siblingCount, currentIndex + 2);
+  }
+
+  return siblingCount;
 }
 
 function insertProjectObjectNode(

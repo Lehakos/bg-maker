@@ -4,23 +4,34 @@ import type { WorkspaceTool } from "./project-workspace-view-state";
 type ObjectSelectionOverlayProps = {
   activeTool: WorkspaceTool;
   canvasScale: number;
+  muted?: boolean;
   topControlsOffset: number;
 };
 
 export function ObjectSelectionOverlay({
   activeTool,
   canvasScale,
+  muted = false,
   topControlsOffset
 }: ObjectSelectionOverlayProps) {
   return (
     <>
-      <span className="pointer-events-none absolute inset-0 z-40 rounded-lg ring-2 ring-sky-500 ring-offset-2 ring-offset-[#e7ece6]" />
-      <div className="pointer-events-none absolute inset-0 z-50">
-        <WorkspaceToolHandles
-          activeTool={activeTool}
-          canvasScale={canvasScale}
-          topControlsOffset={topControlsOffset}
-        />
+      <span
+        data-export-exclude="true"
+        className={
+          muted
+            ? "pointer-events-none absolute inset-0 z-40 rounded-lg ring-2 ring-sky-400/70 ring-offset-2 ring-offset-[#e7ece6]"
+            : "pointer-events-none absolute inset-0 z-40 rounded-lg ring-2 ring-sky-500 ring-offset-2 ring-offset-[#e7ece6]"
+        }
+      />
+      <div className="pointer-events-none absolute inset-0 z-50" data-export-exclude="true">
+        {muted ? null : (
+          <WorkspaceToolHandles
+            activeTool={activeTool}
+            canvasScale={canvasScale}
+            topControlsOffset={topControlsOffset}
+          />
+        )}
       </div>
     </>
   );

@@ -10,7 +10,7 @@ import {
   type ProjectTableSetup
 } from "@bg-maker/shared";
 import { Rows3 } from "lucide-react";
-import { useMemo } from "react";
+import { type CSSProperties, type PointerEvent, useMemo, useRef, useState } from "react";
 import type { ProjectImageAssetOption } from "../project-assets/project-image-assets";
 import {
   getProjectObjectTreeWithActiveSides,
@@ -31,6 +31,10 @@ import {
   getProjectTableSetupResolvedItemObject,
   getProjectTableSetupWithItemTransform
 } from "../project-table-setup/project-table-setup";
+import {
+  getTableSetupItemFrames,
+  getProjectTableSetupWithTransformedGroupItems
+} from "../project-table-setup/project-table-setup-geometry";
 
 type ProjectWorkspaceSceneProps = {
   fileTree: ProjectFileNode[];
@@ -39,9 +43,11 @@ type ProjectWorkspaceSceneProps = {
   objectTree: ProjectObjectNode[];
   readOnly?: boolean;
   selectedObjectId: string | null;
+  selectedObjectIds: string[];
   tableSetup?: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onSelectObject: (objectId: string | null) => void;
+  onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
 
 type ObjectSceneSize = "large" | "small";
@@ -52,13 +58,28 @@ export function TableLayoutWorkspace({
   imageAssets,
   readOnly = false,
   selectedObjectId,
+  selectedObjectIds,
   tableSetup: resolvedTableSetup,
   onExecuteCommand,
-  onSelectObject
+  onSelectObject,
+  onSelectObjects
 }: ProjectWorkspaceSceneProps) {
   const tableSetup =
     resolvedTableSetup ?? getProjectFileNodeTableSetup(fileNode) ?? getDefaultProjectTableSetup();
   const canvasScale = useProjectWorkspaceStore((state) => state.canvasScale);
+  const activeTool = useProjectWorkspaceStore((state) => state.activeTool);
+  const suppressNextClickRef = useRef(false);
+  const [previewRectTransforms, setPreviewRectTransforms] = useState<
+    Map<string, ProjectObjectRectTransform>
+  >(() => new Map());
+  const [marqueeState, setMarqueeState] = useState<{
+    additive: boolean;
+    currentX: number;
+    currentY: number;
+    pointerId: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
 
   function updateTableSetup(nextTableSetup: ProjectTableSetup, label: string) {
     if (nextTableSetup === tableSetup) {
@@ -77,17 +98,135 @@ export function TableLayoutWorkspace({
 
   function handleTableItemRectTransformChange(
     objectId: string,
-    _before: ProjectObjectRectTransform,
+    before: ProjectObjectRectTransform,
     after: ProjectObjectRectTransform,
     label: string
   ) {
-    const nextTableSetup = getProjectTableSetupWithItemTransform(tableSetup, objectId, after);
+    const nextTableSetup =
+      selectedObjectIds.includes(objectId) && selectedObjectIds.length > 1
+        ? getProjectTableSetupWithTransformedGroupItems({
+            after,
+            before,
+            fileTree,
+            itemIds: selectedObjectIds,
+            sourceItemId: objectId,
+            tableSetup
+          })
+        : getProjectTableSetupWithItemTransform(tableSetup, objectId, after);
 
     updateTableSetup(nextTableSetup, label);
   }
 
+  function handleTableItemRectTransformPreviewChange(
+    objectId: string,
+    before: ProjectObjectRectTransform,
+    after: ProjectObjectRectTransform
+  ) {
+    if (!selectedObjectIds.includes(objectId) || selectedObjectIds.length < 2) {
+      return;
+    }
+
+    const previewTableSetup = getProjectTableSetupWithTransformedGroupItems({
+      after,
+      before,
+      fileTree,
+      itemIds: selectedObjectIds,
+      sourceItemId: objectId,
+      tableSetup
+    });
+    const previewFrames = getTableSetupItemFrames(fileTree, previewTableSetup, selectedObjectIds);
+
+    setPreviewRectTransforms(
+      new Map(previewFrames.map((frame) => [frame.id, frame.rectTransform]))
+    );
+  }
+
+  function handleTableItemRectTransformPreviewEnd() {
+    setPreviewRectTransforms((currentPreviewRectTransforms) =>
+      currentPreviewRectTransforms.size > 0 ? new Map() : currentPreviewRectTransforms
+    );
+  }
+
+  function handleTablePointerDown(event: PointerEvent<HTMLElement>) {
+    if (readOnly || activeTool !== "select" || event.button !== 0) {
+      return;
+    }
+
+    const point = getTablePoint(event, tableSetup);
+
+    if (!point) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setMarqueeState({
+      additive: event.metaKey || event.ctrlKey || event.shiftKey,
+      currentX: point.x,
+      currentY: point.y,
+      pointerId: event.pointerId,
+      startX: point.x,
+      startY: point.y
+    });
+  }
+
+  function handleTablePointerMove(event: PointerEvent<HTMLElement>) {
+    if (!marqueeState || marqueeState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const point = getTablePoint(event, tableSetup);
+
+    if (!point) {
+      return;
+    }
+
+    event.preventDefault();
+    setMarqueeState((currentState) =>
+      currentState
+        ? {
+            ...currentState,
+            currentX: point.x,
+            currentY: point.y
+          }
+        : currentState
+    );
+  }
+
+  function handleTablePointerUp(event: PointerEvent<HTMLElement>) {
+    if (!marqueeState || marqueeState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    const marqueeBounds = getMarqueeBounds(marqueeState);
+    const moved =
+      Math.abs(marqueeState.currentX - marqueeState.startX) > 3 ||
+      Math.abs(marqueeState.currentY - marqueeState.startY) > 3;
+
+    setMarqueeState(null);
+
+    if (!moved) {
+      return;
+    }
+
+    suppressNextClickRef.current = true;
+    const selectedIds = getTableSetupItemFrames(
+      fileTree,
+      tableSetup,
+      tableSetup.items.map(getProjectTableSetupItemId)
+    )
+      .filter((frame) => doBoundsIntersect(frame.bounds, marqueeBounds))
+      .map((frame) => frame.id);
+    const nextIds = marqueeState.additive
+      ? [...new Set([...selectedObjectIds, ...selectedIds])]
+      : selectedIds;
+
+    onSelectObjects(nextIds, nextIds.at(-1) ?? null);
+  }
+
   return (
-    <div className="h-full min-h-0 overflow-auto">
+    <div className="h-full min-h-full min-w-full select-none overflow-visible">
       <div
         className="box-border flex items-center justify-center p-6"
         style={{
@@ -104,7 +243,8 @@ export function TableLayoutWorkspace({
         >
           <section
             aria-label={fileNode.name}
-            className="relative shrink-0 overflow-hidden rounded-lg border border-emerald-950/20 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18),0_24px_60px_rgba(15,23,42,0.18)]"
+            className="relative shrink-0 select-none overflow-hidden rounded-lg border border-emerald-950/20 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18),0_24px_60px_rgba(15,23,42,0.18)]"
+            data-workspace-export-root="true"
             style={{
               backgroundColor: tableSetup.backgroundColor,
               height: tableSetup.height,
@@ -112,7 +252,18 @@ export function TableLayoutWorkspace({
               transformOrigin: "top left",
               width: tableSetup.width
             }}
-            onClick={() => onSelectObject(null)}
+            onClick={() => {
+              if (suppressNextClickRef.current) {
+                suppressNextClickRef.current = false;
+                return;
+              }
+
+              onSelectObject(null);
+            }}
+            onPointerCancel={() => setMarqueeState(null)}
+            onPointerDown={handleTablePointerDown}
+            onPointerMove={handleTablePointerMove}
+            onPointerUp={handleTablePointerUp}
           >
             {tableSetup.grid.visible ? (
               <>
@@ -120,7 +271,10 @@ export function TableLayoutWorkspace({
                 <TableSetupGridSizeGuide tableSetup={tableSetup} />
               </>
             ) : null}
-            <div className="absolute left-4 top-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-2 rounded-md border border-white/30 bg-white/20 px-3 py-2 text-white shadow-sm backdrop-blur-sm">
+            <div
+              className="absolute left-4 top-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-2 rounded-md border border-white/30 bg-white/20 px-3 py-2 text-white shadow-sm backdrop-blur-sm"
+              data-export-exclude="true"
+            >
               <Rows3 size={17} />
               <span className="truncate text-sm font-semibold">{fileNode.name}</span>
               <span className="rounded border border-white/25 bg-white/15 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
@@ -135,10 +289,15 @@ export function TableLayoutWorkspace({
                 imageAssets={imageAssets}
                 readOnly={readOnly}
                 selectedObjectId={selectedObjectId}
+                selectedObjectIds={selectedObjectIds}
+                previewRectTransforms={previewRectTransforms}
                 tableSetup={tableSetup}
                 onExecuteCommand={onExecuteCommand}
+                onRectTransformPreviewChange={handleTableItemRectTransformPreviewChange}
+                onRectTransformPreviewEnd={handleTableItemRectTransformPreviewEnd}
                 onRectTransformChange={handleTableItemRectTransformChange}
                 onSelectObject={onSelectObject}
+                onSelectObjects={onSelectObjects}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center p-8">
@@ -147,6 +306,13 @@ export function TableLayoutWorkspace({
                 </div>
               </div>
             )}
+            {marqueeState ? (
+              <div
+                className="pointer-events-none absolute z-[80] border border-sky-500 bg-sky-400/15"
+                data-export-exclude="true"
+                style={getMarqueeStyle(marqueeState, tableSetup)}
+              />
+            ) : null}
           </section>
         </div>
       </div>
@@ -161,12 +327,14 @@ export function ObjectFileWorkspace({
   objectTree,
   readOnly = false,
   selectedObjectId,
+  selectedObjectIds,
   onExecuteCommand,
-  onSelectObject
+  onSelectObject,
+  onSelectObjects
 }: ProjectWorkspaceSceneProps) {
   if (objectTree.length > 0) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center p-8">
+      <div className="flex h-full min-h-0 select-none items-center justify-center p-8">
         <ObjectScene
           key={fileNode.id}
           fileTree={fileTree}
@@ -175,9 +343,11 @@ export function ObjectFileWorkspace({
           objectTree={objectTree}
           readOnly={readOnly}
           selectedObjectId={selectedObjectId}
+          selectedObjectIds={selectedObjectIds}
           size="large"
           onExecuteCommand={onExecuteCommand}
           onSelectObject={onSelectObject}
+          onSelectObjects={onSelectObjects}
         />
       </div>
     );
@@ -187,6 +357,65 @@ export function ObjectFileWorkspace({
     <div className="flex h-full min-h-0 items-center justify-center p-8 text-sm font-medium text-slate-500">
       No object preview
     </div>
+  );
+}
+
+type MarqueeState = {
+  currentX: number;
+  currentY: number;
+  startX: number;
+  startY: number;
+};
+
+type Bounds = {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+};
+
+function getTablePoint(event: PointerEvent<HTMLElement>, tableSetup: ProjectTableSetup) {
+  const rect = event.currentTarget.getBoundingClientRect();
+
+  if (rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+
+  const scaleX = tableSetup.width / rect.width;
+  const scaleY = tableSetup.height / rect.height;
+
+  return {
+    x: (event.clientX - rect.left) * scaleX - tableSetup.width / 2,
+    y: (event.clientY - rect.top) * scaleY - tableSetup.height / 2
+  };
+}
+
+function getMarqueeBounds(state: MarqueeState): Bounds {
+  return {
+    bottom: Math.max(state.startY, state.currentY),
+    left: Math.min(state.startX, state.currentX),
+    right: Math.max(state.startX, state.currentX),
+    top: Math.min(state.startY, state.currentY)
+  };
+}
+
+function getMarqueeStyle(state: MarqueeState, tableSetup: ProjectTableSetup): CSSProperties {
+  const bounds = getMarqueeBounds(state);
+
+  return {
+    height: bounds.bottom - bounds.top,
+    left: bounds.left + tableSetup.width / 2,
+    top: bounds.top + tableSetup.height / 2,
+    width: bounds.right - bounds.left
+  };
+}
+
+function doBoundsIntersect(left: Bounds, right: Bounds) {
+  return (
+    left.left <= right.right &&
+    left.right >= right.left &&
+    left.top <= right.bottom &&
+    left.bottom >= right.top
   );
 }
 
@@ -234,8 +463,16 @@ type TableSetupSceneProps = {
   imageAssets: ProjectImageAssetOption[];
   readOnly: boolean;
   selectedObjectId: string | null;
+  selectedObjectIds: string[];
+  previewRectTransforms: ReadonlyMap<string, ProjectObjectRectTransform>;
   tableSetup: ProjectTableSetup;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onRectTransformPreviewChange: (
+    objectId: string,
+    before: ProjectObjectRectTransform,
+    after: ProjectObjectRectTransform
+  ) => void;
+  onRectTransformPreviewEnd: () => void;
   onRectTransformChange: (
     objectId: string,
     before: ProjectObjectRectTransform,
@@ -243,6 +480,7 @@ type TableSetupSceneProps = {
     label: string
   ) => void;
   onSelectObject: (objectId: string | null) => void;
+  onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
 
 function TableSetupScene({
@@ -251,10 +489,15 @@ function TableSetupScene({
   imageAssets,
   readOnly,
   selectedObjectId,
+  selectedObjectIds,
+  previewRectTransforms,
   tableSetup,
   onExecuteCommand,
+  onRectTransformPreviewChange,
+  onRectTransformPreviewEnd,
   onRectTransformChange,
-  onSelectObject
+  onSelectObject,
+  onSelectObjects
 }: TableSetupSceneProps) {
   const imageAssetById = useMemo(
     () => new Map(imageAssets.map((imageAsset) => [imageAsset.asset.id, imageAsset])),
@@ -306,20 +549,26 @@ function TableSetupScene({
             fileTree={fileTree}
             fileNodeId={fileNodeId}
             imageAssetById={imageAssetById}
+            multiSelectEnabled
             object={object}
+            previewRectTransform={previewRectTransforms.get(itemId)}
             readOnly={readOnly}
             resizeMode={item.type === "linkedObject" ? "scale" : "size"}
             root
             selectionObjectId={itemId}
             selectedObjectId={selectedObjectId}
+            selectedObjectIds={selectedObjectIds}
             siblingIndex={index}
             snapSize={snapSize}
             stackRootOffset={false}
             onDieFaceChange={handleDieFaceChange}
             onExecuteCommand={onExecuteCommand}
             onObjectSideChange={handleObjectSideChange}
+            onRectTransformPreviewChange={onRectTransformPreviewChange}
+            onRectTransformPreviewEnd={onRectTransformPreviewEnd}
             onRectTransformChange={onRectTransformChange}
             onSelectObject={onSelectObject}
+            onSelectObjects={onSelectObjects}
           />
         );
       })}
@@ -334,9 +583,11 @@ type ObjectSceneProps = {
   objectTree: ProjectObjectNode[];
   readOnly: boolean;
   selectedObjectId: string | null;
+  selectedObjectIds: string[];
   size: ObjectSceneSize;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onSelectObject: (objectId: string | null) => void;
+  onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
 
 function ObjectScene({
@@ -346,9 +597,11 @@ function ObjectScene({
   objectTree,
   readOnly,
   selectedObjectId,
+  selectedObjectIds,
   size,
   onExecuteCommand,
-  onSelectObject
+  onSelectObject,
+  onSelectObjects
 }: ObjectSceneProps) {
   const canvasScale = useProjectWorkspaceStore((state) => state.canvasScale);
   const imageAssetById = useMemo(
@@ -414,13 +667,14 @@ function ObjectScene({
   return (
     <div
       className={cx(
-        "relative overflow-visible",
+        "relative select-none overflow-visible",
         size === "small" ? "h-full w-full" : "h-[min(70vh,760px)] min-h-[420px] w-[min(92%,960px)]"
       )}
       style={{
         transform: `scale(${canvasScale})`,
         transformOrigin: "center"
       }}
+      data-workspace-export-root="true"
     >
       <WorkspaceAxes />
       {viewObjectTree.map((object, index) => (
@@ -433,11 +687,13 @@ function ObjectScene({
           readOnly={readOnly}
           root
           selectedObjectId={selectedObjectId}
+          selectedObjectIds={selectedObjectIds}
           siblingIndex={index}
           onDieFaceChange={handleDieFaceChange}
           onExecuteCommand={onExecuteCommand}
           onObjectSideChange={handleObjectSideChange}
           onSelectObject={onSelectObject}
+          onSelectObjects={onSelectObjects}
         />
       ))}
     </div>
@@ -446,7 +702,11 @@ function ObjectScene({
 
 function WorkspaceAxes() {
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 z-0 overflow-visible">
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-0 overflow-visible"
+      data-export-exclude="true"
+    >
       <span className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-sky-600/45 shadow-[0_0_0_1px_rgba(255,255,255,0.35)]" />
       <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-rose-600/45 shadow-[0_0_0_1px_rgba(255,255,255,0.35)]" />
       <span className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-500/40 bg-white/90 shadow-sm" />

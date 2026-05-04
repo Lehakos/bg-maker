@@ -13,12 +13,14 @@ import {
   findProjectFileNodeInTree,
   getDefaultProjectTableSetup,
   getDefaultProjectTableSetupItemTransform,
+  getProjectTableSetupItemLocked,
   getProjectTableSetupItemId,
   resolveProjectObjectFileObjectTree,
   resolveProjectTableSetupItemObject
 } from "@bg-maker/shared";
 import { updateProjectFileNode } from "../project-files/project-file-tree";
 import {
+  cloneProjectObjectNode,
   createProjectObjectNode,
   getProjectObjectNodeRectTransform,
   setProjectObjectNodeRectTransform
@@ -54,6 +56,7 @@ export function createProjectTableSetupLinkedObjectItem(
     transform: getDefaultProjectTableSetupItemTransform(),
     type: "linkedObject",
     values: {},
+    locked: false,
     visible: true
   };
 }
@@ -87,6 +90,94 @@ export function getProjectTableSetupWithAddedItem(
   };
 }
 
+export function cloneProjectTableSetupItem(
+  item: ProjectTableSetupItem,
+  options: { name?: string; offset?: number } = {}
+): ProjectTableSetupItem {
+  const offset = options.offset ?? 0;
+  const name =
+    options.name ??
+    (item.type === "linkedObject" ? `${item.name} Copy` : `${item.object.name} Copy`);
+
+  if (item.type === "linkedObject") {
+    return {
+      ...item,
+      id: crypto.randomUUID(),
+      name,
+      transform: {
+        ...item.transform,
+        x: item.transform.x + offset,
+        y: item.transform.y + offset
+      }
+    };
+  }
+
+  return {
+    ...item,
+    object: cloneProjectObjectNode(item.object, { name, offset })
+  };
+}
+
+export function getProjectTableSetupWithDuplicatedItems(
+  tableSetup: ProjectTableSetup,
+  itemIds: readonly string[],
+  offset = 24
+): { itemIds: string[]; tableSetup: ProjectTableSetup } {
+  const selectedIds = new Set(itemIds);
+  const sourceEntries = tableSetup.items
+    .map((item, index) => ({ item, index, itemId: getProjectTableSetupItemId(item) }))
+    .filter(({ itemId }) => selectedIds.has(itemId));
+
+  if (!sourceEntries.length) {
+    return { itemIds: [], tableSetup };
+  }
+
+  const clonedItems = sourceEntries.map(({ item }) => cloneProjectTableSetupItem(item, { offset }));
+  const clonedItemIds = clonedItems.map(getProjectTableSetupItemId);
+  const insertIndex = Math.max(...sourceEntries.map(({ index }) => index)) + 1;
+  const items = [
+    ...tableSetup.items.slice(0, insertIndex),
+    ...clonedItems,
+    ...tableSetup.items.slice(insertIndex)
+  ];
+
+  return {
+    itemIds: clonedItemIds,
+    tableSetup: { ...tableSetup, items }
+  };
+}
+
+export function getProjectTableSetupWithInsertedItems(
+  tableSetup: ProjectTableSetup,
+  itemIds: readonly string[],
+  itemsToInsert: readonly ProjectTableSetupItem[],
+  offset = 24
+): { itemIds: string[]; tableSetup: ProjectTableSetup } {
+  if (!itemsToInsert.length) {
+    return { itemIds: [], tableSetup };
+  }
+
+  const selectedIds = new Set(itemIds);
+  const selectedIndexes = tableSetup.items
+    .map((item, index) => (selectedIds.has(getProjectTableSetupItemId(item)) ? index : -1))
+    .filter((index) => index >= 0);
+  const insertIndex = selectedIndexes.length ? Math.max(...selectedIndexes) + 1 : tableSetup.items.length;
+  const clonedItems = itemsToInsert.map((item) => cloneProjectTableSetupItem(item, { offset }));
+  const clonedItemIds = clonedItems.map(getProjectTableSetupItemId);
+
+  return {
+    itemIds: clonedItemIds,
+    tableSetup: {
+      ...tableSetup,
+      items: [
+        ...tableSetup.items.slice(0, insertIndex),
+        ...clonedItems,
+        ...tableSetup.items.slice(insertIndex)
+      ]
+    }
+  };
+}
+
 export function getProjectTableSetupWithRemovedItem(
   tableSetup: ProjectTableSetup,
   itemId: string
@@ -109,6 +200,39 @@ export function getProjectTableSetupWithMovedItem(
   const targetIndex = itemIndex + direction;
 
   if (itemIndex < 0 || targetIndex < 0 || targetIndex >= tableSetup.items.length) {
+    return tableSetup;
+  }
+
+  const items = [...tableSetup.items];
+  const [item] = items.splice(itemIndex, 1);
+
+  if (!item) {
+    return tableSetup;
+  }
+
+  items.splice(targetIndex, 0, item);
+
+  return { ...tableSetup, items };
+}
+
+export type ProjectTableSetupZOrderCommand = "backward" | "forward" | "sendBack" | "sendFront";
+
+export function getProjectTableSetupWithReorderedItem(
+  tableSetup: ProjectTableSetup,
+  itemId: string,
+  command: ProjectTableSetupZOrderCommand
+): ProjectTableSetup {
+  const itemIndex = tableSetup.items.findIndex(
+    (item) => getProjectTableSetupItemId(item) === itemId
+  );
+
+  if (itemIndex < 0 || getProjectTableSetupItemLocked(tableSetup.items[itemIndex]!)) {
+    return tableSetup;
+  }
+
+  const targetIndex = getZOrderTargetIndex(itemIndex, tableSetup.items.length, command);
+
+  if (targetIndex === itemIndex) {
     return tableSetup;
   }
 
@@ -154,6 +278,18 @@ export function getProjectTableSetupWithItemVisibility(
   );
 }
 
+export function getProjectTableSetupWithItemLocked(
+  tableSetup: ProjectTableSetup,
+  itemId: string,
+  locked: boolean
+): ProjectTableSetup {
+  return updateProjectTableSetupItem(tableSetup, itemId, (item) =>
+    item.type === "linkedObject"
+      ? { ...item, locked }
+      : { ...item, object: { ...item.object, locked } }
+  );
+}
+
 export function getProjectTableSetupWithItemTransform(
   tableSetup: ProjectTableSetup,
   itemId: string,
@@ -174,6 +310,27 @@ export function getProjectTableSetupWithItemTransform(
 
     return nextObjectTree[0] ? { ...item, object: nextObjectTree[0] } : item;
   });
+}
+
+export function getProjectTableSetupWithItemTransforms(
+  tableSetup: ProjectTableSetup,
+  transforms: ReadonlyMap<string, ProjectTableSetupItemTransform | ProjectObjectRectTransform>
+): ProjectTableSetup {
+  let nextTableSetup = tableSetup;
+
+  for (const [itemId, transform] of transforms) {
+    const item = nextTableSetup.items.find(
+      (candidate) => getProjectTableSetupItemId(candidate) === itemId
+    );
+
+    if (!item || getProjectTableSetupItemLocked(item)) {
+      continue;
+    }
+
+    nextTableSetup = getProjectTableSetupWithItemTransform(nextTableSetup, itemId, transform);
+  }
+
+  return nextTableSetup;
 }
 
 export function getProjectTableSetupWithLocalObjectTree(
@@ -247,6 +404,26 @@ function normalizeProjectTableSetupItemTransform(
     x: transform.x,
     y: transform.y
   };
+}
+
+function getZOrderTargetIndex(
+  currentIndex: number,
+  itemCount: number,
+  command: ProjectTableSetupZOrderCommand
+) {
+  if (command === "sendBack") {
+    return 0;
+  }
+
+  if (command === "backward") {
+    return Math.max(0, currentIndex - 1);
+  }
+
+  if (command === "forward") {
+    return Math.min(itemCount - 1, currentIndex + 1);
+  }
+
+  return itemCount - 1;
 }
 
 function collectProjectTableSetupObjectFileOptions(

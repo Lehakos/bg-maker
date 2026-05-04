@@ -1,6 +1,6 @@
 import type { Project, ProjectFileNode, ProjectTableSetup } from "@bg-maker/shared";
 import { resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
-import { useMemo } from "react";
+import { type PointerEvent, useMemo, useRef, useState } from "react";
 import { getProjectImageAssetOptions } from "../project-assets/project-image-assets";
 import {
   findProjectFileNode,
@@ -10,6 +10,10 @@ import type { ProjectEditorCommand } from "./project-editor-commands";
 import { ProjectWorkspaceToolbar } from "./ProjectWorkspaceToolbar";
 import { WorkspaceViewport } from "./ProjectWorkspaceViewport";
 import { useProjectWorkspaceStore } from "./use-project-workspace-store";
+import type {
+  TableSetupAlignment,
+  TableSetupDistribution
+} from "../project-table-setup/project-table-setup-geometry";
 
 type ProjectWorkspaceAreaProps = {
   canRedo: boolean;
@@ -22,7 +26,18 @@ type ProjectWorkspaceAreaProps = {
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onRedo: () => void;
   selectedObjectId: string | null;
+  selectedObjectIds: string[];
+  canAlign: boolean;
+  canDistribute: boolean;
+  showArrangeControls: boolean;
+  canExport: boolean;
+  canPrint: boolean;
+  onAlign: (alignment: TableSetupAlignment) => void;
+  onDistribute: (direction: TableSetupDistribution) => void;
+  onExportPng: () => void;
+  onPrintSheets: () => void;
   onSelectObject: (objectId: string | null) => void;
+  onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
   onUndo: () => void;
 };
 
@@ -37,13 +52,32 @@ export function ProjectWorkspaceArea({
   onExecuteCommand,
   onRedo,
   selectedObjectId,
+  selectedObjectIds,
+  canAlign,
+  canDistribute,
+  showArrangeControls,
+  canExport,
+  canPrint,
+  onAlign,
+  onDistribute,
+  onExportPng,
+  onPrintSheets,
   onSelectObject,
+  onSelectObjects,
   onUndo
 }: ProjectWorkspaceAreaProps) {
   const activeTool = useProjectWorkspaceStore((state) => state.activeTool);
   const canvasScale = useProjectWorkspaceStore((state) => state.canvasScale);
   const setActiveTool = useProjectWorkspaceStore((state) => state.setActiveTool);
   const setCanvasScale = useProjectWorkspaceStore((state) => state.setCanvasScale);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [panState, setPanState] = useState<{
+    clientX: number;
+    clientY: number;
+    pointerId: number;
+    scrollLeft: number;
+    scrollTop: number;
+  } | null>(null);
   const selectedNode = useMemo(
     () => (selectedNodeId ? findProjectFileNode(fileTree, selectedNodeId) : undefined),
     [fileTree, selectedNodeId]
@@ -64,22 +98,107 @@ export function ProjectWorkspaceArea({
     [fileTree, project.id]
   );
 
+  function handleZoomToFit() {
+    const scrollContainer = scrollContainerRef.current;
+
+    if (!scrollContainer) {
+      return;
+    }
+
+    const contentSize =
+      contentFileNode?.kind === "tableSetup" && tableSetup
+        ? { height: tableSetup.height, width: tableSetup.width }
+        : getObjectTreeApproximateSize(objectTree);
+
+    if (!contentSize) {
+      return;
+    }
+
+    const padding = 96;
+    const scale = Math.min(
+      6,
+      Math.max(
+        0.5,
+        Math.min(
+          (scrollContainer.clientWidth - padding) / contentSize.width,
+          (scrollContainer.clientHeight - padding) / contentSize.height
+        )
+      )
+    );
+
+    setCanvasScale(scale);
+    window.setTimeout(() => {
+      scrollContainer.scrollTo({
+        left: Math.max(0, (contentSize.width * scale - scrollContainer.clientWidth) / 2),
+        top: Math.max(0, (contentSize.height * scale - scrollContainer.clientHeight) / 2)
+      });
+    }, 0);
+  }
+
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (activeTool !== "pan") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setPanState({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerId: event.pointerId,
+      scrollLeft: event.currentTarget.scrollLeft,
+      scrollTop: event.currentTarget.scrollTop
+    });
+  }
+
+  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (!panState || panState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.scrollLeft = panState.scrollLeft - (event.clientX - panState.clientX);
+    event.currentTarget.scrollTop = panState.scrollTop - (event.clientY - panState.clientY);
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (panState?.pointerId === event.pointerId) {
+      event.preventDefault();
+      event.stopPropagation();
+      setPanState(null);
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#eef1ed]">
       <ProjectWorkspaceToolbar
         activeTool={activeTool}
         canvasScale={canvasScale}
+        canAlign={canAlign}
+        canDistribute={canDistribute}
+        showArrangeControls={showArrangeControls}
         canRedo={canRedo}
         canUndo={canUndo}
+        canExport={canExport}
+        canPrint={canPrint}
+        onAlign={onAlign}
         onCanvasScaleChange={setCanvasScale}
+        onDistribute={onDistribute}
+        onExportPng={onExportPng}
+        onPrintSheets={onPrintSheets}
         onRedo={onRedo}
         onToolChange={setActiveTool}
         onUndo={onUndo}
+        onZoomToFit={handleZoomToFit}
       />
 
       <div
+        ref={scrollContainerRef}
         aria-label="Workspace canvas"
-        className="min-h-0 flex-1 overflow-auto"
+        className={activeTool === "pan" ? "min-h-0 flex-1 cursor-grab select-none overflow-auto" : "min-h-0 flex-1 select-none overflow-auto"}
         role="region"
         style={{
           backgroundColor: "#e7ece6",
@@ -87,6 +206,10 @@ export function ProjectWorkspaceArea({
             "linear-gradient(rgba(71, 85, 105, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(71, 85, 105, 0.08) 1px, transparent 1px)",
           backgroundSize: "32px 32px"
         }}
+        onPointerCancelCapture={() => setPanState(null)}
+        onPointerDownCapture={handlePointerDown}
+        onPointerMoveCapture={handlePointerMove}
+        onPointerUpCapture={handlePointerUp}
       >
         <WorkspaceViewport
           contentFileNode={contentFileNode}
@@ -97,11 +220,24 @@ export function ProjectWorkspaceArea({
           parentFolderName={parentFolder?.name}
           selectedNode={selectedNode}
           selectedObjectId={selectedObjectId}
+          selectedObjectIds={selectedObjectIds}
           tableSetup={tableSetup}
           onExecuteCommand={onExecuteCommand}
           onSelectObject={onSelectObject}
+          onSelectObjects={onSelectObjects}
         />
       </div>
     </main>
   );
+}
+
+function getObjectTreeApproximateSize(objectTree: ReturnType<typeof resolveProjectObjectFileObjectTree>) {
+  if (!objectTree.length) {
+    return null;
+  }
+
+  return {
+    height: 760,
+    width: 960
+  };
 }

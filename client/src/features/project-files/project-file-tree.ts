@@ -3,8 +3,11 @@ import type {
   ProjectFileNode,
   ProjectImageAsset,
   ProjectObjectKind,
+  ProjectObjectNode,
   ProjectObjectSourceRef,
-  ProjectObjectTemplate
+  ProjectObjectTemplate,
+  ProjectTableSetup,
+  ProjectTableSetupItem
 } from "@bg-maker/shared";
 import {
   getDefaultProjectTableSetup,
@@ -198,6 +201,36 @@ export function deleteProjectFileNode(
   return sortProjectFileTree(removeProjectFileNode(fileTree, nodeId));
 }
 
+export function duplicateProjectFileNode(
+  fileTree: ProjectFileNode[],
+  nodeId: string
+): { fileTree: ProjectFileNode[]; node: ProjectFileNode } | null {
+  const location = findProjectFileNodeLocation(fileTree, nodeId);
+
+  if (!location || isProtectedProjectFileNode(location.node)) {
+    return null;
+  }
+
+  const duplicatedNode = cloneProjectFileNode(location.node, {
+    name: `${location.node.name} Copy`
+  });
+
+  return {
+    fileTree: appendProjectFileNode(fileTree, location.parentId, duplicatedNode),
+    node: duplicatedNode
+  };
+}
+
+export function cloneProjectFileNode(
+  node: ProjectFileNode,
+  options: { name?: string } = {}
+): ProjectFileNode {
+  const fileIdMap = new Map<string, string>();
+  const clonedNode = cloneProjectFileNodeWithIdMap(node, fileIdMap, options.name ?? node.name);
+
+  return remapProjectFileNodeReferences(clonedNode, fileIdMap);
+}
+
 export function renameProjectFileNode(
   fileTree: ProjectFileNode[],
   nodeId: string,
@@ -302,6 +335,155 @@ function getDefaultProjectFileNodeName(kind: ProjectFileKind, objectRootKind?: P
   }
 
   return "New file";
+}
+
+function cloneProjectFileNodeWithIdMap(
+  node: ProjectFileNode,
+  fileIdMap: Map<string, string>,
+  name: string
+): ProjectFileNode {
+  const nextId = crypto.randomUUID();
+  fileIdMap.set(node.id, nextId);
+
+  if (node.type === "folder") {
+    return {
+      ...node,
+      id: nextId,
+      name,
+      children: (node.children ?? []).map((child) =>
+        cloneProjectFileNodeWithIdMap(child, fileIdMap, child.name)
+      )
+    };
+  }
+
+  return {
+    ...node,
+    id: nextId,
+    name,
+    ...(node.objectTree ? { objectTree: node.objectTree.map(cloneProjectObjectNode) } : {}),
+    ...(node.tableSetup ? { tableSetup: cloneProjectTableSetup(node.tableSetup) } : {})
+  };
+}
+
+function cloneProjectObjectNode(node: ProjectObjectNode): ProjectObjectNode {
+  return {
+    ...node,
+    id: crypto.randomUUID(),
+    children: (node.children ?? []).map(cloneProjectObjectNode)
+  };
+}
+
+function cloneProjectTableSetup(tableSetup: ProjectTableSetup): ProjectTableSetup {
+  return {
+    ...tableSetup,
+    items: tableSetup.items.map(cloneProjectTableSetupItem)
+  };
+}
+
+function cloneProjectTableSetupItem(item: ProjectTableSetupItem): ProjectTableSetupItem {
+  if (item.type === "linkedObject") {
+    return {
+      ...item,
+      id: crypto.randomUUID()
+    };
+  }
+
+  return {
+    ...item,
+    object: cloneProjectObjectNode(item.object)
+  };
+}
+
+function remapProjectFileNodeReferences(
+  node: ProjectFileNode,
+  fileIdMap: ReadonlyMap<string, string>
+): ProjectFileNode {
+  if (node.type === "folder") {
+    return {
+      ...node,
+      children: (node.children ?? []).map((child) => remapProjectFileNodeReferences(child, fileIdMap))
+    };
+  }
+
+  return {
+    ...node,
+    ...(node.sourceRef
+      ? {
+          sourceRef: {
+            ...node.sourceRef,
+            sourceObjectFileNodeId:
+              fileIdMap.get(node.sourceRef.sourceObjectFileNodeId) ??
+              node.sourceRef.sourceObjectFileNodeId
+          }
+        }
+      : {}),
+    ...(node.objectTree
+      ? { objectTree: node.objectTree.map((object) => remapProjectObjectReferences(object, fileIdMap)) }
+      : {}),
+    ...(node.tableSetup ? { tableSetup: remapProjectTableSetupReferences(node.tableSetup, fileIdMap) } : {})
+  };
+}
+
+function remapProjectObjectReferences(
+  object: ProjectObjectNode,
+  fileIdMap: ReadonlyMap<string, string>
+): ProjectObjectNode {
+  const container = object.components?.container;
+  const zone = object.components?.zone;
+  const components = object.components
+    ? {
+        ...object.components,
+        ...(container
+          ? {
+              container: {
+                ...container,
+                entries: container.entries.map((entry) => ({
+                  ...entry,
+                  objectFileNodeId: fileIdMap.get(entry.objectFileNodeId) ?? entry.objectFileNodeId
+                }))
+              }
+            }
+          : {}),
+        ...(zone
+          ? {
+              zone: {
+                ...zone,
+                referenceObjectFileId:
+                  fileIdMap.get(zone.referenceObjectFileId) ?? zone.referenceObjectFileId
+              }
+            }
+          : {})
+      }
+    : undefined;
+
+  return {
+    ...object,
+    ...(components ? { components } : {}),
+    children: (object.children ?? []).map((child) => remapProjectObjectReferences(child, fileIdMap))
+  };
+}
+
+function remapProjectTableSetupReferences(
+  tableSetup: ProjectTableSetup,
+  fileIdMap: ReadonlyMap<string, string>
+): ProjectTableSetup {
+  return {
+    ...tableSetup,
+    items: tableSetup.items.map((item) => {
+      if (item.type === "linkedObject") {
+        return {
+          ...item,
+          sourceObjectFileNodeId:
+            fileIdMap.get(item.sourceObjectFileNodeId) ?? item.sourceObjectFileNodeId
+        };
+      }
+
+      return {
+        ...item,
+        object: remapProjectObjectReferences(item.object, fileIdMap)
+      };
+    })
+  };
 }
 
 function appendProjectFileNodeInChildren(

@@ -21,6 +21,7 @@ import {
   Boxes,
   ChevronDown,
   ChevronRight,
+  Copy,
   Folder,
   LockKeyhole,
   Pencil,
@@ -44,6 +45,7 @@ import {
   createFolderNode,
   createProjectFileNode,
   deleteProjectFileNode,
+  duplicateProjectFileNode,
   findProjectFileNode,
   findProjectFileNodeLocation,
   isProtectedProjectFileNode,
@@ -144,8 +146,10 @@ export function ProjectFileTreePanel({
   const contextMenuActions = createContextMenuActions({
     disabled: saving,
     canDelete: Boolean(contextMenuNode && !isProtectedProjectFileNode(contextMenuNode)),
+    canDuplicate: Boolean(contextMenuNode && !isProtectedProjectFileNode(contextMenuNode)),
     canRename: Boolean(contextMenuNode && !isProtectedProjectFileNode(contextMenuNode)),
     onCreate: handleRequestCreateNode,
+    onDuplicate: handleDuplicateNode,
     onRename: handleRequestRenameNode,
     onDelete: handleDeleteNode
   });
@@ -295,6 +299,29 @@ export function ProjectFileTreePanel({
     });
     onSelectNode(nextSelectedNodeId);
     onFileTreeChange(nextFileTree);
+  }
+
+  function handleDuplicateNode() {
+    if (!contextMenu?.nodeId) {
+      return;
+    }
+
+    const result = duplicateProjectFileNode(fileTree, contextMenu.nodeId);
+
+    if (!result) {
+      return;
+    }
+
+    const duplicatedLocation = findProjectFileNodeLocation(result.fileTree, result.node.id);
+
+    if (duplicatedLocation?.parentId) {
+      setExpandedFolderIds((currentFolderIds) =>
+        new Set(currentFolderIds).add(duplicatedLocation.parentId as string)
+      );
+    }
+
+    onSelectNode(result.node.id);
+    onFileTreeChange(result.fileTree);
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -752,15 +779,19 @@ function ProjectFileNodeVisual({ iconClassName, node, projectId }: ProjectFileNo
 function createContextMenuActions({
   disabled,
   canDelete,
+  canDuplicate,
   canRename,
   onCreate,
+  onDuplicate,
   onRename,
   onDelete
 }: {
   disabled: boolean;
   canDelete: boolean;
+  canDuplicate: boolean;
   canRename: boolean;
   onCreate: (kind: ProjectFileCreateType) => void;
+  onDuplicate: () => void;
   onRename: () => void;
   onDelete: () => void;
 }): ContextMenuAction[] {
@@ -795,11 +826,18 @@ function createContextMenuActions({
       ]
     },
     {
+      id: "duplicate",
+      label: "Duplicate",
+      icon: <Copy size={14} />,
+      disabled: disabled || !canDuplicate,
+      separatorBefore: true,
+      onSelect: onDuplicate
+    },
+    {
       id: "rename",
       label: "Rename",
       icon: <Pencil size={14} />,
       disabled: disabled || !canRename,
-      separatorBefore: true,
       onSelect: onRename
     },
     {
