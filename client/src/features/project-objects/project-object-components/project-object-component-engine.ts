@@ -7,6 +7,7 @@ import type {
   ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectDoubleSide,
+  ProjectObjectIcon,
   ProjectObjectImage,
   ProjectObjectKind,
   ProjectObjectLayout,
@@ -39,6 +40,7 @@ import {
   getProjectObjectDoubleSideComponent,
   withProjectObjectDoubleSideComponent
 } from "./double-side-component";
+import { getProjectObjectIconComponent, withProjectObjectIconComponent } from "./icon-component";
 import { getProjectObjectImageComponent, withProjectObjectImageComponent } from "./image-component";
 import {
   getProjectObjectLayoutComponent,
@@ -110,6 +112,10 @@ export class ProjectObjectComponentEngine {
 
   getImage(object: ProjectObjectNode): ProjectObjectImage {
     return getProjectObjectImageComponent(object);
+  }
+
+  getIcon(object: ProjectObjectNode): ProjectObjectIcon {
+    return getProjectObjectIconComponent(object);
   }
 
   getLayout(object: ProjectObjectNode): ProjectObjectLayout {
@@ -186,6 +192,10 @@ export class ProjectObjectComponentEngine {
 
   withImage(object: ProjectObjectNode, image: ProjectObjectImage): ProjectObjectNode {
     return withProjectObjectImageComponent(object, image);
+  }
+
+  withIcon(object: ProjectObjectNode, icon: ProjectObjectIcon): ProjectObjectNode {
+    return withProjectObjectIconComponent(object, icon);
   }
 
   withLayout(object: ProjectObjectNode, layout: ProjectObjectLayout): ProjectObjectNode {

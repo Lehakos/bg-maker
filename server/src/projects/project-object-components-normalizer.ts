@@ -16,6 +16,9 @@ import type {
   ProjectObjectDieFace,
   ProjectObjectDieFaceMode,
   ProjectObjectDoubleSide,
+  ProjectObjectIcon,
+  ProjectObjectIconStyle,
+  ProjectObjectIconSymbol,
   ProjectObjectImage,
   ProjectObjectImageFit,
   ProjectObjectKind,
@@ -46,6 +49,7 @@ import {
   getDefaultProjectObjectDie,
   getDefaultProjectObjectDieFace,
   getDefaultProjectObjectDoubleSide,
+  getDefaultProjectObjectIcon,
   getDefaultProjectObjectImage,
   getDefaultProjectObjectLayout,
   getDefaultProjectObjectMeeple,
@@ -67,6 +71,8 @@ import {
   projectObjectDieFaceCountLimits,
   projectObjectDieFaceLabelMaxLength,
   projectObjectDieFaceModes,
+  projectObjectIconStyles,
+  projectObjectIconSymbols,
   projectObjectMeepleVisualVariants,
   projectObjectShapePolygonCoordinateLimits,
   projectObjectShapePolygonPointCountLimits,
@@ -120,6 +126,8 @@ const projectObjectImageFits = new Set<ProjectObjectImageFit>([
   "scaleDown"
 ]);
 const projectObjectDieFaceModeSet = new Set<ProjectObjectDieFaceMode>(projectObjectDieFaceModes);
+const projectObjectIconSymbolSet = new Set<ProjectObjectIconSymbol>(projectObjectIconSymbols);
+const projectObjectIconStyleSet = new Set<ProjectObjectIconStyle>(projectObjectIconStyles);
 const projectObjectCounterBoundsModeSet = new Set<ProjectObjectCounterBoundsMode>(
   projectObjectCounterBoundsModes
 );
@@ -252,6 +260,13 @@ export function normalizeProjectObjectComponents(
     return {
       ...components,
       image: normalizeProjectObjectImage(record.image)
+    };
+  }
+
+  if (kind === "icon") {
+    return {
+      ...components,
+      icon: normalizeProjectObjectIcon(record.icon)
     };
   }
 
@@ -739,6 +754,21 @@ function normalizeProjectObjectImage(value: unknown): ProjectObjectImage {
       max: 100,
       min: 0
     })
+  };
+}
+
+function normalizeProjectObjectIcon(value: unknown): ProjectObjectIcon {
+  const defaultIcon = getDefaultProjectObjectIcon();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    color: normalizeHexColor(record.color, defaultIcon.color),
+    style: projectObjectIconStyleSet.has(record.style as ProjectObjectIconStyle)
+      ? (record.style as ProjectObjectIconStyle)
+      : defaultIcon.style,
+    symbol: projectObjectIconSymbolSet.has(record.symbol as ProjectObjectIconSymbol)
+      ? (record.symbol as ProjectObjectIconSymbol)
+      : defaultIcon.symbol
   };
 }
 

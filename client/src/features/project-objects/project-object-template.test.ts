@@ -12,7 +12,9 @@ const template: ProjectObjectTemplate = {
     { id: "title", name: "Title", type: "text", defaultValue: "Default title" },
     { id: "power", name: "Power", type: "number", defaultValue: 1 },
     { id: "portrait", name: "Portrait", type: "image", defaultValue: "asset-default" },
-    { id: "accent", name: "Accent", type: "color", defaultValue: "#112233" }
+    { id: "accent", name: "Accent", type: "color", defaultValue: "#112233" },
+    { id: "iconSymbol", name: "Icon", type: "text", defaultValue: "shield" },
+    { id: "invalidIconSymbol", name: "Invalid icon", type: "text", defaultValue: "nope" }
   ]
 };
 
@@ -75,6 +77,37 @@ const sourceRoot: ProjectObjectNode = {
           positionY: 50
         }
       }
+    },
+    {
+      id: "cost-icon",
+      name: "Cost",
+      kind: "icon",
+      visible: true,
+      bindings: [
+        { variableId: "iconSymbol", target: "icon.symbol" },
+        { variableId: "accent", target: "icon.color" }
+      ],
+      components: {
+        icon: {
+          color: "#000000",
+          style: "outline",
+          symbol: "star"
+        }
+      }
+    },
+    {
+      id: "fallback-icon",
+      name: "Fallback",
+      kind: "icon",
+      visible: true,
+      bindings: [{ variableId: "invalidIconSymbol", target: "icon.symbol" }],
+      components: {
+        icon: {
+          color: "#000000",
+          style: "outline",
+          symbol: "star"
+        }
+      }
     }
   ]
 };
@@ -104,6 +137,7 @@ describe("project object template resolver", () => {
           sourceObjectFileNodeId: "character-card",
           values: {
             accent: "#aa0000",
+            iconSymbol: "skull",
             portrait: "asset-warrior",
             title: "Warrior"
           }
@@ -118,11 +152,21 @@ describe("project object template resolver", () => {
     expect(defaultTree[0]?.children?.[1]?.components?.text?.content).toBe("1");
     expect(defaultTree[0]?.children?.[2]?.components?.text?.color).toBe("#112233");
     expect(defaultTree[0]?.children?.[3]?.components?.image?.assetId).toBe("asset-default");
+    expect(defaultTree[0]?.children?.[4]?.components?.icon).toMatchObject({
+      color: "#112233",
+      symbol: "shield"
+    });
+    expect(defaultTree[0]?.children?.[5]?.components?.icon?.symbol).toBe("star");
 
     expect(linkedTree[0]?.children?.[0]?.components?.text?.content).toBe("Warrior");
     expect(linkedTree[0]?.children?.[1]?.components?.text?.content).toBe("1");
     expect(linkedTree[0]?.children?.[2]?.components?.text?.color).toBe("#aa0000");
     expect(linkedTree[0]?.children?.[3]?.components?.image?.assetId).toBe("asset-warrior");
+    expect(linkedTree[0]?.children?.[4]?.components?.icon).toMatchObject({
+      color: "#aa0000",
+      symbol: "skull"
+    });
+    expect(linkedTree[0]?.children?.[5]?.components?.icon?.symbol).toBe("star");
   });
 
   it("ignores invalid bindings and keeps linked objects attached to source layout changes", () => {

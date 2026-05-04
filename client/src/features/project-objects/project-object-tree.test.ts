@@ -10,6 +10,7 @@ import {
   type ProjectObjectCounter,
   type ProjectObjectDeck,
   type ProjectObjectDie,
+  type ProjectObjectIcon,
   type ProjectObjectImage,
   type ProjectObjectKind,
   type ProjectObjectLayout,
@@ -25,6 +26,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendProjectObjectNode,
   cloneProjectObjectNode,
+  createProjectObjectNode,
   clearProjectObjectTreeActiveSides,
   deleteProjectObjectNode,
   findProjectObjectNode,
@@ -40,6 +42,7 @@ import {
   getProjectObjectNodeDie,
   getProjectObjectNodeChildren,
   getProjectObjectNodeDoubleSide,
+  getProjectObjectNodeIcon,
   getProjectObjectNodeVisibleChildren,
   getProjectObjectNodeImage,
   getProjectObjectNodeLayout,
@@ -64,6 +67,7 @@ import {
   setProjectObjectNodeDeck,
   setProjectObjectNodeDie,
   setProjectObjectNodeDoubleSide,
+  setProjectObjectNodeIcon,
   setProjectObjectNodeImage,
   setProjectObjectNodeLayout,
   setProjectObjectNodeMeeple,
@@ -531,9 +535,40 @@ describe("project object tree helpers", () => {
     expect(doesProjectObjectClipChildren("die")).toBe(true);
     expect(doesProjectObjectClipChildren("shape")).toBe(true);
     expect(doesProjectObjectClipChildren("group")).toBe(false);
+    expect(doesProjectObjectClipChildren("icon")).toBe(false);
     expect(doesProjectObjectClipChildren("label")).toBe(false);
     expect(doesProjectObjectClipChildren("image")).toBe(false);
     expect(doesProjectObjectClipChildren("zone")).toBe(false);
+  });
+
+  it("creates and updates icon components", () => {
+    const iconObject = createProjectObjectNode("icon");
+    const nextIcon: ProjectObjectIcon = {
+      color: "#ff0000",
+      style: "filled",
+      symbol: "shield"
+    };
+    const objectTree = [objectNode("icon-1", "Icon", "icon")];
+    const updatedTree = setProjectObjectNodeIcon(objectTree, "icon-1", nextIcon);
+
+    expect(iconObject).toMatchObject({
+      kind: "icon",
+      name: "New icon",
+      components: {
+        icon: {
+          color: "#0f172a",
+          style: "outline",
+          symbol: "star"
+        },
+        rectTransform: {
+          height: 48,
+          width: 48
+        }
+      }
+    });
+    expect(getProjectObjectNodeIcon(findProjectObjectNode(updatedTree, "icon-1")!)).toEqual(
+      nextIcon
+    );
   });
 
   it("stores double-sided card appearance on the active side", () => {

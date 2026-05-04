@@ -7,6 +7,12 @@ import {
 import { Button, Group, Modal, Stack, TextInput } from "@mantine/core";
 import { Link2, Plus } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import {
+  stickyModalBodyClassName,
+  stickyModalFooterClassName,
+  stickyModalFormClassName,
+  stickyModalStyles
+} from "../../components/modal-layout";
 import { getProjectObjectLinkedFileDefaultName } from "../project-objects/project-object-template";
 import {
   getProjectObjectKindIconClassName,
@@ -90,46 +96,59 @@ export function ProjectFileCreateModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title={getCreateTitle(type)} centered radius="sm">
-      <form onSubmit={handleSubmit}>
-        <Stack gap="md">
-          <TextInput
-            autoFocus
-            label="Name"
-            placeholder={
-              type === "object"
-                ? sourceObjectOption
-                  ? getProjectObjectLinkedFileDefaultName(sourceObjectOption.name)
-                  : getDefaultProjectObjectName(objectRootKind)
-                : getDefaultCreateName(type)
-            }
-            value={name}
-            error={submitted && nameIsEmpty ? "Enter a name" : undefined}
-            onChange={(event) => {
-              setNameTouched(true);
-              setName(event.currentTarget.value);
-            }}
-          />
-
-          {type === "object" ? (
-            <ObjectRootKindPicker
-              objectSourceOptions={objectSourceOptions}
-              sourceObjectFileNodeId={sourceObjectFileNodeId}
-              value={objectRootKind}
-              onChange={handleObjectRootKindChange}
-              onSourceChange={handleObjectSourceChange}
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={getCreateTitle(type)}
+      centered
+      radius="sm"
+      styles={stickyModalStyles}
+    >
+      <form className={stickyModalFormClassName} onSubmit={handleSubmit}>
+        <div className={stickyModalBodyClassName}>
+          <Stack gap="md">
+            <TextInput
+              autoFocus
+              label="Name"
+              placeholder={
+                type === "object"
+                  ? sourceObjectOption
+                    ? getProjectObjectLinkedFileDefaultName(sourceObjectOption.name)
+                    : getDefaultProjectObjectName(objectRootKind)
+                  : getDefaultCreateName(type)
+              }
+              value={name}
+              error={submitted && nameIsEmpty ? "Enter a name" : undefined}
+              onChange={(event) => {
+                setNameTouched(true);
+                setName(event.currentTarget.value);
+              }}
             />
-          ) : null}
 
-          <Group justify="flex-end" gap="sm">
-            <Button variant="subtle" color="gray" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" leftSection={<Plus size={16} />}>
-              Create
-            </Button>
-          </Group>
-        </Stack>
+            {type === "object" ? (
+              <ObjectRootKindPicker
+                objectSourceOptions={objectSourceOptions}
+                sourceObjectFileNodeId={sourceObjectFileNodeId}
+                value={objectRootKind}
+                onChange={handleObjectRootKindChange}
+                onSourceChange={handleObjectSourceChange}
+              />
+            ) : null}
+          </Stack>
+        </div>
+
+        <Group
+          className={stickyModalFooterClassName}
+          justify="flex-end"
+          gap="sm"
+        >
+          <Button variant="subtle" color="gray" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" leftSection={<Plus size={16} />}>
+            Create
+          </Button>
+        </Group>
       </form>
     </Modal>
   );

@@ -219,9 +219,14 @@ function isProjectObjectVariableTargetCompatible(
     return type === "text" || type === "number";
   }
 
+  if (target === "icon.symbol") {
+    return type === "text";
+  }
+
   if (
     target === "appearance.backgroundColor" ||
     target === "appearance.borderColor" ||
+    target === "icon.color" ||
     target === "text.color"
   ) {
     return type === "color";

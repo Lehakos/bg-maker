@@ -23,6 +23,7 @@ import {
   getProjectObjectNodeAppearance,
   getProjectObjectNodeContainer,
   getProjectObjectNodeDie,
+  getProjectObjectNodeIcon,
   getProjectObjectNodeImage,
   getProjectObjectNodeMeeple,
   getProjectObjectNodeShape,
@@ -31,6 +32,7 @@ import {
 } from "./project-object-tree";
 import { getProjectObjectZoneSlotRects } from "./project-object-zone";
 import { BagIcon, BoxIcon } from "./project-object-icons";
+import { getProjectObjectIconRegistryEntry } from "./project-object-icon-registry";
 import { ProjectObjectKindIcon } from "./project-object-tree-ui";
 import type { ProjectImageAssetOption } from "../project-assets/project-image-assets";
 
@@ -87,6 +89,10 @@ export function ProjectObjectSurface({
 
   if (object.kind === "image") {
     return <ImageVisual imageAssetById={imageAssetById} object={object} />;
+  }
+
+  if (object.kind === "icon") {
+    return <IconVisual object={object} />;
   }
 
   return <ShapeVisual object={object} />;
@@ -529,6 +535,35 @@ function ImageVisual({ imageAssetById, object }: ImageVisualProps) {
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+function IconVisual({ object }: ObjectVisualProps) {
+  const appearance = getProjectObjectNodeAppearance(object);
+  const icon = getProjectObjectNodeIcon(object);
+  const Icon = getProjectObjectIconRegistryEntry(icon.symbol).icon;
+  const filled = icon.style === "filled";
+
+  return (
+    <div
+      className="relative flex h-full w-full min-w-0 items-center justify-center overflow-hidden text-center"
+      style={getAppearanceStyle(appearance)}
+    >
+      <span
+        className="flex h-full w-full min-w-0 items-center justify-center"
+        style={{
+          color: icon.color
+        }}
+      >
+        <Icon
+          aria-hidden
+          className="h-full w-full"
+          fill={filled ? "currentColor" : "none"}
+          stroke="currentColor"
+          strokeWidth={filled ? 1.4 : 2}
+        />
+      </span>
     </div>
   );
 }

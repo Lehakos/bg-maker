@@ -6,6 +6,7 @@ import type {
   ProjectObjectCounter,
   ProjectObjectDeck,
   ProjectObjectDie,
+  ProjectObjectIcon,
   ProjectObjectImage,
   ProjectObjectLayout,
   ProjectObjectMeeple,
@@ -54,6 +55,10 @@ import {
   getDieWithFaceField,
   normalizeDieNumberValue
 } from "./project-object-inspector-state/die-state";
+import {
+  createIconDraft,
+  getIconWithDraftField
+} from "./project-object-inspector-state/icon-state";
 import { parseRectTransformDraftValue } from "./project-object-inspector-state/inspector-state-utils";
 import {
   createLayoutDraft,
@@ -187,6 +192,12 @@ const image: ProjectObjectImage = {
   fit: "contain",
   positionX: 49.6,
   positionY: 20.2
+};
+
+const icon: ProjectObjectIcon = {
+  color: "#0f172a",
+  style: "outline",
+  symbol: "star"
 };
 
 const layout: ProjectObjectLayout = {
@@ -542,6 +553,25 @@ describe("project object inspector state", () => {
     expect(getShapeWithVariant(shape, "hexagon")).toEqual({ variant: "hexagon" });
     expect(getShapeWithVariant(shape, "polygon")).toEqual({ variant: "polygon" });
     expect(getShapeWithVariant(shape, "trapezoid")).toBeNull();
+  });
+
+  it("creates and normalizes icon drafts", () => {
+    expect(createIconDraft(icon)).toEqual({
+      color: "#0f172a",
+      style: "outline",
+      symbol: "star"
+    });
+    expect(getIconWithDraftField(icon, "symbol", "shield")).toMatchObject({
+      symbol: "shield"
+    });
+    expect(getIconWithDraftField(icon, "color", "#ABCDEF")).toMatchObject({
+      color: "#abcdef"
+    });
+    expect(getIconWithDraftField(icon, "style", "filled")).toMatchObject({
+      style: "filled"
+    });
+    expect(getIconWithDraftField(icon, "symbol", "unknown")).toBeNull();
+    expect(getIconWithDraftField(icon, "color", "red")).toBeNull();
   });
 
   it("creates and updates custom shape polygon points", () => {

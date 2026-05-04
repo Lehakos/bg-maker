@@ -10,6 +10,7 @@ import type {
   ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectDoubleSide,
+  ProjectObjectIcon,
   ProjectObjectKind,
   ProjectObjectLayout,
   ProjectObjectMeeple,
@@ -315,6 +316,10 @@ export function getProjectObjectNodeImage(object: ProjectObjectNode): ProjectObj
   return projectObjectComponentEngine.getImage(object);
 }
 
+export function getProjectObjectNodeIcon(object: ProjectObjectNode): ProjectObjectIcon {
+  return projectObjectComponentEngine.getIcon(object);
+}
+
 export function getProjectObjectNodeLayout(object: ProjectObjectNode): ProjectObjectLayout {
   return projectObjectComponentEngine.getLayout(object);
 }
@@ -497,6 +502,18 @@ export function setProjectObjectNodeImage(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withImage(node, image)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeIcon(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  icon: ProjectObjectIcon
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withIcon(node, icon)
   );
 
   return result.changed ? result.nodes : objectTree;

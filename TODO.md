@@ -40,14 +40,14 @@ zones, counters, and quick prototype markings.
 
 Initial shape:
 
-- [ ] Add `icon` to `projectObjectKinds`.
-- [ ] Add shared `ProjectObjectIcon` component data.
-- [ ] Support built-in icon symbols before custom SVG import.
-- [ ] Support color, opacity, stroke/fill style, and padding.
-- [ ] Render icons as scalable vector-like visuals in `ProjectObjectSurface`.
-- [ ] Add an inspector section with icon picker and color controls.
-- [ ] Allow template bindings for icon symbol and color.
-- [ ] Allow `Icon` as a child inside cards, tokens, boards, and groups.
+- [x] Add `icon` to `projectObjectKinds`.
+- [x] Add shared `ProjectObjectIcon` component data.
+- [x] Support built-in icon symbols before custom SVG import.
+- [x] Support color, opacity, stroke/fill style, and padding.
+- [x] Render icons as scalable vector-like visuals in `ProjectObjectSurface`.
+- [x] Add an inspector section with icon picker and color controls.
+- [x] Allow template bindings for icon symbol and color.
+- [x] Allow `Icon` as a child inside cards, tokens, boards, and groups.
 
 Possible later additions:
 

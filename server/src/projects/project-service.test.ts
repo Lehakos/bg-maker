@@ -167,6 +167,32 @@ describe("ProjectService", () => {
                       }
                     },
                     visible: false
+                  },
+                  {
+                    id: " icon-1 ",
+                    kind: "icon",
+                    name: " Icon 1 ",
+                    components: {
+                      icon: {
+                        color: "#ABCDEF",
+                        style: "filled",
+                        symbol: "shield"
+                      }
+                    },
+                    visible: true
+                  },
+                  {
+                    id: " icon-2 ",
+                    kind: "icon",
+                    name: " Icon 2 ",
+                    components: {
+                      icon: {
+                        color: "blue",
+                        style: "sparkle",
+                        symbol: "missing"
+                      }
+                    },
+                    visible: true
                   }
                 ],
                 id: " group-1 ",
@@ -264,6 +290,40 @@ describe("ProjectService", () => {
                         }
                       },
                       visible: false
+                    },
+                    {
+                      id: "icon-1",
+                      kind: "icon",
+                      name: "Icon 1",
+                      components: {
+                        icon: {
+                          color: "#abcdef",
+                          style: "filled",
+                          symbol: "shield"
+                        },
+                        rectTransform: {
+                          height: 48,
+                          width: 48
+                        }
+                      },
+                      visible: true
+                    },
+                    {
+                      id: "icon-2",
+                      kind: "icon",
+                      name: "Icon 2",
+                      components: {
+                        icon: {
+                          color: "#0f172a",
+                          style: "outline",
+                          symbol: "star"
+                        },
+                        rectTransform: {
+                          height: 48,
+                          width: 48
+                        }
+                      },
+                      visible: true
                     }
                   ],
                   id: "group-1",

@@ -1,4 +1,5 @@
 import type {
+  ProjectObjectIconStyle,
   ProjectObjectImageFit,
   ProjectObjectShape,
   ProjectObjectShapePoint,
@@ -14,6 +15,7 @@ import {
   AlignVerticalJustifyStart,
   ImagePlus,
   Shapes,
+  Star,
   Type,
   type LucideIcon
 } from "lucide-react";
@@ -35,6 +37,8 @@ import {
 } from "./ProjectObjectVariableBindingField";
 import {
   imageNumberFieldSettings,
+  type IconDraft,
+  type IconFieldKey,
   textNumberFieldSettings,
   type ImageDraft,
   type ImageFieldKey,
@@ -43,6 +47,7 @@ import {
   type TextFieldKey
 } from "./project-object-inspector-state";
 import { ProjectObjectShapePolygonEditor } from "./ProjectObjectShapePolygonEditor";
+import { projectObjectIconRegistry } from "../project-objects/project-object-icon-registry";
 import {
   getProjectImageAssetDragPayload,
   hasProjectImageAssetDragData
@@ -64,6 +69,11 @@ const imageNumberFields: readonly ImageNumberFieldDefinition[] = [
 
 const textColorFields = [{ key: "color", label: "Color" }] as const satisfies readonly {
   key: Extract<TextFieldKey, "color">;
+  label: string;
+}[];
+
+const iconColorFields = [{ key: "color", label: "Color" }] as const satisfies readonly {
+  key: Extract<IconFieldKey, "color">;
   label: string;
 }[];
 
@@ -95,6 +105,14 @@ const imageFitOptions = [
 ] as const satisfies readonly {
   label: string;
   value: ProjectObjectImageFit;
+}[];
+
+const iconStyleOptions = [
+  { label: "Outline", value: "outline" },
+  { label: "Filled", value: "filled" }
+] as const satisfies readonly {
+  label: string;
+  value: ProjectObjectIconStyle;
 }[];
 
 const shapeVariantOptions = [
@@ -305,6 +323,78 @@ export function ProjectObjectImageSection({
   );
 }
 
+type ProjectObjectIconSectionProps = {
+  colorBinding?: VariableBindingFieldState;
+  draft: IconDraft;
+  symbolBinding?: VariableBindingFieldState;
+  onDraftChange: (fieldKey: IconFieldKey, value: string) => void;
+};
+
+export function ProjectObjectIconSection({
+  colorBinding,
+  draft,
+  symbolBinding,
+  onDraftChange
+}: ProjectObjectIconSectionProps) {
+  const colorBound = Boolean(colorBinding?.value);
+  const symbolBound = Boolean(symbolBinding?.value);
+
+  return (
+    <InspectorSection icon={<Star size={15} />} title="Icon">
+      <div className="block min-w-0 text-xs font-medium text-slate-500">
+        <span className="flex min-h-5 min-w-0 items-center gap-1.5">
+          <span className="truncate">Symbol</span>
+          <ProjectObjectVariableBindingField binding={symbolBinding} />
+        </span>
+        <div className="mt-1 grid grid-cols-5 gap-1">
+          {projectObjectIconRegistry.map((entry) => {
+            const Icon = entry.icon;
+            const active = draft.symbol === entry.symbol;
+
+            return (
+              <button
+                key={entry.symbol}
+                aria-label={entry.label}
+                aria-pressed={active}
+                className={cx(
+                  "flex h-8 min-w-0 items-center justify-center rounded-md border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sky-100",
+                  active
+                    ? "border-sky-500 bg-sky-50 text-sky-700"
+                    : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900",
+                  symbolBound && "cursor-not-allowed opacity-60"
+                )}
+                disabled={symbolBound}
+                title={entry.label}
+                type="button"
+                onClick={() => onDraftChange("symbol", entry.symbol)}
+              >
+                <Icon
+                  size={16}
+                  fill={active && draft.style === "filled" ? "currentColor" : "none"}
+                  strokeWidth={2.1}
+                />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <InspectorColorField
+          disabled={colorBound}
+          field={iconColorFields[0]}
+          labelAction={<ProjectObjectVariableBindingField binding={colorBinding} />}
+          value={draft.color}
+          onChange={onDraftChange}
+        />
+        <IconStyleSegmentedField
+          value={draft.style}
+          onChange={(value) => onDraftChange("style", value)}
+        />
+      </div>
+    </InspectorSection>
+  );
+}
+
 type ProjectObjectShapeSectionProps = {
   polygonPoints: readonly ProjectObjectShapePoint[];
   shape: ProjectObjectShape;
@@ -406,6 +496,46 @@ function ImageNumberGrid({
           onReset={onReset}
         />
       ))}
+    </div>
+  );
+}
+
+type IconStyleSegmentedFieldProps = {
+  value: ProjectObjectIconStyle;
+  onChange: (value: ProjectObjectIconStyle) => void;
+};
+
+function IconStyleSegmentedField({ value, onChange }: IconStyleSegmentedFieldProps) {
+  return (
+    <div className="block min-w-0 text-xs font-medium text-slate-500">
+      <span className="flex min-h-5 items-center">Style</span>
+      <div className="mt-1 flex h-8 overflow-hidden rounded-md border border-slate-200 bg-white">
+        {iconStyleOptions.map((option, index) => {
+          const active = value === option.value;
+          const filled = option.value === "filled";
+
+          return (
+            <button
+              key={option.value}
+              aria-label={option.label}
+              aria-pressed={active}
+              className={cx(
+                "flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 px-2 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-100",
+                index > 0 && "border-l border-slate-200",
+                active
+                  ? "bg-sky-50 text-sky-700"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+              )}
+              title={option.label}
+              type="button"
+              onClick={() => onChange(option.value)}
+            >
+              <Star size={14} fill={filled ? "currentColor" : "none"} strokeWidth={2.1} />
+              <span className="truncate">{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

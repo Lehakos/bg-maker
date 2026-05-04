@@ -20,6 +20,7 @@ export {
   getProjectObjectCounterComponent,
   withProjectObjectCounterComponent
 } from "./counter-component";
+export { getProjectObjectIconComponent, withProjectObjectIconComponent } from "./icon-component";
 export { getProjectObjectImageComponent, withProjectObjectImageComponent } from "./image-component";
 export { ProjectObjectComponentEngine } from "./project-object-component-engine";
 export {

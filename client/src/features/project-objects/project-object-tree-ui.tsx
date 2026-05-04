@@ -9,6 +9,7 @@ import {
   Rows3,
   Scan,
   Square,
+  Star,
   Type,
   type LucideProps
 } from "lucide-react";
@@ -61,6 +62,10 @@ export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindI
 
   if (kind === "image") {
     return <Image {...iconProps} />;
+  }
+
+  if (kind === "icon") {
+    return <Star {...iconProps} />;
   }
 
   if (kind === "zone") {

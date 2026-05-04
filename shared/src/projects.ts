@@ -28,6 +28,7 @@ export const projectObjectKinds = [
   "die",
   "label",
   "image",
+  "icon",
   "shape"
 ] as const;
 
@@ -82,6 +83,52 @@ export type ProjectObjectImage = {
   fit: ProjectObjectImageFit;
   positionX: number;
   positionY: number;
+};
+
+export const projectObjectIconSymbols = [
+  "star",
+  "heart",
+  "shield",
+  "swords",
+  "skull",
+  "flame",
+  "droplet",
+  "leaf",
+  "zap",
+  "gem",
+  "coins",
+  "crown",
+  "flag",
+  "castle",
+  "map",
+  "compass",
+  "dices",
+  "target",
+  "clock",
+  "hash",
+  "plus",
+  "minus",
+  "circle",
+  "square",
+  "triangle",
+  "diamond",
+  "hexagon",
+  "user",
+  "users"
+] as const;
+
+export type ProjectObjectIconSymbol = (typeof projectObjectIconSymbols)[number];
+
+const projectObjectIconSymbolSet = new Set<ProjectObjectIconSymbol>(projectObjectIconSymbols);
+
+export const projectObjectIconStyles = ["outline", "filled"] as const;
+
+export type ProjectObjectIconStyle = (typeof projectObjectIconStyles)[number];
+
+export type ProjectObjectIcon = {
+  color: string;
+  style: ProjectObjectIconStyle;
+  symbol: ProjectObjectIconSymbol;
 };
 
 export const projectObjectCardCustomSizePresetId = "custom" as const;
@@ -315,6 +362,7 @@ export type ProjectObjectComponents = {
   deck?: ProjectObjectDeck;
   die?: ProjectObjectDie;
   doubleSide?: ProjectObjectDoubleSide;
+  icon?: ProjectObjectIcon;
   image?: ProjectObjectImage;
   layout?: ProjectObjectLayout;
   meeple?: ProjectObjectMeeple;
@@ -345,6 +393,8 @@ export type ProjectObjectTemplate = {
 export const projectObjectVariableBindingTargets = [
   "appearance.backgroundColor",
   "appearance.borderColor",
+  "icon.color",
+  "icon.symbol",
   "image.assetId",
   "text.color",
   "text.content"
@@ -475,6 +525,7 @@ const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; wid
   deck: { height: 88, width: 63 },
   die: { height: 120, width: 120 },
   group: { height: 240, width: 320 },
+  icon: { height: 48, width: 48 },
   image: { height: 180, width: 240 },
   label: { height: 32, width: 160 },
   meeple: { height: 80, width: 80 },
@@ -490,6 +541,7 @@ const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
   deck: "New deck",
   die: "New die",
   group: "New group",
+  icon: "New icon",
   image: "New image",
   label: "New label",
   meeple: "New meeple",
@@ -556,6 +608,16 @@ const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAp
     borderRadius: 6,
     borderStyle: "dashed",
     borderWidth: 2,
+    opacity: 1,
+    padding: 0
+  },
+  icon: {
+    backgroundColor: "#ffffff",
+    backgroundOpacity: 0,
+    borderColor: "#cbd5e1",
+    borderRadius: 0,
+    borderStyle: "none",
+    borderWidth: 0,
     opacity: 1,
     padding: 0
   },
@@ -673,6 +735,14 @@ export function getDefaultProjectObjectImage(): ProjectObjectImage {
     fit: "contain",
     positionX: 50,
     positionY: 50
+  };
+}
+
+export function getDefaultProjectObjectIcon(): ProjectObjectIcon {
+  return {
+    color: "#0f172a",
+    style: "outline",
+    symbol: "star"
   };
 }
 
@@ -924,6 +994,12 @@ export function doesProjectObjectClipChildren(kind: ProjectObjectKind) {
   );
 }
 
+export function getProjectObjectIconSymbol(value: string): ProjectObjectIconSymbol | null {
+  return projectObjectIconSymbolSet.has(value as ProjectObjectIconSymbol)
+    ? (value as ProjectObjectIconSymbol)
+    : null;
+}
+
 const defaultProjectObjectShapePolygonPoints: readonly ProjectObjectShapePoint[] = [
   { x: 50, y: 4 },
   { x: 96, y: 50 },
@@ -1002,6 +1078,10 @@ export function createDefaultProjectObjectComponents(
 
   if (kind === "image") {
     components.image = getDefaultProjectObjectImage();
+  }
+
+  if (kind === "icon") {
+    components.icon = getDefaultProjectObjectIcon();
   }
 
   if (kind === "shape") {
@@ -1274,9 +1354,14 @@ function isProjectObjectVariableTargetCompatible(
     return type === "text" || type === "number";
   }
 
+  if (target === "icon.symbol") {
+    return type === "text";
+  }
+
   if (
     target === "appearance.backgroundColor" ||
     target === "appearance.borderColor" ||
+    target === "icon.color" ||
     target === "text.color"
   ) {
     return type === "color";
@@ -1320,6 +1405,32 @@ function getProjectObjectComponentsWithBoundValue(
       image: {
         ...components.image,
         assetId: String(value)
+      }
+    };
+  }
+
+  if (target === "icon.color" && components.icon) {
+    return {
+      ...components,
+      icon: {
+        ...components.icon,
+        color: String(value)
+      }
+    };
+  }
+
+  if (target === "icon.symbol" && components.icon) {
+    const symbol = getProjectObjectIconSymbol(String(value));
+
+    if (!symbol) {
+      return components;
+    }
+
+    return {
+      ...components,
+      icon: {
+        ...components.icon,
+        symbol
       }
     };
   }

@@ -8,6 +8,7 @@ import type {
   ProjectObjectCounter,
   ProjectObjectDeck,
   ProjectObjectDie,
+  ProjectObjectIcon,
   ProjectObjectImage,
   ProjectObjectKind,
   ProjectObjectLayout,
@@ -33,6 +34,7 @@ import {
   getDefaultProjectObjectBag,
   getDefaultProjectObjectDeck,
   getDefaultProjectObjectDie,
+  getDefaultProjectObjectIcon,
   getDefaultProjectObjectMeeple,
   getDefaultProjectObjectStackDisplay,
   getDefaultProjectObjectZone,
@@ -66,6 +68,7 @@ import {
   getProjectObjectNodeDeck,
   getProjectObjectNodeDie,
   getProjectObjectNodeDoubleSide,
+  getProjectObjectNodeIcon,
   getProjectObjectNodeImage,
   getProjectObjectNodeLayout,
   getProjectObjectNodeMeeple,
@@ -83,6 +86,7 @@ import {
   setProjectObjectNodeDeck,
   setProjectObjectNodeDie,
   setProjectObjectNodeDoubleSide,
+  setProjectObjectNodeIcon,
   setProjectObjectNodeImage,
   setProjectObjectNodeLayout,
   setProjectObjectNodeMeeple,
@@ -102,6 +106,7 @@ import {
   createCounterDraft,
   createDeckDraft,
   createDieDraft,
+  createIconDraft,
   createImageDraft,
   createLayoutDraft,
   createMeepleDraft,
@@ -132,6 +137,7 @@ import {
   getDieFace,
   getDieWithDraftField,
   getDieWithFaceField,
+  getIconWithDraftField,
   getImageWithDraftField,
   getLayoutWithDraftField,
   getMeepleWithDraftField,
@@ -179,6 +185,8 @@ import {
   type DieDraft,
   type DieFaceFieldKey,
   type DieFieldKey,
+  type IconDraft,
+  type IconFieldKey,
   type ImageDraft,
   type ImageFieldKey,
   type LayoutDraft,
@@ -210,6 +218,7 @@ import {
 import { cx } from "./class-names";
 import {
   ProjectObjectImageSection,
+  ProjectObjectIconSection,
   ProjectObjectShapeSection,
   ProjectObjectTextSection
 } from "./ProjectObjectContentSections";
@@ -486,6 +495,10 @@ export function ProjectObjectInspectorPanel({
     () => (selectedObject?.kind === "image" ? getProjectObjectNodeImage(selectedObject) : null),
     [selectedObject]
   );
+  const icon = useMemo(
+    () => (selectedObject?.kind === "icon" ? getProjectObjectNodeIcon(selectedObject) : null),
+    [selectedObject]
+  );
   const shape = useMemo(
     () =>
       selectedObject?.kind === "shape" || selectedObject?.kind === "token"
@@ -541,6 +554,9 @@ export function ProjectObjectInspectorPanel({
   );
   const [imageDraft, setImageDraft] = useState<ImageDraft>(() =>
     image ? createImageDraft(image) : createImageDraft(getFallbackImageDraftValue())
+  );
+  const [iconDraft, setIconDraft] = useState<IconDraft>(() =>
+    icon ? createIconDraft(icon) : createIconDraft(getFallbackIconDraftValue())
   );
   const [layoutDraft, setLayoutDraft] = useState<LayoutDraft>(() =>
     layout ? createLayoutDraft(layout) : createLayoutDraft(getFallbackLayoutDraftValue())
@@ -653,6 +669,12 @@ export function ProjectObjectInspectorPanel({
       setImageUploadError(null);
     }
   }, [image, selectedObject?.id]);
+
+  useEffect(() => {
+    if (icon) {
+      setIconDraft(createIconDraft(icon));
+    }
+  }, [icon, selectedObject?.id]);
 
   useEffect(() => {
     if (layout) {
@@ -1960,6 +1982,32 @@ export function ProjectObjectInspectorPanel({
     }));
   }
 
+  function updateIconDraft(fieldKey: IconFieldKey, value: string) {
+    setIconDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    updateObjectTreeIconField(fieldKey, value);
+  }
+
+  function updateObjectTreeIconField(fieldKey: IconFieldKey, value: string) {
+    if (!contentFileNode || !selectedObject || !icon) {
+      return;
+    }
+
+    const nextIcon = getIconWithDraftField(icon, fieldKey, value);
+
+    if (!nextIcon) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeIcon(objectTree, selectedObject.id, nextIcon);
+
+    if (nextObjectTree !== objectTree) {
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
+  }
+
   function updateLayoutDraft(fieldKey: LayoutFieldKey, value: string) {
     setLayoutDraft((currentDraft) => ({
       ...currentDraft,
@@ -2223,6 +2271,8 @@ export function ProjectObjectInspectorPanel({
     : "Size is controlled by the selected card preset";
   const appearanceBackgroundColorBinding = getVariableBindingField("appearance.backgroundColor");
   const appearanceBorderColorBinding = getVariableBindingField("appearance.borderColor");
+  const iconColorBinding = getVariableBindingField("icon.color");
+  const iconSymbolBinding = getVariableBindingField("icon.symbol");
   const imageAssetBinding = getVariableBindingField("image.assetId");
   const textColorBinding = getVariableBindingField("text.color");
   const textContentBinding = getVariableBindingField("text.content");
@@ -2444,6 +2494,15 @@ export function ProjectObjectInspectorPanel({
                   onFaceFieldChange={updateDieFaceField}
                   onImageUpload={handleDieFaceImageUpload}
                   onReset={resetDieDraft}
+                />
+              ) : null}
+
+              {icon ? (
+                <ProjectObjectIconSection
+                  colorBinding={iconColorBinding}
+                  draft={iconDraft}
+                  symbolBinding={iconSymbolBinding}
+                  onDraftChange={updateIconDraft}
                 />
               ) : null}
 
@@ -2812,6 +2871,10 @@ function getFallbackImageDraftValue(): ProjectObjectImage {
     positionX: 50,
     positionY: 50
   };
+}
+
+function getFallbackIconDraftValue(): ProjectObjectIcon {
+  return getDefaultProjectObjectIcon();
 }
 
 function getFallbackLayoutDraftValue(): ProjectObjectLayout {

@@ -2,6 +2,7 @@ export * from "./project-object-inspector-state/appearance-state";
 export * from "./project-object-inspector-state/card-deck-container-stack-state";
 export * from "./project-object-inspector-state/counter-state";
 export * from "./project-object-inspector-state/die-state";
+export * from "./project-object-inspector-state/icon-state";
 export * from "./project-object-inspector-state/inspector-state-utils";
 export * from "./project-object-inspector-state/layout-state";
 export * from "./project-object-inspector-state/rect-transform-state";
