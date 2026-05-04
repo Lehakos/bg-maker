@@ -55,11 +55,9 @@ import {
   getProjectTableSetupWithLocalObjectTree
 } from "../project-table-setup/project-table-setup";
 import {
-  getProjectTableSetupWithAlignedItems,
-  getProjectTableSetupWithDistributedItems,
   getProjectTableSetupWithNudgedItems,
-  type TableSetupAlignment,
-  type TableSetupDistribution
+  getProjectTableSetupWithPositionedItems,
+  type TableSetupPositionPreset
 } from "../project-table-setup/project-table-setup-geometry";
 import { domToPng } from "modern-screenshot";
 
@@ -386,11 +384,7 @@ function ProjectWorkspaceContent({
       return true;
     }
 
-    if (
-      selectedContentFileNode.kind !== "object" ||
-      !selectedObjectId ||
-      !selectedProjectObject
-    ) {
+    if (selectedContentFileNode.kind !== "object" || !selectedObjectId || !selectedProjectObject) {
       return false;
     }
 
@@ -442,10 +436,7 @@ function ProjectWorkspaceContent({
     }
 
     if (selectedContentFileNode.kind === "tableSetup" && selectedTableSetup) {
-      const result = getProjectTableSetupWithDuplicatedItems(
-        selectedTableSetup,
-        selectedObjectIds
-      );
+      const result = getProjectTableSetupWithDuplicatedItems(selectedTableSetup, selectedObjectIds);
 
       if (result.tableSetup === selectedTableSetup) {
         return false;
@@ -797,34 +788,21 @@ function ProjectWorkspaceContent({
     );
   }
 
-  function handleAlignTableItems(alignment: TableSetupAlignment) {
+  function handlePositionTableItems(position: TableSetupPositionPreset) {
     if (!selectedContentFileNode || !selectedTableSetup) {
       return;
     }
 
-    const nextTableSetup = getProjectTableSetupWithAlignedItems({
-      alignment,
+    const nextTableSetup = getProjectTableSetupWithPositionedItems({
       fileTree,
       itemIds: selectedObjectIds,
+      position,
       tableSetup: selectedTableSetup
     });
 
-    persistTableSetup(selectedContentFileNode.id, nextTableSetup, "Align table items");
-  }
-
-  function handleDistributeTableItems(direction: TableSetupDistribution) {
-    if (!selectedContentFileNode || !selectedTableSetup) {
-      return;
+    if (nextTableSetup !== selectedTableSetup) {
+      persistTableSetup(selectedContentFileNode.id, nextTableSetup, "Position table items");
     }
-
-    const nextTableSetup = getProjectTableSetupWithDistributedItems({
-      direction,
-      fileTree,
-      itemIds: selectedObjectIds,
-      tableSetup: selectedTableSetup
-    });
-
-    persistTableSetup(selectedContentFileNode.id, nextTableSetup, "Distribute table items");
   }
 
   function handleOpenTableSetupItemObject(itemId: string) {
@@ -950,10 +928,6 @@ function ProjectWorkspaceContent({
     selectedContentFileNode?.kind === "tableSetup" &&
     selectionTarget?.type === "tableSetupItems" &&
     selectedObjectIds.length >= 1;
-  const canDistributeTableItems =
-    selectedContentFileNode?.kind === "tableSetup" &&
-    selectionTarget?.type === "tableSetupItems" &&
-    selectedObjectIds.length >= 2;
   const canExport =
     selectedContentFileNode?.kind === "object" || selectedContentFileNode?.kind === "tableSetup";
   const canPrint = getPrintableObjectFileNodes(fileTree, selectedFileNode).length > 0 || canExport;
@@ -1002,12 +976,10 @@ function ProjectWorkspaceContent({
         selectedObjectId={selectedViewportObjectId}
         selectedObjectIds={selectedViewportObjectIds}
         canAlign={canArrangeTableItems}
-        canDistribute={canDistributeTableItems}
         showArrangeControls={selectedContentFileNode?.kind === "tableSetup"}
         canExport={canExport}
         canPrint={canPrint}
-        onAlign={handleAlignTableItems}
-        onDistribute={handleDistributeTableItems}
+        onPosition={handlePositionTableItems}
         onExportPng={handleExportPng}
         onPrintSheets={handlePrintSheets}
         onSelectObject={selectObject}

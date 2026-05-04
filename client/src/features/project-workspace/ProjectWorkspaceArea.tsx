@@ -11,9 +11,9 @@ import { ProjectWorkspaceOpenTabs } from "./ProjectWorkspaceOpenTabs";
 import { ProjectWorkspaceToolbar } from "./ProjectWorkspaceToolbar";
 import { WorkspaceViewport } from "./ProjectWorkspaceViewport";
 import { useProjectWorkspaceStore } from "./use-project-workspace-store";
-import type {
-  TableSetupAlignment,
-  TableSetupDistribution
+import {
+  getTableSetupPositionPreset,
+  type TableSetupPositionPreset
 } from "../project-table-setup/project-table-setup-geometry";
 
 type ProjectWorkspaceAreaProps = {
@@ -32,12 +32,10 @@ type ProjectWorkspaceAreaProps = {
   selectedObjectId: string | null;
   selectedObjectIds: string[];
   canAlign: boolean;
-  canDistribute: boolean;
   showArrangeControls: boolean;
   canExport: boolean;
   canPrint: boolean;
-  onAlign: (alignment: TableSetupAlignment) => void;
-  onDistribute: (direction: TableSetupDistribution) => void;
+  onPosition: (position: TableSetupPositionPreset) => void;
   onExportPng: () => void;
   onPrintSheets: () => void;
   onSelectObject: (objectId: string | null) => void;
@@ -61,12 +59,10 @@ export function ProjectWorkspaceArea({
   selectedObjectId,
   selectedObjectIds,
   canAlign,
-  canDistribute,
   showArrangeControls,
   canExport,
   canPrint,
-  onAlign,
-  onDistribute,
+  onPosition,
   onExportPng,
   onPrintSheets,
   onSelectObject,
@@ -103,6 +99,17 @@ export function ProjectWorkspaceArea({
   const imageAssets = useMemo(
     () => getProjectImageAssetOptions(project.id, fileTree),
     [fileTree, project.id]
+  );
+  const activePositionPreset = useMemo(
+    () =>
+      tableSetup
+        ? getTableSetupPositionPreset({
+            fileTree,
+            itemIds: selectedObjectIds,
+            tableSetup
+          })
+        : null,
+    [fileTree, selectedObjectIds, tableSetup]
   );
 
   function handleZoomToFit() {
@@ -192,16 +199,15 @@ export function ProjectWorkspaceArea({
         activeTool={activeTool}
         canvasScale={canvasScale}
         canAlign={canAlign}
-        canDistribute={canDistribute}
         showArrangeControls={showArrangeControls}
         canRedo={canRedo}
         canUndo={canUndo}
         canExport={canExport}
         canPrint={canPrint}
-        onAlign={onAlign}
+        activePositionPreset={activePositionPreset}
         onCanvasScaleChange={setCanvasScale}
-        onDistribute={onDistribute}
         onExportPng={onExportPng}
+        onPosition={onPosition}
         onPrintSheets={onPrintSheets}
         onRedo={onRedo}
         onToolChange={setActiveTool}
@@ -212,7 +218,11 @@ export function ProjectWorkspaceArea({
       <div
         ref={scrollContainerRef}
         aria-label="Workspace canvas"
-        className={activeTool === "pan" ? "min-h-0 flex-1 cursor-grab select-none overflow-auto" : "min-h-0 flex-1 select-none overflow-auto"}
+        className={
+          activeTool === "pan"
+            ? "min-h-0 flex-1 cursor-grab select-none overflow-auto"
+            : "min-h-0 flex-1 select-none overflow-auto"
+        }
         role="region"
         style={{
           backgroundColor: "#e7ece6",
@@ -245,7 +255,9 @@ export function ProjectWorkspaceArea({
   );
 }
 
-function getObjectTreeApproximateSize(objectTree: ReturnType<typeof resolveProjectObjectFileObjectTree>) {
+function getObjectTreeApproximateSize(
+  objectTree: ReturnType<typeof resolveProjectObjectFileObjectTree>
+) {
   if (!objectTree.length) {
     return null;
   }

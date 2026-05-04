@@ -19,7 +19,9 @@ import { renameProjectObjectNode } from "../project-objects/project-object-tree"
 import {
   getProjectTableSetupWithAlignedItems,
   getProjectTableSetupWithDistributedItems,
-  getProjectTableSetupWithTransformedGroupItems
+  getProjectTableSetupWithPositionedItems,
+  getProjectTableSetupWithTransformedGroupItems,
+  getTableSetupPositionPreset
 } from "./project-table-setup-geometry";
 
 function objectFile(id: string, name: string, object: ProjectObjectNode): ProjectFileNode {
@@ -190,7 +192,9 @@ describe("project table setup helpers", () => {
       ]
     };
     const nextObjectTree = renameProjectObjectNode(
-      [tableSetup.items[0]!.type === "localObject" ? tableSetup.items[0]!.object : firstItem.object],
+      [
+        tableSetup.items[0]!.type === "localObject" ? tableSetup.items[0]!.object : firstItem.object
+      ],
       "first-child",
       "Renamed child"
     );
@@ -359,6 +363,83 @@ describe("project table setup helpers", () => {
         item.type === "localObject" ? item.object.components?.rectTransform?.x : null
       )
     ).toEqual([-430, 430, 200]);
+  });
+
+  it("positions selected items with table position presets", () => {
+    const firstItem = createProjectTableSetupLocalObjectItem("label");
+    const secondItem = createProjectTableSetupLocalObjectItem("label");
+    const fileTree: ProjectFileNode[] = [];
+    const tableSetup = {
+      ...getDefaultProjectTableSetup(),
+      items: [firstItem, secondItem]
+    };
+    const ids = tableSetup.items.map(getItemId);
+    const positioned = ids.reduce(
+      (currentTableSetup, itemId, index) =>
+        getProjectTableSetupWithItemTransform(currentTableSetup, itemId, {
+          height: 20,
+          pivotX: 0.5,
+          pivotY: 0.5,
+          rotation: 0,
+          scaleX: 1,
+          scaleY: 1,
+          width: 40,
+          x: index * 50,
+          y: index * 30
+        }),
+      tableSetup
+    );
+    const topRight = getProjectTableSetupWithPositionedItems({
+      fileTree,
+      itemIds: [ids[0]!],
+      position: "top-right",
+      tableSetup: positioned
+    });
+    const middleCenter = getProjectTableSetupWithPositionedItems({
+      fileTree,
+      itemIds: ids,
+      position: "middle-center",
+      tableSetup: positioned
+    });
+
+    expect(
+      topRight.items.map((item) =>
+        item.type === "localObject" ? item.object.components?.rectTransform : null
+      )
+    ).toMatchObject([
+      { x: 430, y: -290 },
+      { x: 50, y: 30 }
+    ]);
+    expect(
+      middleCenter.items.map((item) =>
+        item.type === "localObject" ? item.object.components?.rectTransform : null
+      )
+    ).toMatchObject([
+      { x: 0, y: 0 },
+      { x: 0, y: 0 }
+    ]);
+    expect(
+      getTableSetupPositionPreset({
+        fileTree,
+        itemIds: [ids[0]!],
+        tableSetup: topRight
+      })
+    ).toBe("top-right");
+    expect(
+      getTableSetupPositionPreset({
+        fileTree,
+        itemIds: ids,
+        tableSetup: topRight
+      })
+    ).toBeNull();
+    expect(
+      getProjectTableSetupWithPositionedItems({
+        fileTree,
+        itemIds: [ids[0]!],
+        position: "top-right",
+        tableSetup: topRight
+      })
+    ).toBe(topRight);
   });
 
   it("transforms unlocked selected table setup items as a group", () => {

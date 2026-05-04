@@ -10,15 +10,23 @@ import {
   getProjectTableSetupWithItemTransforms
 } from "./project-table-setup";
 
-export type TableSetupAlignment =
-  | "bottom"
-  | "center"
-  | "left"
-  | "middle"
-  | "right"
-  | "top";
+export type TableSetupAlignment = "bottom" | "center" | "left" | "middle" | "right" | "top";
 
 export type TableSetupDistribution = "horizontal" | "vertical";
+
+export type TableSetupPositionPreset =
+  | "bottom-center"
+  | "bottom-left"
+  | "bottom-right"
+  | "middle-center"
+  | "middle-left"
+  | "middle-right"
+  | "top-center"
+  | "top-left"
+  | "top-right";
+
+type TableSetupHorizontalPosition = "center" | "left" | "right";
+type TableSetupVerticalPosition = "bottom" | "middle" | "top";
 
 export type TableSetupItemFrame = {
   bounds: TableSetupItemBounds;
@@ -36,6 +44,24 @@ type TableSetupItemBounds = {
   right: number;
   top: number;
   width: number;
+};
+
+const positionPresetSettings: Record<
+  TableSetupPositionPreset,
+  {
+    horizontal: TableSetupHorizontalPosition;
+    vertical: TableSetupVerticalPosition;
+  }
+> = {
+  "bottom-center": { horizontal: "center", vertical: "bottom" },
+  "bottom-left": { horizontal: "left", vertical: "bottom" },
+  "bottom-right": { horizontal: "right", vertical: "bottom" },
+  "middle-center": { horizontal: "center", vertical: "middle" },
+  "middle-left": { horizontal: "left", vertical: "middle" },
+  "middle-right": { horizontal: "right", vertical: "middle" },
+  "top-center": { horizontal: "center", vertical: "top" },
+  "top-left": { horizontal: "left", vertical: "top" },
+  "top-right": { horizontal: "right", vertical: "top" }
 };
 
 export function getTableSetupItemFrames(
@@ -138,7 +164,9 @@ export function getProjectTableSetupWithTransformedGroupItems({
   const scaleYRatio = getSafeRatio(after.scaleY, before.scaleY);
   const effectiveWidthRatio = getSafeRatio(after.width, before.width);
   const effectiveHeightRatio = getSafeRatio(after.height, before.height);
-  const itemById = new Map(tableSetup.items.map((item) => [getProjectTableSetupItemId(item), item]));
+  const itemById = new Map(
+    tableSetup.items.map((item) => [getProjectTableSetupItemId(item), item])
+  );
   const transforms = new Map<string, ProjectObjectRectTransform>();
 
   for (const frame of frames) {
@@ -240,6 +268,74 @@ export function getProjectTableSetupWithAlignedItems({
   return getProjectTableSetupWithItemTransforms(tableSetup, transforms);
 }
 
+export function getProjectTableSetupWithPositionedItems({
+  fileTree,
+  itemIds,
+  position,
+  tableSetup
+}: {
+  fileTree: readonly ProjectFileNode[];
+  itemIds: readonly string[];
+  position: TableSetupPositionPreset;
+  tableSetup: ProjectTableSetup;
+}): ProjectTableSetup {
+  const frames = getUnlockedFrames(fileTree, tableSetup, itemIds);
+
+  if (frames.length < 1) {
+    return tableSetup;
+  }
+
+  const tableBounds = getTableSetupBounds(tableSetup);
+  const preset = positionPresetSettings[position];
+  const transforms = new Map<string, ProjectObjectRectTransform>();
+
+  for (const frame of frames) {
+    const x = getAlignedX(preset.horizontal, tableBounds, frame);
+    const y = getAlignedY(preset.vertical, tableBounds, frame);
+
+    if (frame.rectTransform.x === x && frame.rectTransform.y === y) {
+      continue;
+    }
+
+    transforms.set(frame.id, { ...frame.rectTransform, x, y });
+  }
+
+  return transforms.size
+    ? getProjectTableSetupWithItemTransforms(tableSetup, transforms)
+    : tableSetup;
+}
+
+export function getTableSetupPositionPreset({
+  fileTree,
+  itemIds,
+  tableSetup
+}: {
+  fileTree: readonly ProjectFileNode[];
+  itemIds: readonly string[];
+  tableSetup: ProjectTableSetup;
+}): TableSetupPositionPreset | null {
+  const frames = getTableSetupItemFrames(fileTree, tableSetup, itemIds);
+
+  if (frames.length < 1) {
+    return null;
+  }
+
+  const tableBounds = getTableSetupBounds(tableSetup);
+  let sharedPosition: TableSetupPositionPreset | null = null;
+
+  for (const frame of frames) {
+    const position = getFramePositionPreset(tableBounds, frame);
+
+    if (!position || (sharedPosition && sharedPosition !== position)) {
+      return null;
+    }
+
+    sharedPosition = position;
+  }
+
+  return sharedPosition;
+}
+
 export function getProjectTableSetupWithDistributedItems({
   direction,
   fileTree,
@@ -294,6 +390,94 @@ export function getProjectTableSetupWithDistributedItems({
   }
 
   return getProjectTableSetupWithItemTransforms(tableSetup, transforms);
+}
+
+function getAlignedX(
+  horizontal: TableSetupHorizontalPosition,
+  tableBounds: TableSetupItemBounds,
+  frame: TableSetupItemFrame
+) {
+  if (horizontal === "left") {
+    return tableBounds.left + frame.bounds.width / 2;
+  }
+
+  if (horizontal === "right") {
+    return tableBounds.right - frame.bounds.width / 2;
+  }
+
+  return tableBounds.centerX;
+}
+
+function getAlignedY(
+  vertical: TableSetupVerticalPosition,
+  tableBounds: TableSetupItemBounds,
+  frame: TableSetupItemFrame
+) {
+  if (vertical === "top") {
+    return tableBounds.top + frame.bounds.height / 2;
+  }
+
+  if (vertical === "bottom") {
+    return tableBounds.bottom - frame.bounds.height / 2;
+  }
+
+  return tableBounds.centerY;
+}
+
+function getFramePositionPreset(
+  tableBounds: TableSetupItemBounds,
+  frame: TableSetupItemFrame
+): TableSetupPositionPreset | null {
+  const horizontal = getFrameHorizontalPosition(tableBounds, frame);
+  const vertical = getFrameVerticalPosition(tableBounds, frame);
+
+  if (!horizontal || !vertical) {
+    return null;
+  }
+
+  return `${vertical}-${horizontal}` as TableSetupPositionPreset;
+}
+
+function getFrameHorizontalPosition(
+  tableBounds: TableSetupItemBounds,
+  frame: TableSetupItemFrame
+): TableSetupHorizontalPosition | null {
+  if (isSamePosition(frame.rectTransform.x, getAlignedX("left", tableBounds, frame))) {
+    return "left";
+  }
+
+  if (isSamePosition(frame.rectTransform.x, getAlignedX("center", tableBounds, frame))) {
+    return "center";
+  }
+
+  if (isSamePosition(frame.rectTransform.x, getAlignedX("right", tableBounds, frame))) {
+    return "right";
+  }
+
+  return null;
+}
+
+function getFrameVerticalPosition(
+  tableBounds: TableSetupItemBounds,
+  frame: TableSetupItemFrame
+): TableSetupVerticalPosition | null {
+  if (isSamePosition(frame.rectTransform.y, getAlignedY("top", tableBounds, frame))) {
+    return "top";
+  }
+
+  if (isSamePosition(frame.rectTransform.y, getAlignedY("middle", tableBounds, frame))) {
+    return "middle";
+  }
+
+  if (isSamePosition(frame.rectTransform.y, getAlignedY("bottom", tableBounds, frame))) {
+    return "bottom";
+  }
+
+  return null;
+}
+
+function isSamePosition(left: number, right: number) {
+  return Math.abs(left - right) < 0.001;
 }
 
 function getUnlockedFrames(
