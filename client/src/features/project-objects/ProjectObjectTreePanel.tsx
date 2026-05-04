@@ -26,9 +26,11 @@ import {
   type ProjectFileNode,
   type ProjectObjectKind,
   type ProjectObjectNode,
-  type ProjectTableSetup
+  type ProjectTableSetup,
+  type ProjectTableSetupItem
 } from "@bg-maker/shared";
 import {
+  ArrowLeft,
   ArrowDown,
   ArrowUp,
   ChevronDown,
@@ -37,6 +39,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  ExternalLink,
   Lock,
   LockOpen,
   Link2,
@@ -147,8 +150,11 @@ type ProjectObjectTreePanelProps = {
   saving: boolean;
   selectedObjectId: string | null;
   selectedObjectIds?: string[];
+  tableSetupLocalItem?: Extract<ProjectTableSetupItem, { type: "localObject" }> | null;
   tableSetup?: ProjectTableSetup | null;
+  onExitTableSetupLocalObject?: () => void;
   onObjectTreeChange: (fileNodeId: string, objectTree: ProjectObjectNode[]) => void;
+  onOpenTableSetupItemObject?: (itemId: string) => void;
   onTableSetupChange?: (tableSetup: ProjectTableSetup, label?: string) => void;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects?: (objectIds: string[], primaryObjectId?: string | null) => void;
@@ -163,12 +169,34 @@ export function ProjectObjectTreePanel({
   saving,
   selectedObjectId,
   selectedObjectIds = selectedObjectId ? [selectedObjectId] : [],
+  tableSetupLocalItem = null,
   tableSetup: resolvedTableSetup,
+  onExitTableSetupLocalObject,
   onObjectTreeChange,
+  onOpenTableSetupItemObject,
   onTableSetupChange,
   onSelectObject,
   onSelectObjects
 }: ProjectObjectTreePanelProps) {
+  if (contentFileNode?.kind === "tableSetup" && tableSetupLocalItem) {
+    return (
+      <ProjectObjectNodeTreePanel
+        className={className}
+        contentFileNode={contentFileNode}
+        objectTree={[tableSetupLocalItem.object]}
+        protectedRootObjectId={tableSetupLocalItem.object.id}
+        readOnly={readOnly}
+        saving={saving}
+        selectedObjectId={selectedObjectId}
+        subtitle={`${contentFileNode.name} / ${getProjectTableSetupItemName(tableSetupLocalItem)}`}
+        title="Local object tree"
+        onBack={onExitTableSetupLocalObject}
+        onObjectTreeChange={onObjectTreeChange}
+        onSelectObject={onSelectObject}
+      />
+    );
+  }
+
   if (contentFileNode?.kind === "tableSetup") {
     return (
       <ProjectTableSetupTreePanel
@@ -182,6 +210,7 @@ export function ProjectObjectTreePanel({
         tableSetup={resolvedTableSetup ?? getProjectFileNodeTableSetup(contentFileNode)}
         onSelectObject={onSelectObject}
         onSelectObjects={onSelectObjects}
+        onOpenTableSetupItemObject={onOpenTableSetupItemObject}
         onTableSetupChange={onTableSetupChange}
       />
     );
@@ -201,16 +230,35 @@ export function ProjectObjectTreePanel({
   );
 }
 
+type ProjectObjectNodeTreePanelProps = {
+  className?: string;
+  contentFileNode: ProjectFileNode | null;
+  objectTree?: ProjectObjectNode[];
+  protectedRootObjectId?: string | null;
+  readOnly?: boolean;
+  saving: boolean;
+  selectedObjectId: string | null;
+  subtitle?: string;
+  title?: string;
+  onBack?: () => void;
+  onObjectTreeChange: (fileNodeId: string, objectTree: ProjectObjectNode[]) => void;
+  onSelectObject: (objectId: string | null) => void;
+};
+
 function ProjectObjectNodeTreePanel({
   className,
   contentFileNode,
   objectTree: resolvedObjectTree,
+  protectedRootObjectId = null,
   readOnly = false,
   saving,
   selectedObjectId,
+  subtitle,
+  title = "Object tree",
+  onBack,
   onObjectTreeChange,
   onSelectObject
-}: Omit<ProjectObjectTreePanelProps, "fileTree" | "onTableSetupChange" | "tableSetup">) {
+}: ProjectObjectNodeTreePanelProps) {
   const objectTree = useMemo(
     () => resolvedObjectTree ?? contentFileNode?.objectTree ?? [],
     [contentFileNode?.objectTree, resolvedObjectTree]
@@ -256,13 +304,36 @@ function ProjectObjectNodeTreePanel({
     ? findProjectObjectNode(objectTree, contextMenu.nodeId)
     : undefined;
   const isObjectFile = contentFileNode?.kind === "object";
-  const objectFileRootId = isObjectFile ? (objectTree[0]?.id ?? null) : null;
-  const lockedRootObjectId = isObjectFile && objectTree.length === 1 ? objectFileRootId : null;
+  const singleRootTree = isObjectFile || Boolean(protectedRootObjectId);
+  const rootObjectId = objectTree[0]?.id ?? null;
+  const objectFileRootId = isObjectFile ? rootObjectId : null;
+  const lockedRootObjectId =
+    protectedRootObjectId ?? (isObjectFile && objectTree.length === 1 ? objectFileRootId : null);
   const contextMenuParentId = contextMenu?.parentId ?? null;
   const canCreateObject = Boolean(
-    contentFileNode && (!isObjectFile || contextMenuParentId !== null || objectTree.length === 0)
+    contentFileNode && (!singleRootTree || contextMenuParentId !== null || objectTree.length === 0)
   );
   const contextMenuObjectLocked = contextMenuObject?.locked === true;
+  const handleRequestRenameObject = useCallback(
+    (nodeId: string | null) => {
+      if (!nodeId || readOnly) {
+        return;
+      }
+
+      const object = findProjectObjectNode(objectTree, nodeId);
+
+      if (!object) {
+        return;
+      }
+
+      window.setTimeout(() => {
+        setRenamingObjectId(object.id);
+        setRenameDraft(object.name);
+        onSelectObject(object.id);
+      }, 0);
+    },
+    [objectTree, onSelectObject, readOnly]
+  );
   const contextMenuActions = createObjectTreeContextMenuActions({
     disabled: saving || !contentFileNode || readOnly,
     canCreate: canCreateObject && !readOnly,
@@ -274,7 +345,8 @@ function ProjectObjectNodeTreePanel({
       !readOnly &&
       clipboard?.type === "objectNodes" &&
       Boolean(
-        contentFileNode && (!isObjectFile || contextMenuParentId !== null || objectTree.length === 0)
+        contentFileNode &&
+          (!singleRootTree || contextMenuParentId !== null || objectTree.length === 0)
       ),
     canRename: !readOnly && Boolean(contextMenuObject),
     canToggleLock: !readOnly && Boolean(contextMenuObject),
@@ -304,6 +376,26 @@ function ProjectObjectNodeTreePanel({
     };
   }, []);
 
+  useEffect(() => {
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (
+        event.key !== "F2" ||
+        readOnly ||
+        !selectedObjectId ||
+        isEditableObjectTreeKeyboardTarget(event.target)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      handleRequestRenameObject(selectedObjectId);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleRequestRenameObject, readOnly, selectedObjectId]);
+
   function handleContextMenu(event: MouseEvent, nodeId: string | null = null) {
     if (!contentFileNode) {
       return;
@@ -331,7 +423,7 @@ function ProjectObjectNodeTreePanel({
       return;
     }
 
-    if (contentFileNode.kind === "object" && parentId === null && objectTree.length > 0) {
+    if (singleRootTree && parentId === null && objectTree.length > 0) {
       return;
     }
 
@@ -401,7 +493,7 @@ function ProjectObjectNodeTreePanel({
       return;
     }
 
-    if (contentFileNode.kind === "object" && parentId === null && objectTree.length > 0) {
+    if (singleRootTree && parentId === null && objectTree.length > 0) {
       return;
     }
 
@@ -441,24 +533,6 @@ function ProjectObjectNodeTreePanel({
     if (nextObjectTree !== objectTree) {
       onObjectTreeChange(contentFileNode.id, nextObjectTree);
     }
-  }
-
-  function handleRequestRenameObject(nodeId: string | null) {
-    if (!nodeId || readOnly) {
-      return;
-    }
-
-    const object = findProjectObjectNode(objectTree, nodeId);
-
-    if (!object) {
-      return;
-    }
-
-    window.setTimeout(() => {
-      setRenamingObjectId(object.id);
-      setRenameDraft(object.name);
-      onSelectObject(object.id);
-    }, 0);
   }
 
   function handleCommitRenameObject(objectId: string) {
@@ -545,7 +619,7 @@ function ProjectObjectNodeTreePanel({
     }
 
     if (dropTargetId === rootDropTargetId) {
-      if (contentFileNode.kind === "object") {
+      if (singleRootTree) {
         return;
       }
 
@@ -579,9 +653,9 @@ function ProjectObjectNodeTreePanel({
         : targetLocation.index + (dropIntent === "after" ? 1 : 0);
 
     if (
-      contentFileNode.kind === "object" &&
-      ((activeId === objectFileRootId && targetParentId !== null) ||
-        (activeId !== objectFileRootId && targetParentId === null))
+      singleRootTree &&
+      ((activeId === rootObjectId && targetParentId !== null) ||
+        (activeId !== rootObjectId && targetParentId === null))
     ) {
       return;
     }
@@ -655,12 +729,23 @@ function ProjectObjectNodeTreePanel({
       onContextMenu={(event) => handleContextMenu(event)}
     >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
+        {onBack ? (
+          <button
+            aria-label="Back to table setup"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+            title="Back to table setup"
+            type="button"
+            onClick={onBack}
+          >
+            <ArrowLeft size={15} />
+          </button>
+        ) : null}
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Object tree
+            {title}
           </h2>
           <p className="truncate text-[11px] leading-none text-slate-500">
-            {contentFileNode?.name ?? "No table layout selected"}
+            {subtitle ?? contentFileNode?.name ?? "No table layout selected"}
           </p>
         </div>
       </div>
@@ -780,6 +865,7 @@ type ProjectTableSetupTreePanelProps = {
   tableSetup: ProjectTableSetup | null;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects?: (objectIds: string[], primaryObjectId?: string | null) => void;
+  onOpenTableSetupItemObject?: (itemId: string) => void;
   onTableSetupChange?: (tableSetup: ProjectTableSetup, label?: string) => void;
 };
 
@@ -794,6 +880,7 @@ function ProjectTableSetupTreePanel({
   tableSetup,
   onSelectObject,
   onSelectObjects,
+  onOpenTableSetupItemObject,
   onTableSetupChange
 }: ProjectTableSetupTreePanelProps) {
   const [renamingItemId, setRenamingItemId] = useState<string | null>(null);
@@ -801,7 +888,7 @@ function ProjectTableSetupTreePanel({
   const [contextMenu, setContextMenu] = useState<TableSetupTreeContextMenuState | null>(null);
   const clipboard = useProjectWorkspaceStore((state) => state.clipboard);
   const setClipboard = useProjectWorkspaceStore((state) => state.setClipboard);
-  const items = tableSetup?.items ?? [];
+  const items = useMemo(() => tableSetup?.items ?? [], [tableSetup?.items]);
   const selectedItemIds = useMemo(() => new Set(selectedObjectIds), [selectedObjectIds]);
   const objectFileOptions = useMemo(
     () => getProjectTableSetupObjectFileOptions(fileTree),
@@ -813,21 +900,64 @@ function ProjectTableSetupTreePanel({
   const contextMenuItemLocked = contextMenuItem
     ? getProjectTableSetupItemLocked(contextMenuItem)
     : false;
+  const handleRequestRename = useCallback(
+    (itemId: string | null) => {
+      if (!itemId || readOnly) {
+        return;
+      }
+
+      const item = items.find((candidate) => getProjectTableSetupItemId(candidate) === itemId);
+
+      if (!item) {
+        return;
+      }
+
+      window.setTimeout(() => {
+        setRenamingItemId(itemId);
+        setRenameDraft(getProjectTableSetupItemName(item));
+        onSelectObject(itemId);
+      }, 0);
+    },
+    [items, onSelectObject, readOnly]
+  );
   const contextMenuActions = createTableSetupTreeContextMenuActions({
     disabled: saving || readOnly || !tableSetup,
     itemId: contextMenu?.itemId ?? null,
+    canOpen: Boolean(contextMenuItem),
     canPaste: clipboard?.type === "tableSetupItems",
     locked: contextMenuItemLocked,
     objectFileOptions,
+    openLabel: contextMenuItem?.type === "linkedObject" ? "Open source" : "Edit object",
     onAddLinkedObject: handleAddLinkedObject,
     onCopy: handleCopyItem,
     onCreatePrimitive: handleCreatePrimitive,
     onDelete: handleDeleteItem,
     onDuplicate: handleDuplicateItem,
+    onOpen: handleOpenItemObject,
     onPaste: handlePasteItems,
     onRename: handleRequestRename,
     onToggleLock: handleToggleItemLocked
   });
+
+  useEffect(() => {
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (
+        event.key !== "F2" ||
+        readOnly ||
+        !selectedObjectId ||
+        isEditableObjectTreeKeyboardTarget(event.target)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      handleRequestRename(selectedObjectId);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleRequestRename, readOnly, selectedObjectId]);
 
   function updateTableSetup(nextTableSetup: ProjectTableSetup, label: string) {
     if (!tableSetup || nextTableSetup === tableSetup) {
@@ -976,22 +1106,14 @@ function ProjectTableSetupTreePanel({
     );
   }
 
-  function handleRequestRename(itemId: string | null) {
-    if (!itemId || readOnly) {
+  function handleOpenItemObject(itemId: string | null) {
+    if (!itemId) {
       return;
     }
 
-    const item = items.find((candidate) => getProjectTableSetupItemId(candidate) === itemId);
-
-    if (!item) {
-      return;
-    }
-
-    window.setTimeout(() => {
-      setRenamingItemId(itemId);
-      setRenameDraft(getProjectTableSetupItemName(item));
-      onSelectObject(itemId);
-    }, 0);
+    setContextMenu(null);
+    cancelRename();
+    onOpenTableSetupItemObject?.(itemId);
   }
 
   function commitRename(itemId: string) {
@@ -1098,9 +1220,7 @@ function ProjectTableSetupTreePanel({
                 }}
                 onContextMenu={(event) => handleContextMenu(event, itemId)}
                 onDoubleClick={() => {
-                  if (!readOnly) {
-                    handleRequestRename(itemId);
-                  }
+                  handleOpenItemObject(itemId);
                 }}
               >
                 <span className="h-5 w-5 shrink-0" />
@@ -1551,9 +1671,7 @@ function ProjectObjectTreeNode({
         }}
         onContextMenu={(event) => onContextMenu(event, node.id)}
         onDoubleClick={() => {
-          if (hasChildren) {
-            onToggleObjectExpanded(node.id);
-          }
+          onSelectObject(node.id);
         }}
       >
         {hasChildren ? (
@@ -1756,28 +1874,34 @@ function createObjectTreeContextMenuActions({
 function createTableSetupTreeContextMenuActions({
   disabled,
   itemId,
+  canOpen,
   canPaste,
   locked,
   objectFileOptions,
+  openLabel,
   onAddLinkedObject,
   onCopy,
   onCreatePrimitive,
   onDelete,
   onDuplicate,
+  onOpen,
   onPaste,
   onRename,
   onToggleLock
 }: {
   disabled: boolean;
   itemId: string | null;
+  canOpen: boolean;
   canPaste: boolean;
   locked: boolean;
   objectFileOptions: readonly ProjectTableSetupObjectFileOption[];
+  openLabel: string;
   onAddLinkedObject: (sourceObjectFileNodeId: string) => void;
   onCopy: (itemId: string | null) => void;
   onCreatePrimitive: (kind: ProjectObjectKind) => void;
   onDelete: (itemId: string | null) => void;
   onDuplicate: (itemId: string | null) => void;
+  onOpen: (itemId: string | null) => void;
   onPaste: (itemId: string | null) => void;
   onRename: (itemId: string | null) => void;
   onToggleLock: (itemId: string | null, locked: boolean) => void;
@@ -1826,11 +1950,18 @@ function createTableSetupTreeContextMenuActions({
       }))
     },
     {
+      id: "open-object",
+      label: openLabel,
+      icon: <ExternalLink size={14} />,
+      disabled: disabled || !canOpen,
+      separatorBefore: true,
+      onSelect: () => onOpen(itemId)
+    },
+    {
       id: "duplicate",
       label: "Duplicate",
       icon: <Copy size={14} />,
       disabled: disabled || !hasSelectedItem,
-      separatorBefore: true,
       onSelect: () => onDuplicate(itemId)
     },
     {
@@ -1949,6 +2080,19 @@ function getDragTransformStyle(transform: { x: number; y: number } | null) {
   }
 
   return `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0)`;
+}
+
+function isEditableObjectTreeKeyboardTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  );
 }
 
 function getActivatorEventClientY(event: Event) {

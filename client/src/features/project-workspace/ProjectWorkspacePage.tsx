@@ -39,7 +39,8 @@ import {
   findProjectObjectNodeLocation,
   getProjectObjectNodeRectTransform,
   insertProjectObjectNodeAfter,
-  isProjectObjectTreeFileNode
+  isProjectObjectTreeFileNode,
+  setProjectObjectNodeRectTransform
 } from "../project-objects/project-object-tree";
 import { getProjectWorkspaceContentObjectTree } from "./project-workspace-store";
 import {
@@ -181,13 +182,20 @@ function ProjectWorkspaceContent({
   const fileTree = useProjectWorkspaceStore((state) => state.fileTree);
   const canRedo = useProjectWorkspaceStore((state) => state.canRedo);
   const canUndo = useProjectWorkspaceStore((state) => state.canUndo);
+  const closeWorkspaceTab = useProjectWorkspaceStore((state) => state.closeWorkspaceTab);
   const executeEditorCommand = useProjectWorkspaceStore((state) => state.executeCommand);
+  const openObjectForEditing = useProjectWorkspaceStore((state) => state.openObjectForEditing);
+  const openTabIds = useProjectWorkspaceStore((state) => state.openTabIds);
+  const openWorkspaceNode = useProjectWorkspaceStore((state) => state.openWorkspaceNode);
   const redo = useProjectWorkspaceStore((state) => state.redo);
   const selectObject = useProjectWorkspaceStore((state) => state.selectObject);
   const selectObjects = useProjectWorkspaceStore((state) => state.selectObjects);
+  const selectTableSetupItems = useProjectWorkspaceStore((state) => state.selectTableSetupItems);
+  const selectTableSetupLocalObject = useProjectWorkspaceStore(
+    (state) => state.selectTableSetupLocalObject
+  );
   const clipboard = useProjectWorkspaceStore((state) => state.clipboard);
   const setClipboard = useProjectWorkspaceStore((state) => state.setClipboard);
-  const setSelectedNodeId = useProjectWorkspaceStore((state) => state.setSelectedNodeId);
   const undo = useProjectWorkspaceStore((state) => state.undo);
   const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
   const {
@@ -197,7 +205,11 @@ function ProjectWorkspaceContent({
     selectedObjectId,
     selectedObjectIds,
     selectedProjectObject,
-    selectedTableSetupItem
+    selectedTableSetupItem,
+    selectedTableSetupLocalItem,
+    selectedViewportObjectId,
+    selectedViewportObjectIds,
+    selectionTarget
   } = useProjectWorkspaceSelection();
   const selectedTableSetup = useMemo(
     () => getProjectFileNodeTableSetup(selectedContentFileNode),
@@ -293,9 +305,71 @@ function ProjectWorkspaceContent({
     [executeEditorCommand, fileTree]
   );
 
+  const persistObjectTree = useCallback(
+    (fileNodeId: string, objectTree: ProjectObjectNode[]) => {
+      const fileNode = findProjectFileNode(fileTree, fileNodeId);
+
+      if (fileNode?.kind === "tableSetup") {
+        const tableSetup = getProjectFileNodeTableSetup(fileNode);
+        const tableSetupItemId = selectedTableSetupLocalItem
+          ? getProjectTableSetupItemId(selectedTableSetupLocalItem)
+          : selectedObjectId;
+
+        if (!tableSetup || !tableSetupItemId) {
+          return;
+        }
+
+        const nextTableSetup = getProjectTableSetupWithLocalObjectTree(
+          tableSetup,
+          tableSetupItemId,
+          clearProjectObjectTreeActiveSides(objectTree)
+        );
+
+        persistTableSetup(fileNode.id, nextTableSetup, "Update table item");
+        return;
+      }
+
+      if (!isProjectObjectTreeFileNode(fileNode) || fileNode.sourceRef) {
+        return;
+      }
+
+      const nextObjectTree = clearProjectObjectTreeActiveSides(objectTree);
+
+      executeEditorCommand(
+        createUpdateProjectObjectTreeCommand({
+          after: nextObjectTree,
+          before: fileNode.objectTree ?? [],
+          fileNodeId,
+          label: "Update object tree"
+        })
+      );
+    },
+    [
+      executeEditorCommand,
+      fileTree,
+      persistTableSetup,
+      selectedObjectId,
+      selectedTableSetupLocalItem
+    ]
+  );
+
   const handleWorkspaceCopy = useCallback(() => {
     if (!selectedContentFileNode) {
       return false;
+    }
+
+    if (selectedTableSetupLocalItem && selectedProjectObject) {
+      const object = clearProjectObjectTreeActiveSides([selectedProjectObject])[0];
+
+      if (!object) {
+        return false;
+      }
+
+      setClipboard({
+        objects: [object],
+        type: "objectNodes"
+      });
+      return true;
     }
 
     if (selectedContentFileNode.kind === "tableSetup" && selectedTableSetup) {
@@ -336,6 +410,7 @@ function ProjectWorkspaceContent({
     selectedObjectId,
     selectedObjectIds,
     selectedProjectObject,
+    selectedTableSetupLocalItem,
     selectedTableSetup,
     setClipboard
   ]);
@@ -343,6 +418,27 @@ function ProjectWorkspaceContent({
   const handleWorkspaceDuplicate = useCallback(() => {
     if (!selectedContentFileNode) {
       return false;
+    }
+
+    if (selectedTableSetupLocalItem && selectedObjectId) {
+      const objectTree = [selectedTableSetupLocalItem.object];
+      const selectedLocation = findProjectObjectNodeLocation(objectTree, selectedObjectId);
+      const selectedObject = selectedLocation?.node;
+
+      if (!selectedObject || selectedObject.id === selectedTableSetupLocalItem.object.id) {
+        return false;
+      }
+
+      const duplicate = cloneProjectObjectNode(selectedObject, { offset: 24 });
+      const nextObjectTree = insertProjectObjectNodeAfter(objectTree, selectedObject.id, duplicate);
+
+      if (nextObjectTree === objectTree) {
+        return false;
+      }
+
+      persistObjectTree(selectedContentFileNode.id, nextObjectTree);
+      selectObject(duplicate.id);
+      return true;
     }
 
     if (selectedContentFileNode.kind === "tableSetup" && selectedTableSetup) {
@@ -396,17 +492,48 @@ function ProjectWorkspaceContent({
   }, [
     executeEditorCommand,
     persistTableSetup,
+    persistObjectTree,
     selectObject,
     selectObjects,
     selectedContentFileNode,
     selectedObjectId,
     selectedObjectIds,
+    selectedTableSetupLocalItem,
     selectedTableSetup
   ]);
 
   const handleWorkspacePaste = useCallback(() => {
     if (!selectedContentFileNode || !clipboard) {
       return false;
+    }
+
+    if (selectedTableSetupLocalItem && clipboard.type === "objectNodes") {
+      const objectTree = [selectedTableSetupLocalItem.object];
+      const parentId =
+        selectedObjectId && findProjectObjectNode(objectTree, selectedObjectId)
+          ? selectedObjectId
+          : null;
+
+      if (parentId === null && objectTree.length > 0) {
+        return false;
+      }
+
+      let nextObjectTree = objectTree;
+      const pastedIds: string[] = [];
+
+      for (const object of clipboard.objects) {
+        const pastedObject = cloneProjectObjectNode(object, { offset: 24 });
+        nextObjectTree = appendProjectObjectNode(nextObjectTree, parentId, pastedObject);
+        pastedIds.push(pastedObject.id);
+      }
+
+      if (nextObjectTree === objectTree || !pastedIds.length) {
+        return false;
+      }
+
+      persistObjectTree(selectedContentFileNode.id, nextObjectTree);
+      selectObject(pastedIds.at(-1) ?? null);
+      return true;
     }
 
     if (
@@ -473,12 +600,14 @@ function ProjectWorkspaceContent({
   }, [
     clipboard,
     executeEditorCommand,
+    persistObjectTree,
     persistTableSetup,
     selectObject,
     selectObjects,
     selectedContentFileNode,
     selectedObjectId,
     selectedObjectIds,
+    selectedTableSetupLocalItem,
     selectedTableSetup
   ]);
 
@@ -492,6 +621,33 @@ function ProjectWorkspaceContent({
 
       if (!selectedContentFileNode || !selectedObjectId) {
         return false;
+      }
+
+      if (
+        selectedTableSetupLocalItem &&
+        selectedProjectObject &&
+        selectedProjectObject.locked !== true
+      ) {
+        const before = getProjectObjectNodeRectTransform(selectedProjectObject);
+        const after = {
+          ...before,
+          x: before.x + delta.x,
+          y: before.y + delta.y
+        };
+        const objectTree = [selectedTableSetupLocalItem.object];
+        const nextObjectTree = setProjectObjectNodeRectTransform(
+          objectTree,
+          selectedObjectId,
+          after
+        );
+
+        if (nextObjectTree === objectTree) {
+          return false;
+        }
+
+        event.preventDefault();
+        persistObjectTree(selectedContentFileNode.id, nextObjectTree);
+        return true;
       }
 
       if (selectedContentFileNode.kind === "tableSetup" && selectedTableSetup) {
@@ -618,6 +774,7 @@ function ProjectWorkspaceContent({
     handleWorkspaceCopy,
     handleWorkspaceDuplicate,
     handleWorkspacePaste,
+    persistObjectTree,
     persistTableSetup,
     redo,
     selectObject,
@@ -625,6 +782,7 @@ function ProjectWorkspaceContent({
     selectedObjectId,
     selectedObjectIds,
     selectedProjectObject,
+    selectedTableSetupLocalItem,
     selectedTableSetup,
     undo
   ]);
@@ -635,42 +793,6 @@ function ProjectWorkspaceContent({
         after: nextFileTree,
         before: fileTree,
         label: "Update file tree"
-      })
-    );
-  }
-
-  function persistObjectTree(fileNodeId: string, objectTree: ProjectObjectNode[]) {
-    const fileNode = findProjectFileNode(fileTree, fileNodeId);
-
-    if (fileNode?.kind === "tableSetup") {
-      const tableSetup = getProjectFileNodeTableSetup(fileNode);
-
-      if (!tableSetup || !selectedObjectId) {
-        return;
-      }
-
-      const nextTableSetup = getProjectTableSetupWithLocalObjectTree(
-        tableSetup,
-        selectedObjectId,
-        clearProjectObjectTreeActiveSides(objectTree)
-      );
-
-      persistTableSetup(fileNode.id, nextTableSetup, "Update table item");
-      return;
-    }
-
-    if (!isProjectObjectTreeFileNode(fileNode) || fileNode.sourceRef) {
-      return;
-    }
-
-    const nextObjectTree = clearProjectObjectTreeActiveSides(objectTree);
-
-    executeEditorCommand(
-      createUpdateProjectObjectTreeCommand({
-        after: nextObjectTree,
-        before: fileNode.objectTree ?? [],
-        fileNodeId,
-        label: "Update object tree"
       })
     );
   }
@@ -703,6 +825,41 @@ function ProjectWorkspaceContent({
     });
 
     persistTableSetup(selectedContentFileNode.id, nextTableSetup, "Distribute table items");
+  }
+
+  function handleOpenTableSetupItemObject(itemId: string) {
+    const item = selectedTableSetup?.items.find(
+      (candidate) => getProjectTableSetupItemId(candidate) === itemId
+    );
+
+    if (!item) {
+      return;
+    }
+
+    if (item.type === "linkedObject") {
+      openObjectForEditing({ fileNodeId: item.sourceObjectFileNodeId });
+      return;
+    }
+
+    selectTableSetupLocalObject(itemId, item.object.id);
+  }
+
+  function handleExitTableSetupLocalObject() {
+    if (!selectedTableSetupLocalItem) {
+      selectObject(null);
+      return;
+    }
+
+    const itemId = getProjectTableSetupItemId(selectedTableSetupLocalItem);
+    selectTableSetupItems([itemId], itemId);
+  }
+
+  function handleOpenSelectedLinkedObjectSource() {
+    if (selectedTableSetupItem?.type !== "linkedObject") {
+      return;
+    }
+
+    openObjectForEditing({ fileNodeId: selectedTableSetupItem.sourceObjectFileNodeId });
   }
 
   async function handleExportPng() {
@@ -790,9 +947,13 @@ function ProjectWorkspaceContent({
   }
 
   const canArrangeTableItems =
-    selectedContentFileNode?.kind === "tableSetup" && selectedObjectIds.length >= 1;
+    selectedContentFileNode?.kind === "tableSetup" &&
+    selectionTarget?.type === "tableSetupItems" &&
+    selectedObjectIds.length >= 1;
   const canDistributeTableItems =
-    selectedContentFileNode?.kind === "tableSetup" && selectedObjectIds.length >= 2;
+    selectedContentFileNode?.kind === "tableSetup" &&
+    selectionTarget?.type === "tableSetupItems" &&
+    selectedObjectIds.length >= 2;
   const canExport =
     selectedContentFileNode?.kind === "object" || selectedContentFileNode?.kind === "tableSetup";
   const canPrint = getPrintableObjectFileNodes(fileTree, selectedFileNode).length > 0 || canExport;
@@ -812,7 +973,7 @@ function ProjectWorkspaceContent({
           saving={saving}
           selectedNodeId={effectiveSelectedNodeId}
           onFileTreeChange={persistFileTree}
-          onSelectNode={setSelectedNodeId}
+          onSelectNode={openWorkspaceNode}
         />
         <PanelResizeHandle
           axis="horizontal"
@@ -828,15 +989,18 @@ function ProjectWorkspaceContent({
       <ProjectWorkspaceArea
         contentFileNode={selectedContentFileNode}
         fileTree={fileTree}
+        openTabIds={openTabIds}
         project={project}
         selectedNodeId={effectiveSelectedNodeId}
         tableSetup={selectedTableSetup}
         canRedo={canRedo}
         canUndo={canUndo}
+        onCloseTab={closeWorkspaceTab}
         onExecuteCommand={executeEditorCommand}
+        onOpenTab={openWorkspaceNode}
         onRedo={redo}
-        selectedObjectId={selectedObjectId}
-        selectedObjectIds={selectedObjectIds}
+        selectedObjectId={selectedViewportObjectId}
+        selectedObjectIds={selectedViewportObjectIds}
         canAlign={canArrangeTableItems}
         canDistribute={canDistributeTableItems}
         showArrangeControls={selectedContentFileNode?.kind === "tableSetup"}
@@ -876,6 +1040,7 @@ function ProjectWorkspaceContent({
             tableSetup={selectedTableSetup}
             onFileTreeChange={persistFileTree}
             onObjectTreeChange={persistObjectTree}
+            onOpenLinkedObjectSource={handleOpenSelectedLinkedObjectSource}
             onTableSetupChange={(tableSetup, label) =>
               selectedContentFileNode
                 ? persistTableSetup(selectedContentFileNode.id, tableSetup, label)
@@ -904,7 +1069,10 @@ function ProjectWorkspaceContent({
             selectedObjectId={selectedObjectId}
             selectedObjectIds={selectedObjectIds}
             tableSetup={selectedTableSetup}
+            tableSetupLocalItem={selectedTableSetupLocalItem}
+            onExitTableSetupLocalObject={handleExitTableSetupLocalObject}
             onObjectTreeChange={persistObjectTree}
+            onOpenTableSetupItemObject={handleOpenTableSetupItemObject}
             onTableSetupChange={(tableSetup, label) =>
               selectedContentFileNode
                 ? persistTableSetup(selectedContentFileNode.id, tableSetup, label)

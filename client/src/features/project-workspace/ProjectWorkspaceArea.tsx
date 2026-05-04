@@ -7,6 +7,7 @@ import {
   findProjectFileNodeLocation
 } from "../project-files/project-file-tree";
 import type { ProjectEditorCommand } from "./project-editor-commands";
+import { ProjectWorkspaceOpenTabs } from "./ProjectWorkspaceOpenTabs";
 import { ProjectWorkspaceToolbar } from "./ProjectWorkspaceToolbar";
 import { WorkspaceViewport } from "./ProjectWorkspaceViewport";
 import { useProjectWorkspaceStore } from "./use-project-workspace-store";
@@ -20,10 +21,13 @@ type ProjectWorkspaceAreaProps = {
   canUndo: boolean;
   contentFileNode: ProjectFileNode | null;
   fileTree: ProjectFileNode[];
+  openTabIds: string[];
   project: Project;
   selectedNodeId: string | null;
   tableSetup: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onCloseTab: (nodeId: string) => void;
+  onOpenTab: (nodeId: string) => void;
   onRedo: () => void;
   selectedObjectId: string | null;
   selectedObjectIds: string[];
@@ -46,10 +50,13 @@ export function ProjectWorkspaceArea({
   canUndo,
   contentFileNode,
   fileTree,
+  openTabIds,
   project,
   selectedNodeId,
   tableSetup,
   onExecuteCommand,
+  onCloseTab,
+  onOpenTab,
   onRedo,
   selectedObjectId,
   selectedObjectIds,
@@ -174,6 +181,13 @@ export function ProjectWorkspaceArea({
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#eef1ed]">
+      <ProjectWorkspaceOpenTabs
+        activeNodeId={selectedNodeId}
+        fileTree={fileTree}
+        openTabIds={openTabIds}
+        onCloseTab={onCloseTab}
+        onOpenTab={onOpenTab}
+      />
       <ProjectWorkspaceToolbar
         activeTool={activeTool}
         canvasScale={canvasScale}

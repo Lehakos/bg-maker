@@ -49,7 +49,7 @@ import {
   projectTableSetupSizeLimits,
   resolveProjectObjectFileObjectTree
 } from "@bg-maker/shared";
-import { Rows3, SlidersHorizontal } from "lucide-react";
+import { ExternalLink, Rows3, SlidersHorizontal } from "lucide-react";
 import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { uploadProjectImageAsset } from "../project-workspace/project-api";
 import { updateProjectFileNode } from "../project-files/project-file-tree";
@@ -269,6 +269,7 @@ type ProjectObjectInspectorPanelProps = {
   tableSetup?: ProjectTableSetup | null;
   onFileTreeChange: (fileTree: ProjectFileNode[]) => void;
   onObjectTreeChange: (fileNodeId: string, objectTree: ProjectObjectNode[]) => void;
+  onOpenLinkedObjectSource?: () => void;
   onTableSetupChange?: (tableSetup: ProjectTableSetup, label?: string) => void;
 };
 
@@ -358,6 +359,7 @@ export function ProjectObjectInspectorPanel({
   tableSetup = null,
   onFileTreeChange,
   onObjectTreeChange,
+  onOpenLinkedObjectSource,
   onTableSetupChange
 }: ProjectObjectInspectorPanelProps) {
   const objectTree = useMemo(
@@ -2320,6 +2322,7 @@ export function ProjectObjectInspectorPanel({
                 }
                 transformDraft={linkedItemTransformDraft}
                 onCommitTransformField={commitLinkedItemTransformField}
+                onOpenSource={onOpenLinkedObjectSource}
                 onTransformDraftChange={updateLinkedItemTransformDraft}
                 onTransformReset={() =>
                   setLinkedItemTransformDraft(
@@ -2682,6 +2685,7 @@ type ProjectTableSetupLinkedItemSectionProps = {
   sourceName: string;
   transformDraft: LinkedItemTransformDraft;
   onCommitTransformField: (fieldKey: keyof ProjectTableSetupItemTransform, value: string) => void;
+  onOpenSource?: () => void;
   onTransformDraftChange: (fieldKey: keyof ProjectTableSetupItemTransform, value: string) => void;
   onTransformReset: () => void;
 };
@@ -2691,6 +2695,7 @@ function ProjectTableSetupLinkedItemSection({
   sourceName,
   transformDraft,
   onCommitTransformField,
+  onOpenSource,
   onTransformDraftChange,
   onTransformReset
 }: ProjectTableSetupLinkedItemSectionProps) {
@@ -2701,6 +2706,16 @@ function ProjectTableSetupLinkedItemSection({
           <span className="block font-semibold text-slate-800">{item.name}</span>
           <span className="block truncate">{sourceName}</span>
         </div>
+        {onOpenSource ? (
+          <button
+            className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800"
+            type="button"
+            onClick={onOpenSource}
+          >
+            <ExternalLink size={14} />
+            Open source
+          </button>
+        ) : null}
       </InspectorSection>
       <InspectorSection title="Placement">
         <div className="grid grid-cols-2 gap-2">

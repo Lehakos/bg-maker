@@ -9,11 +9,13 @@ import {
   getProjectTableSetupWithDuplicatedItems,
   getProjectTableSetupWithAddedItem,
   getProjectTableSetupWithItemLocked,
+  getProjectTableSetupWithLocalObjectTree,
   getProjectTableSetupWithItemTransform,
   getProjectTableSetupWithReorderedItem,
   getProjectTableSetupWithMovedItem,
   getProjectTableSetupWithRemovedItem
 } from "./project-table-setup";
+import { renameProjectObjectNode } from "../project-objects/project-object-tree";
 import {
   getProjectTableSetupWithAlignedItems,
   getProjectTableSetupWithDistributedItems,
@@ -146,6 +148,70 @@ describe("project table setup helpers", () => {
     expect(getItemId(locked.items[1]!)).toBe(duplicateId);
     expect(locked.items[1]).toMatchObject({ object: { locked: true } });
     expect(reordered.items.map(getItemId)).toEqual([secondItemId, firstItemId]);
+  });
+
+  it("updates only the selected local table setup object tree", () => {
+    const firstItem = createProjectTableSetupLocalObjectItem("group");
+    const secondItem = createProjectTableSetupLocalObjectItem("group");
+
+    if (firstItem.type !== "localObject" || secondItem.type !== "localObject") {
+      throw new Error("Expected local objects");
+    }
+
+    const firstChild = {
+      id: "first-child",
+      kind: "label" as const,
+      name: "First child",
+      visible: true
+    };
+    const secondChild = {
+      id: "second-child",
+      kind: "label" as const,
+      name: "Second child",
+      visible: true
+    };
+    const tableSetup = {
+      ...getDefaultProjectTableSetup(),
+      items: [
+        {
+          ...firstItem,
+          object: {
+            ...firstItem.object,
+            children: [firstChild]
+          }
+        },
+        {
+          ...secondItem,
+          object: {
+            ...secondItem.object,
+            children: [secondChild]
+          }
+        }
+      ]
+    };
+    const nextObjectTree = renameProjectObjectNode(
+      [tableSetup.items[0]!.type === "localObject" ? tableSetup.items[0]!.object : firstItem.object],
+      "first-child",
+      "Renamed child"
+    );
+    const updatedTableSetup = getProjectTableSetupWithLocalObjectTree(
+      tableSetup,
+      firstItem.object.id,
+      nextObjectTree
+    );
+
+    expect(updatedTableSetup.items[0]).toMatchObject({
+      object: {
+        children: [{ id: "first-child", name: "Renamed child" }]
+      },
+      type: "localObject"
+    });
+    expect(updatedTableSetup.items[1]).toMatchObject({
+      object: {
+        children: [{ id: "second-child", name: "Second child" }]
+      },
+      type: "localObject"
+    });
   });
 
   it("updates linked item scale and local primitive size separately", () => {

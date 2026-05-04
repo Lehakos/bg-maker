@@ -279,6 +279,141 @@ describe("project workspace store", () => {
     });
   });
 
+  it("opens, activates, closes, and prunes workspace tabs", () => {
+    const store = createProjectWorkspaceStore({
+      initialFileTree,
+      projectId: "project-1",
+      saveFileTree: () => undefined
+    });
+
+    store.getState().openWorkspaceNode("object-file");
+    expect(store.getState().openTabIds).toEqual(["object-file"]);
+    expect(getProjectWorkspaceSelection(store.getState()).effectiveSelectedNodeId).toBe(
+      "object-file"
+    );
+
+    store.getState().openWorkspaceNode("objects");
+    expect(store.getState().openTabIds).toEqual(["object-file"]);
+    expect(getProjectWorkspaceSelection(store.getState()).effectiveSelectedNodeId).toBe("objects");
+
+    store.getState().openWorkspaceNode("object-file");
+    store.getState().closeWorkspaceTab("object-file");
+    expect(store.getState().openTabIds).toEqual([]);
+    expect(getProjectWorkspaceSelection(store.getState()).effectiveSelectedNodeId).toBe("objects");
+
+    store.getState().openWorkspaceNode("object-file");
+    const beforeFileTree = store.getState().fileTree;
+    const withoutObjectFile = beforeFileTree.map((node) =>
+      node.id === "objects" ? { ...node, children: [] } : node
+    );
+
+    store.getState().executeCommand(
+      createReplaceProjectFileTreeCommand({
+        after: withoutObjectFile,
+        before: beforeFileTree,
+        label: "Delete selected object file"
+      })
+    );
+
+    expect(store.getState().openTabIds).toEqual([]);
+  });
+
+  it("opens linked table setup sources in object tabs", () => {
+    const tableFileTree: ProjectFileNode[] = [
+      ...initialFileTree,
+      {
+        id: "setup-file",
+        kind: "tableSetup",
+        name: "Setup",
+        tableSetup: {
+          backgroundColor: "#6f8b70",
+          grid: { size: 50, snap: false, visible: true },
+          height: 600,
+          items: [
+            {
+              id: "linked-1",
+              name: "Linked 1",
+              sourceObjectFileNodeId: "object-file",
+              transform: { rotation: 0, scaleX: 1, scaleY: 1, x: 0, y: 0 },
+              type: "linkedObject",
+              values: {},
+              visible: true
+            }
+          ],
+          width: 900
+        },
+        type: "file"
+      }
+    ];
+    const store = createProjectWorkspaceStore({
+      initialFileTree: tableFileTree,
+      projectId: "project-1",
+      saveFileTree: () => undefined
+    });
+
+    store.getState().openWorkspaceNode("setup-file");
+    store.getState().selectTableSetupItems(["linked-1"], "linked-1");
+    store.getState().openObjectForEditing({ fileNodeId: "object-file" });
+
+    expect(store.getState().openTabIds).toEqual(["setup-file", "object-file"]);
+    expect(getProjectWorkspaceSelection(store.getState())).toMatchObject({
+      effectiveSelectedNodeId: "object-file",
+      selectedObjectId: "root"
+    });
+  });
+
+  it("selects nested objects inside local table setup items while keeping table item canvas focus", () => {
+    const tableFileTree: ProjectFileNode[] = [
+      {
+        id: "setup-file",
+        kind: "tableSetup",
+        name: "Setup",
+        tableSetup: {
+          backgroundColor: "#6f8b70",
+          grid: { size: 50, snap: false, visible: true },
+          height: 600,
+          items: [
+            {
+              object: {
+                children: [
+                  {
+                    id: "local-child",
+                    kind: "label",
+                    name: "Local child",
+                    visible: true
+                  }
+                ],
+                id: "local-root",
+                kind: "group",
+                name: "Local root",
+                visible: true
+              },
+              type: "localObject"
+            }
+          ],
+          width: 900
+        },
+        type: "file"
+      }
+    ];
+    const store = createProjectWorkspaceStore({
+      initialFileTree: tableFileTree,
+      projectId: "project-1",
+      saveFileTree: () => undefined
+    });
+
+    store.getState().openWorkspaceNode("setup-file");
+    store.getState().selectTableSetupLocalObject("local-root", "local-child");
+    const selection = getProjectWorkspaceSelection(store.getState());
+
+    expect(selection).toMatchObject({
+      selectedObjectId: "local-child",
+      selectedViewportObjectId: "local-root"
+    });
+    expect(selection.selectedProjectObject?.name).toBe("Local child");
+    expect(selection.selectedTableSetupLocalItem?.object.id).toBe("local-root");
+  });
+
   it("reconciles selected files and objects after file tree mutations", () => {
     const store = createProjectWorkspaceStore({
       initialFileTree,

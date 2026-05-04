@@ -23,7 +23,7 @@ export function useProjectWorkspaceSelection(): ProjectWorkspaceSelection {
   const fileTree = useProjectWorkspaceStore((state) => state.fileTree);
   const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
   const selectedNodeId = useProjectWorkspaceStore((state) => state.selectedNodeId);
-  const selectedObject = useProjectWorkspaceStore((state) => state.selectedObject);
+  const selectionTarget = useProjectWorkspaceStore((state) => state.selectionTarget);
 
   return useMemo(
     () =>
@@ -31,8 +31,8 @@ export function useProjectWorkspaceSelection(): ProjectWorkspaceSelection {
         fileTree,
         objectSideSelections,
         selectedNodeId,
-        selectedObject
+        selectionTarget
       }),
-    [fileTree, objectSideSelections, selectedNodeId, selectedObject]
+    [fileTree, objectSideSelections, selectedNodeId, selectionTarget]
   );
 }
