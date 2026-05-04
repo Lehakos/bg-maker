@@ -7,7 +7,8 @@ import {
 import {
   appendProjectFileNode,
   createProjectFileNode,
-  ensureProjectAssetsFolder
+  ensureProjectAssetsFolder,
+  updateProjectFileNode
 } from "../project-files/project-file-tree";
 
 export type ProjectImageAssetOption = {
@@ -30,6 +31,47 @@ export function appendProjectImageAssetFileNode(
     fileNode,
     fileTree: appendProjectFileNode(fileTreeWithAssets, projectAssetsFolderId, fileNode)
   };
+}
+
+export function appendProjectImageAssetFileNodes(
+  fileTree: ProjectFileNode[],
+  imageAssets: readonly ProjectImageAsset[]
+) {
+  const fileNodes = imageAssets.map((imageAsset) =>
+    createProjectFileNode("image", imageAsset.fileName, { imageAsset })
+  );
+  const fileTreeWithAssets = ensureProjectAssetsFolder(fileTree);
+  const nextFileTree = fileNodes.reduce(
+    (currentFileTree, fileNode) =>
+      appendProjectFileNode(currentFileTree, projectAssetsFolderId, fileNode),
+    fileTreeWithAssets
+  );
+
+  return {
+    fileNodes,
+    fileTree: nextFileTree
+  };
+}
+
+export function replaceProjectImageAssetFileNode(
+  fileTree: ProjectFileNode[],
+  imageAsset: ProjectImageAsset
+) {
+  let changed = false;
+  let nextFileTree = fileTree;
+
+  for (const option of getProjectImageAssetOptions("", fileTree)) {
+    if (option.asset.id !== imageAsset.id) {
+      continue;
+    }
+
+    changed = true;
+    nextFileTree = updateProjectFileNode(nextFileTree, option.fileNodeId, (node) =>
+      node.kind === "image" ? { ...node, imageAsset } : node
+    );
+  }
+
+  return changed ? nextFileTree : fileTree;
 }
 
 export function getProjectImageAssetOptions(

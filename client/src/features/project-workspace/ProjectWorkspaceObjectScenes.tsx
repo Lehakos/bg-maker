@@ -10,11 +10,21 @@ import {
   type ProjectTableSetup
 } from "@bg-maker/shared";
 import { Rows3 } from "lucide-react";
-import { type CSSProperties, type PointerEvent, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type DragEvent,
+  type PointerEvent,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import type { ProjectImageAssetOption } from "../project-assets/project-image-assets";
 import {
+  findProjectObjectNode,
+  getProjectObjectNodeImage,
   getProjectObjectTreeWithActiveSides,
-  setProjectObjectNodeDie
+  setProjectObjectNodeDie,
+  setProjectObjectNodeImage
 } from "../project-objects/project-object-tree";
 import {
   createSetProjectObjectSideSelectionCommand,
@@ -27,14 +37,21 @@ import { getProjectObjectSideSelection } from "./project-object-side-selection";
 import { SceneObjectFrame } from "./SceneObjectFrame";
 import { useProjectWorkspaceStore } from "./use-project-workspace-store";
 import {
+  createProjectTableSetupLinkedObjectItemAtPoint,
   getProjectFileNodeTableSetup,
   getProjectTableSetupResolvedItemObject,
+  getProjectTableSetupWithAddedItem,
+  getProjectTableSetupWithLocalObjectTree,
   getProjectTableSetupWithItemTransform
 } from "../project-table-setup/project-table-setup";
 import {
   getTableSetupItemFrames,
   getProjectTableSetupWithTransformedGroupItems
 } from "../project-table-setup/project-table-setup-geometry";
+import {
+  parseProjectObjectFileDragPayload,
+  projectObjectFileDragMimeType
+} from "../project-library/project-drag-payloads";
 
 type ProjectWorkspaceSceneProps = {
   fileTree: ProjectFileNode[];
@@ -225,6 +242,56 @@ export function TableLayoutWorkspace({
     onSelectObjects(nextIds, nextIds.at(-1) ?? null);
   }
 
+  function handleTableDragOver(event: DragEvent<HTMLElement>) {
+    if (readOnly || !event.dataTransfer.types.includes(projectObjectFileDragMimeType)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleTableDrop(event: DragEvent<HTMLElement>) {
+    if (readOnly) {
+      return;
+    }
+
+    const payload = parseProjectObjectFileDragPayload(
+      event.dataTransfer.getData(projectObjectFileDragMimeType)
+    );
+
+    if (!payload) {
+      return;
+    }
+
+    const point = getTablePointFromClient(
+      event.currentTarget,
+      tableSetup,
+      event.clientX,
+      event.clientY
+    );
+
+    if (!point) {
+      return;
+    }
+
+    const item = createProjectTableSetupLinkedObjectItemAtPoint(
+      fileTree,
+      payload.fileNodeId,
+      tableSetup,
+      point
+    );
+
+    if (!item) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    updateTableSetup(getProjectTableSetupWithAddedItem(tableSetup, item), "Add table object");
+    onSelectObject(item.id);
+  }
+
   return (
     <div className="h-full min-h-full min-w-full select-none overflow-visible">
       <div
@@ -260,6 +327,8 @@ export function TableLayoutWorkspace({
 
               onSelectObject(null);
             }}
+            onDragOver={handleTableDragOver}
+            onDrop={handleTableDrop}
             onPointerCancel={() => setMarqueeState(null)}
             onPointerDown={handleTablePointerDown}
             onPointerMove={handleTablePointerMove}
@@ -375,7 +444,16 @@ type Bounds = {
 };
 
 function getTablePoint(event: PointerEvent<HTMLElement>, tableSetup: ProjectTableSetup) {
-  const rect = event.currentTarget.getBoundingClientRect();
+  return getTablePointFromClient(event.currentTarget, tableSetup, event.clientX, event.clientY);
+}
+
+function getTablePointFromClient(
+  element: HTMLElement,
+  tableSetup: ProjectTableSetup,
+  clientX: number,
+  clientY: number
+) {
+  const rect = element.getBoundingClientRect();
 
   if (rect.width <= 0 || rect.height <= 0) {
     return null;
@@ -385,8 +463,8 @@ function getTablePoint(event: PointerEvent<HTMLElement>, tableSetup: ProjectTabl
   const scaleY = tableSetup.height / rect.height;
 
   return {
-    x: (event.clientX - rect.left) * scaleX - tableSetup.width / 2,
-    y: (event.clientY - rect.top) * scaleY - tableSetup.height / 2
+    x: (clientX - rect.left) * scaleX - tableSetup.width / 2,
+    y: (clientY - rect.top) * scaleY - tableSetup.height / 2
   };
 }
 
@@ -527,6 +605,45 @@ function TableSetupScene({
     );
   }
 
+  function handleLocalImageAssetDrop(objectId: string, assetId: string) {
+    if (readOnly) {
+      return;
+    }
+
+    const item = tableSetup.items.find(
+      (candidate) => getProjectTableSetupItemId(candidate) === objectId
+    );
+
+    if (!item || item.type !== "localObject" || item.object.kind !== "image") {
+      return;
+    }
+
+    const image = getProjectObjectNodeImage(item.object);
+    const nextObjectTree = setProjectObjectNodeImage([item.object], item.object.id, {
+      ...image,
+      assetId
+    });
+    const nextTableSetup = getProjectTableSetupWithLocalObjectTree(
+      tableSetup,
+      objectId,
+      nextObjectTree
+    );
+
+    if (nextTableSetup === tableSetup) {
+      return;
+    }
+
+    onExecuteCommand(
+      createUpdateProjectTableSetupCommand({
+        after: nextTableSetup,
+        before: tableSetup,
+        fileNodeId,
+        label: "Set image asset"
+      })
+    );
+    onSelectObject(objectId);
+  }
+
   return (
     <div className="absolute inset-0 z-0 overflow-visible">
       <WorkspaceAxes />
@@ -563,6 +680,9 @@ function TableSetupScene({
             stackRootOffset={false}
             onDieFaceChange={handleDieFaceChange}
             onExecuteCommand={onExecuteCommand}
+            onImageAssetDrop={
+              item.type === "localObject" ? handleLocalImageAssetDrop : undefined
+            }
             onObjectSideChange={handleObjectSideChange}
             onRectTransformPreviewChange={onRectTransformPreviewChange}
             onRectTransformPreviewEnd={onRectTransformPreviewEnd}
@@ -664,6 +784,38 @@ function ObjectScene({
     );
   }
 
+  function handleImageAssetDrop(objectId: string, assetId: string) {
+    if (readOnly) {
+      return;
+    }
+
+    const object = findProjectObjectNode(objectTree, objectId);
+
+    if (!object || object.kind !== "image") {
+      return;
+    }
+
+    const image = getProjectObjectNodeImage(object);
+    const nextObjectTree = setProjectObjectNodeImage(objectTree, objectId, {
+      ...image,
+      assetId
+    });
+
+    if (nextObjectTree === objectTree) {
+      return;
+    }
+
+    onExecuteCommand(
+      createUpdateProjectObjectTreeCommand({
+        after: nextObjectTree,
+        before: objectTree,
+        fileNodeId,
+        label: "Set image asset"
+      })
+    );
+    onSelectObject(objectId);
+  }
+
   return (
     <div
       className={cx(
@@ -691,6 +843,7 @@ function ObjectScene({
           siblingIndex={index}
           onDieFaceChange={handleDieFaceChange}
           onExecuteCommand={onExecuteCommand}
+          onImageAssetDrop={handleImageAssetDrop}
           onObjectSideChange={handleObjectSideChange}
           onSelectObject={onSelectObject}
           onSelectObjects={onSelectObjects}

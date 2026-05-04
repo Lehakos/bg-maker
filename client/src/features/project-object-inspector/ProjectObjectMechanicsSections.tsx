@@ -5,7 +5,7 @@ import type {
   ProjectObjectDieFaceMode
 } from "@bg-maker/shared";
 import { Copy, Dices, Hash } from "lucide-react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, DragEvent } from "react";
 import {
   InspectorBehaviorNumberField,
   InspectorDoubleSidedControls,
@@ -25,6 +25,10 @@ import {
   type DieFaceFieldKey,
   type DieFieldKey
 } from "./project-object-inspector-state";
+import {
+  getProjectImageAssetDragPayload,
+  hasProjectImageAssetDragData
+} from "../project-library/project-drag-payloads";
 
 type CounterNumberFieldDefinition = InspectorFieldDefinition<CounterNumberFieldKey>;
 
@@ -192,6 +196,26 @@ export function ProjectObjectDieSection({
   onImageUpload,
   onReset
 }: ProjectObjectDieSectionProps) {
+  function handleImageAssetDragOver(event: DragEvent<HTMLDivElement>) {
+    if (!hasProjectImageAssetDragData(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleImageAssetDrop(event: DragEvent<HTMLDivElement>) {
+    const payload = getProjectImageAssetDragPayload(event.dataTransfer);
+
+    if (!payload) {
+      return;
+    }
+
+    event.preventDefault();
+    onFaceFieldChange("imageAssetId", payload.assetId);
+  }
+
   return (
     <InspectorSection icon={<Dices size={15} />} title="Die">
       <InspectorBehaviorNumberField
@@ -211,7 +235,11 @@ export function ProjectObjectDieSection({
             onChange={(value) => onFaceFieldChange("mode", value)}
           />
           {activeFace.mode === "image" ? (
-            <>
+            <div
+              className="space-y-2"
+              onDragOver={handleImageAssetDragOver}
+              onDrop={handleImageAssetDrop}
+            >
               <InspectorSelectField
                 label="Asset"
                 value={activeFace.imageAssetId}
@@ -244,7 +272,7 @@ export function ProjectObjectDieSection({
                   {uploadError}
                 </p>
               ) : null}
-            </>
+            </div>
           ) : (
             <InspectorInlineTextField
               label="Face text"

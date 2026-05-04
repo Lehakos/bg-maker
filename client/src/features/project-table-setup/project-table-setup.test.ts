@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { getDraggedProjectObjectRectTransform } from "../project-workspace/transform-drag-helpers";
 import {
   createProjectTableSetupLinkedObjectItem,
+  createProjectTableSetupLinkedObjectItemAtPoint,
   createProjectTableSetupLocalObjectItem,
   getProjectTableSetupWithDuplicatedItems,
   getProjectTableSetupWithAddedItem,
@@ -63,6 +64,41 @@ describe("project table setup helpers", () => {
     const withBothItems = getProjectTableSetupWithAddedItem(withLinkedItem, localItem);
 
     expect(withBothItems.items).toHaveLength(2);
+  });
+
+  it("creates dropped linked objects at the table point and snaps to grid", () => {
+    const fileTree = [
+      objectFile("card-file", "Card", {
+        id: "card-root",
+        kind: "card",
+        name: "Card root",
+        visible: true
+      })
+    ];
+    const tableSetup = {
+      ...getDefaultProjectTableSetup(),
+      grid: {
+        size: 50,
+        snap: true,
+        visible: true
+      }
+    };
+    const item = createProjectTableSetupLinkedObjectItemAtPoint(fileTree, "card-file", tableSetup, {
+      x: 74,
+      y: -126
+    });
+
+    expect(item).toMatchObject({
+      sourceObjectFileNodeId: "card-file",
+      transform: { x: 50, y: -150 },
+      type: "linkedObject"
+    });
+    expect(
+      createProjectTableSetupLinkedObjectItemAtPoint([], "missing-file", tableSetup, {
+        x: 74,
+        y: -126
+      })
+    ).toBeNull();
   });
 
   it("reorders and removes table setup items", () => {

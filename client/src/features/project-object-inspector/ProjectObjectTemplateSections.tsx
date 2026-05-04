@@ -6,9 +6,13 @@ import type {
 } from "@bg-maker/shared";
 import { projectObjectVariableTypes } from "@bg-maker/shared";
 import { Link2, Plus, Trash2, Variable } from "lucide-react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, DragEvent } from "react";
 import { cx } from "./class-names";
 import { InspectorSection, InspectorSelectField } from "./inspector-ui";
+import {
+  getProjectImageAssetDragPayload,
+  hasProjectImageAssetDragData
+} from "../project-library/project-drag-payloads";
 
 type ImageAssetOption = {
   asset: {
@@ -240,9 +244,37 @@ function VariableValueField({
     }
   }
 
+  function handleImageAssetDragOver(event: DragEvent<HTMLDivElement>) {
+    if (variable.type !== "image" || !hasProjectImageAssetDragData(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleImageAssetDrop(event: DragEvent<HTMLDivElement>) {
+    if (variable.type !== "image") {
+      return;
+    }
+
+    const payload = getProjectImageAssetDragPayload(event.dataTransfer);
+
+    if (!payload) {
+      return;
+    }
+
+    event.preventDefault();
+    onChange(payload.assetId);
+  }
+
   if (variable.type === "image") {
     return (
-      <div className="space-y-1.5">
+      <div
+        className="space-y-1.5"
+        onDragOver={handleImageAssetDragOver}
+        onDrop={handleImageAssetDrop}
+      >
         <InspectorSelectField
           label={fieldLabel}
           value={value}

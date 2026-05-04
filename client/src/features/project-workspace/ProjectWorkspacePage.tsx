@@ -13,7 +13,7 @@ import { AlertCircle, ArrowLeft } from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef } from "react";
 import { useAppHeaderContent } from "../../app/app-header-context";
 import { PanelResizeHandle } from "./PanelResizeHandle";
-import { ProjectFileTreePanel } from "../project-files/ProjectFileTreePanel";
+import { ProjectWorkspaceLeftPanel } from "../project-library/ProjectWorkspaceLeftPanel";
 import { ProjectObjectInspectorPanel } from "../project-object-inspector/ProjectObjectInspectorPanel";
 import { ProjectObjectTreePanel } from "../project-objects/ProjectObjectTreePanel";
 import { ProjectWorkspaceArea } from "./ProjectWorkspaceArea";
@@ -804,7 +804,7 @@ function ProjectWorkspaceContent({
       style={workspaceStyle}
     >
       <div className="relative min-h-0">
-        <ProjectFileTreePanel
+        <ProjectWorkspaceLeftPanel
           className="h-full"
           fileTree={fileTree}
           projectId={project.id}

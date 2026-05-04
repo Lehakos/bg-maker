@@ -67,3 +67,23 @@ export async function uploadProjectImageAsset(
 
   return response.imageAsset;
 }
+
+export async function replaceProjectImageAsset(
+  projectId: string,
+  assetId: string,
+  file: File
+): Promise<ProjectImageAsset> {
+  const response = await apiRequest<UploadProjectImageAssetResponse>(
+    apiPaths.projectImageAsset(projectId, assetId),
+    {
+      method: "PUT",
+      body: file,
+      headers: {
+        "Content-Type": file.type,
+        "X-File-Name": file.name
+      }
+    }
+  );
+
+  return response.imageAsset;
+}

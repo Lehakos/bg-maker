@@ -2,9 +2,11 @@ import type { ProjectFileNode, ProjectImageAsset } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import { findProjectFileNode } from "../project-files/project-file-tree";
 import {
+  appendProjectImageAssetFileNodes,
   appendProjectImageAssetFileNode,
   getProjectImageAssetOptionById,
-  getProjectImageAssetOptions
+  getProjectImageAssetOptions,
+  replaceProjectImageAssetFileNode
 } from "./project-image-assets";
 
 const imageAsset: ProjectImageAsset = {
@@ -78,5 +80,43 @@ describe("project image asset helpers", () => {
       type: "folder"
     });
     expect(findProjectFileNode(nextFileTree, fileNode.id)).toMatchObject({ imageAsset });
+  });
+
+  it("adds multiple uploaded image assets in one file tree update", () => {
+    const secondImageAsset = {
+      ...imageAsset,
+      id: "asset-2",
+      fileName: "card.png"
+    };
+    const { fileTree: nextFileTree, fileNodes } = appendProjectImageAssetFileNodes([], [
+      imageAsset,
+      secondImageAsset
+    ]);
+
+    expect(fileNodes).toHaveLength(2);
+    expect(fileNodes.map((node) => node.imageAsset?.id)).toEqual(["asset-1", "asset-2"]);
+    expect(
+      getProjectImageAssetOptions("project-1", nextFileTree).map((asset) => asset.asset.id)
+    ).toEqual(["asset-2", "asset-1"]);
+  });
+
+  it("replaces image asset metadata without changing image file nodes or references", () => {
+    const fileTree = [folder("assets", "Assets", [imageFile("image-file-1", "Token")])];
+    const replacement: ProjectImageAsset = {
+      ...imageAsset,
+      byteSize: 456,
+      contentType: "image/webp",
+      fileName: "token-replaced.webp"
+    };
+    const nextFileTree = replaceProjectImageAssetFileNode(fileTree, replacement);
+
+    expect(findProjectFileNode(nextFileTree, "image-file-1")).toMatchObject({
+      id: "image-file-1",
+      imageAsset: replacement,
+      name: "Token"
+    });
+    expect(replaceProjectImageAssetFileNode(fileTree, { ...replacement, id: "missing" })).toBe(
+      fileTree
+    );
   });
 });

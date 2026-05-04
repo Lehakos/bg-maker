@@ -128,6 +128,35 @@ export function registerProjectsController(
     }
   );
 
+  app.put<{ Params: ProjectRouteParams & { assetId: string } }>(
+    `${apiPaths.projects}/:projectId/image-assets/:assetId`,
+    async (request, reply): Promise<UploadProjectImageAssetResponse | ApiErrorResponse> => {
+      try {
+        const imageAsset = await projectService.replaceProjectImageAsset(
+          request.params.projectId,
+          request.params.assetId,
+          toCreateProjectImageAssetRequest(request.body, request.headers)
+        );
+
+        if (!imageAsset) {
+          reply.code(404);
+
+          return { message: "Image asset not found" };
+        }
+
+        return { imageAsset };
+      } catch (error) {
+        if (error instanceof ProjectValidationError) {
+          reply.code(getProjectValidationErrorStatusCode(error));
+
+          return { message: error.message };
+        }
+
+        throw error;
+      }
+    }
+  );
+
   app.get<{ Params: ProjectRouteParams & { assetId: string } }>(
     `${apiPaths.projects}/:projectId/image-assets/:assetId`,
     async (request, reply): Promise<ApiErrorResponse | Buffer> => {

@@ -12,6 +12,7 @@ import {
 } from "@bg-maker/shared";
 import {
   type CSSProperties,
+  type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
@@ -36,6 +37,10 @@ import { ObjectSelectionOverlay } from "./ObjectSelectionOverlay";
 import { cx } from "./project-workspace-css";
 import type { ProjectEditorCommand } from "./project-editor-commands";
 import { createUpdateProjectObjectRectTransformCommand } from "./project-editor-commands";
+import {
+  parseProjectImageAssetDragPayload,
+  projectImageAssetDragMimeType
+} from "../project-library/project-drag-payloads";
 import {
   areProjectObjectRectTransformsEqual,
   getNextTransformDragState,
@@ -65,6 +70,7 @@ type SceneObjectFrameProps = {
   stackRootOffset?: boolean;
   onDieFaceChange: (objectId: string, die: ProjectObjectDie, activeFace: number) => void;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onImageAssetDrop?: (objectId: string, assetId: string) => void;
   onObjectSideChange: (objectId: string, activeSide: ProjectObjectSide) => void;
   onRectTransformPreviewChange?: (
     objectId: string,
@@ -101,6 +107,7 @@ export function SceneObjectFrame({
   stackRootOffset = true,
   onDieFaceChange,
   onExecuteCommand,
+  onImageAssetDrop,
   onObjectSideChange,
   onRectTransformPreviewChange,
   onRectTransformPreviewEnd,
@@ -309,6 +316,40 @@ export function SceneObjectFrame({
     onSelectObject(selectableObjectId);
   }
 
+  function handleDragOver(event: DragEvent<HTMLDivElement>) {
+    if (
+      !handlesOwnInteraction ||
+      readOnly ||
+      viewObject.kind !== "image" ||
+      !onImageAssetDrop ||
+      !event.dataTransfer.types.includes(projectImageAssetDragMimeType)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    if (!handlesOwnInteraction || readOnly || viewObject.kind !== "image" || !onImageAssetDrop) {
+      return;
+    }
+
+    const payload = parseProjectImageAssetDragPayload(
+      event.dataTransfer.getData(projectImageAssetDragMimeType)
+    );
+
+    if (!payload) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    onImageAssetDrop(viewObject.id, payload.assetId);
+  }
+
   function releasePointerCapture(event: PointerEvent<HTMLDivElement>) {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -333,6 +374,8 @@ export function SceneObjectFrame({
       style={getSceneObjectFrameStyle(visibleRectTransform, root, siblingIndex, stackRootOffset)}
       tabIndex={handlesOwnInteraction ? 0 : undefined}
       onClick={handleClick}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       onKeyDown={handleKeyDown}
       onPointerCancel={handlePointerCancel}
       onPointerDown={handlePointerDown}
@@ -364,6 +407,7 @@ export function SceneObjectFrame({
             siblingIndex={index}
             onDieFaceChange={onDieFaceChange}
             onExecuteCommand={onExecuteCommand}
+            onImageAssetDrop={onImageAssetDrop}
             onObjectSideChange={onObjectSideChange}
             onRectTransformPreviewChange={onRectTransformPreviewChange}
             onRectTransformPreviewEnd={onRectTransformPreviewEnd}

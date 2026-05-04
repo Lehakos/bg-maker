@@ -19,13 +19,13 @@ pleasant for building objects and table setups.
 
 ## P0 - Object Library And Assets
 
-- [ ] Keep `fileTree` as the project explorer and source of truth.
-- [ ] Add an Object Library view over object files with thumbnails, search, and type filters.
-- [ ] Allow dragging reusable objects from the library into table setups.
-- [ ] Add an Asset Browser view over image files with thumbnail grid and search.
-- [ ] Add bulk image upload.
-- [ ] Add replace image asset while preserving existing object references.
-- [ ] Allow dragging an image asset onto an image object or image-capable field.
+- [x] Keep `fileTree` as the project explorer and source of truth.
+- [x] Add an Object Library view over object files with thumbnails, search, and type filters.
+- [x] Allow dragging reusable objects from the library into table setups.
+- [x] Add an Asset Browser view over image files with thumbnail grid and search.
+- [x] Add bulk image upload.
+- [x] Add replace image asset while preserving existing object references.
+- [x] Allow dragging an image asset onto an image object or image-capable field.
 
 ## P1 - New Object Types And Presets
 

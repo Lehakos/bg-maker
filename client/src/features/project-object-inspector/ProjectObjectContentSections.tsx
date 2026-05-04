@@ -17,7 +17,7 @@ import {
   Type,
   type LucideIcon
 } from "lucide-react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, DragEvent } from "react";
 import { cx } from "./class-names";
 import {
   InspectorBehaviorNumberField,
@@ -43,6 +43,10 @@ import {
   type TextFieldKey
 } from "./project-object-inspector-state";
 import { ProjectObjectShapePolygonEditor } from "./ProjectObjectShapePolygonEditor";
+import {
+  getProjectImageAssetDragPayload,
+  hasProjectImageAssetDragData
+} from "../project-library/project-drag-payloads";
 
 type TextNumberFieldDefinition = InspectorFieldDefinition<keyof typeof textNumberFieldSettings>;
 
@@ -215,22 +219,48 @@ export function ProjectObjectImageSection({
 }: ProjectObjectImageSectionProps) {
   const assetBound = Boolean(assetBinding?.value);
 
+  function handleImageAssetDragOver(event: DragEvent<HTMLDivElement>) {
+    if (assetBound || !hasProjectImageAssetDragData(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleImageAssetDrop(event: DragEvent<HTMLDivElement>) {
+    if (assetBound) {
+      return;
+    }
+
+    const payload = getProjectImageAssetDragPayload(event.dataTransfer);
+
+    if (!payload) {
+      return;
+    }
+
+    event.preventDefault();
+    onDraftChange("assetId", payload.assetId);
+  }
+
   return (
     <InspectorSection icon={<ImagePlus size={15} />} title="Image">
-      <InspectorSelectField
-        disabled={assetBound}
-        labelAction={<ProjectObjectVariableBindingField binding={assetBinding} />}
-        label="Asset"
-        value={draft.assetId}
-        options={[
-          { label: "No image", value: "" },
-          ...imageAssets.map((imageAsset) => ({
-            label: imageAsset.name,
-            value: imageAsset.asset.id
-          }))
-        ]}
-        onChange={(value) => onDraftChange("assetId", value)}
-      />
+      <div onDragOver={handleImageAssetDragOver} onDrop={handleImageAssetDrop}>
+        <InspectorSelectField
+          disabled={assetBound}
+          labelAction={<ProjectObjectVariableBindingField binding={assetBinding} />}
+          label="Asset"
+          value={draft.assetId}
+          options={[
+            { label: "No image", value: "" },
+            ...imageAssets.map((imageAsset) => ({
+              label: imageAsset.name,
+              value: imageAsset.asset.id
+            }))
+          ]}
+          onChange={(value) => onDraftChange("assetId", value)}
+        />
+      </div>
       {imageAssetId && imageAssetMissing ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
           Selected image is no longer in the file tree.

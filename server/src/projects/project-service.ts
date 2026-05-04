@@ -133,14 +133,7 @@ export class ProjectService {
       return null;
     }
 
-    if (!Buffer.isBuffer(request.data) || request.data.byteLength === 0) {
-      throw new ProjectValidationError("Image asset data is required");
-    }
-
-    if (request.data.byteLength > maxProjectImageAssetBytes) {
-      throw new ProjectValidationError("Image asset is too large");
-    }
-
+    validateProjectImageAssetRequest(request);
     const optimizedImageAsset = await optimizeProjectImageAsset(request);
     const imageAsset: ProjectImageAsset = {
       id: randomUUID(),
@@ -148,6 +141,46 @@ export class ProjectService {
       contentType: optimizedImageAsset.contentType,
       byteSize: optimizedImageAsset.data.byteLength,
       createdAt: new Date().toISOString()
+    };
+
+    await this.imageAssetFileStore.writeProjectImageAsset(
+      project.id,
+      imageAsset.id,
+      optimizedImageAsset.data
+    );
+
+    return imageAsset;
+  }
+
+  async replaceProjectImageAsset(
+    projectId: string,
+    assetId: string,
+    request: CreateProjectImageAssetRequest
+  ): Promise<ProjectImageAsset | null> {
+    if (!isSafeProjectImageAssetId(assetId)) {
+      return null;
+    }
+
+    const store = await this.store.read();
+    const project = store.projects.find((item) => item.id === projectId);
+
+    if (!project) {
+      return null;
+    }
+
+    const existingImageAsset = findProjectImageAsset(project.fileTree, assetId);
+
+    if (!existingImageAsset) {
+      return null;
+    }
+
+    validateProjectImageAssetRequest(request);
+    const optimizedImageAsset = await optimizeProjectImageAsset(request);
+    const imageAsset: ProjectImageAsset = {
+      ...existingImageAsset,
+      fileName: normalizeProjectImageAssetFileName(request.fileName),
+      contentType: optimizedImageAsset.contentType,
+      byteSize: optimizedImageAsset.data.byteLength
     };
 
     await this.imageAssetFileStore.writeProjectImageAsset(
@@ -202,4 +235,14 @@ export function createProjectService(options: ProjectServiceOptions = {}) {
     join(process.env.BGM_DATA_DIR ?? defaultDataDirectory, "projects.json");
 
   return new ProjectService(storePath);
+}
+
+function validateProjectImageAssetRequest(request: CreateProjectImageAssetRequest) {
+  if (!Buffer.isBuffer(request.data) || request.data.byteLength === 0) {
+    throw new ProjectValidationError("Image asset data is required");
+  }
+
+  if (request.data.byteLength > maxProjectImageAssetBytes) {
+    throw new ProjectValidationError("Image asset is too large");
+  }
 }

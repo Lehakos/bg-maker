@@ -61,6 +61,30 @@ export function createProjectTableSetupLinkedObjectItem(
   };
 }
 
+export function createProjectTableSetupLinkedObjectItemAtPoint(
+  fileTree: readonly ProjectFileNode[],
+  sourceObjectFileNodeId: string,
+  tableSetup: ProjectTableSetup,
+  point: { x: number; y: number }
+): ProjectTableSetupLinkedObjectItem | null {
+  const item = createProjectTableSetupLinkedObjectItem(fileTree, sourceObjectFileNodeId);
+
+  if (!item) {
+    return null;
+  }
+
+  const snapSize = tableSetup.grid.snap ? tableSetup.grid.size : null;
+
+  return {
+    ...item,
+    transform: {
+      ...item.transform,
+      x: snapTableSetupDropValue(point.x, snapSize),
+      y: snapTableSetupDropValue(point.y, snapSize)
+    }
+  };
+}
+
 export function createProjectTableSetupLocalObjectItem(
   kind: ProjectObjectKind
 ): ProjectTableSetupItem {
@@ -404,6 +428,14 @@ function normalizeProjectTableSetupItemTransform(
     x: transform.x,
     y: transform.y
   };
+}
+
+function snapTableSetupDropValue(value: number, snapSize: number | null) {
+  if (!snapSize || snapSize <= 0) {
+    return Math.round(value);
+  }
+
+  return Math.round(value / snapSize) * snapSize;
 }
 
 function getZOrderTargetIndex(
