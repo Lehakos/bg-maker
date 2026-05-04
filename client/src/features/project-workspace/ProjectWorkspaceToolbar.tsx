@@ -42,6 +42,7 @@ type WorkspaceToolDefinition = {
   icon: LucideIcon;
   id: WorkspaceTool;
   label: string;
+  shortcut: string;
 };
 
 type ProjectWorkspaceToolbarProps = {
@@ -70,14 +71,15 @@ type ToolbarIconButtonProps = {
   icon: ReactNode;
   label: string;
   onClick: () => void;
+  title?: string;
 };
 
 const workspaceTools = [
-  { id: "select", label: "Select", icon: MousePointer2 },
-  { id: "pan", label: "Pan", icon: Hand },
-  { id: "move", label: "Move", icon: Move },
-  { id: "rotate", label: "Rotate", icon: RotateCw },
-  { id: "resize", label: "Resize", icon: Maximize2 }
+  { id: "select", label: "Select", shortcut: "V / 1", icon: MousePointer2 },
+  { id: "pan", label: "Pan", shortcut: "H / 2", icon: Hand },
+  { id: "move", label: "Move", shortcut: "M / 3", icon: Move },
+  { id: "rotate", label: "Rotate", shortcut: "R / 4", icon: RotateCw },
+  { id: "resize", label: "Resize", shortcut: "S / 5", icon: Maximize2 }
 ] as const satisfies readonly WorkspaceToolDefinition[];
 
 const positionPresetOptions = [
@@ -174,6 +176,7 @@ export function ProjectWorkspaceToolbar({
               active={selected}
               icon={<Icon size={17} />}
               label={tool.label}
+              title={`${tool.label} (${tool.shortcut})`}
               onClick={() => onToolChange(tool.id)}
             />
           );
@@ -296,7 +299,8 @@ function ToolbarIconButton({
   disabled = false,
   icon: Icon,
   label,
-  onClick
+  onClick,
+  title = label
 }: ToolbarIconButtonProps) {
   return (
     <button
@@ -310,7 +314,7 @@ function ToolbarIconButton({
         disabled && "cursor-not-allowed opacity-40 hover:border-transparent hover:bg-transparent"
       )}
       disabled={disabled}
-      title={label}
+      title={title}
       type="button"
       onClick={onClick}
     >

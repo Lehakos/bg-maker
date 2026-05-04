@@ -14,6 +14,7 @@ export type TransformDragState = {
 };
 
 export type TransformDragOptions = {
+  preserveAspectRatio?: boolean;
   resizeMode?: "scale" | "size";
   snapSize?: number | null;
 };
@@ -116,10 +117,44 @@ export function getDraggedProjectObjectRectTransform(
 
   if (activeTool === "resize") {
     if (options.resizeMode === "scale") {
+      if (options.preserveAspectRatio) {
+        const scaleFactor = getPreservedAspectRatioScaleFactor({
+          currentPrimary: before.scaleX,
+          currentSecondary: before.scaleY,
+          max: 100,
+          min: 0.01,
+          nextPrimary: before.scaleX + deltaX / Math.max(1, before.width),
+          nextSecondary: before.scaleY + deltaY / Math.max(1, before.height)
+        });
+
+        return {
+          ...before,
+          scaleX: clamp(before.scaleX * scaleFactor, 0.01, 100),
+          scaleY: clamp(before.scaleY * scaleFactor, 0.01, 100)
+        };
+      }
+
       return {
         ...before,
         scaleX: clamp(before.scaleX + deltaX / Math.max(1, before.width), 0.01, 100),
         scaleY: clamp(before.scaleY + deltaY / Math.max(1, before.height), 0.01, 100)
+      };
+    }
+
+    if (options.preserveAspectRatio) {
+      const scaleFactor = getPreservedAspectRatioScaleFactor({
+        currentPrimary: before.width,
+        currentSecondary: before.height,
+        max: 2000,
+        min: 1,
+        nextPrimary: before.width + deltaX,
+        nextSecondary: before.height + deltaY
+      });
+
+      return {
+        ...before,
+        height: clamp(before.height * scaleFactor, 1, 2000),
+        width: clamp(before.width * scaleFactor, 1, 2000)
       };
     }
 
@@ -212,6 +247,33 @@ function getShortestAngleDelta(currentAngle: number, previousAngle: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getPreservedAspectRatioScaleFactor({
+  currentPrimary,
+  currentSecondary,
+  max,
+  min,
+  nextPrimary,
+  nextSecondary
+}: {
+  currentPrimary: number;
+  currentSecondary: number;
+  max: number;
+  min: number;
+  nextPrimary: number;
+  nextSecondary: number;
+}) {
+  const primaryFactor = nextPrimary / Math.max(min, currentPrimary);
+  const secondaryFactor = nextSecondary / Math.max(min, currentSecondary);
+  const dominantFactor =
+    Math.abs(primaryFactor - 1) >= Math.abs(secondaryFactor - 1) ? primaryFactor : secondaryFactor;
+
+  return clamp(
+    dominantFactor,
+    Math.max(min / Math.max(min, currentPrimary), min / Math.max(min, currentSecondary)),
+    Math.min(max / Math.max(min, currentPrimary), max / Math.max(min, currentSecondary))
+  );
 }
 
 function snapValue(value: number, snapSize: number | null | undefined) {

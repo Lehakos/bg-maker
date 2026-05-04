@@ -346,7 +346,7 @@ function ProjectObjectNodeTreePanel({
       clipboard?.type === "objectNodes" &&
       Boolean(
         contentFileNode &&
-          (!singleRootTree || contextMenuParentId !== null || objectTree.length === 0)
+        (!singleRootTree || contextMenuParentId !== null || objectTree.length === 0)
       ),
     canRename: !readOnly && Boolean(contextMenuObject),
     canToggleLock: !readOnly && Boolean(contextMenuObject),
@@ -1026,7 +1026,10 @@ function ProjectTableSetupTreePanel({
       : [itemId];
   }
 
-  function selectTableItems(itemIds: string[], primaryItemId: string | null = itemIds.at(-1) ?? null) {
+  function selectTableItems(
+    itemIds: string[],
+    primaryItemId: string | null = itemIds.at(-1) ?? null
+  ) {
     if (onSelectObjects) {
       onSelectObjects(itemIds, primaryItemId);
     } else {
@@ -1206,7 +1209,7 @@ function ProjectTableSetupTreePanel({
                     if (event.metaKey || event.ctrlKey || event.shiftKey) {
                       const nextIds = new Set(selectedObjectIds);
 
-                      if (nextIds.has(itemId)) {
+                      if ((event.metaKey || event.ctrlKey) && nextIds.has(itemId)) {
                         nextIds.delete(itemId);
                       } else {
                         nextIds.add(itemId);

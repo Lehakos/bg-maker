@@ -220,6 +220,7 @@ export function SceneObjectFrame({
       event.clientX,
       event.clientY,
       {
+        preserveAspectRatio: activeTool === "resize" && event.shiftKey,
         resizeMode,
         snapSize
       }
@@ -289,7 +290,7 @@ export function SceneObjectFrame({
     if (multiSelectEnabled && (event.metaKey || event.ctrlKey || event.shiftKey)) {
       const nextSelectedObjectIds = new Set(selectedObjectIds);
 
-      if (nextSelectedObjectIds.has(selectableObjectId)) {
+      if ((event.metaKey || event.ctrlKey) && nextSelectedObjectIds.has(selectableObjectId)) {
         nextSelectedObjectIds.delete(selectableObjectId);
       } else {
         nextSelectedObjectIds.add(selectableObjectId);

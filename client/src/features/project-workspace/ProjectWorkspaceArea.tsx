@@ -1,6 +1,6 @@
 import type { Project, ProjectFileNode, ProjectTableSetup } from "@bg-maker/shared";
 import { resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
-import { type PointerEvent, useMemo, useRef, useState } from "react";
+import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { getProjectImageAssetOptions } from "../project-assets/project-image-assets";
 import {
   findProjectFileNode,
@@ -74,6 +74,7 @@ export function ProjectWorkspaceArea({
   const setActiveTool = useProjectWorkspaceStore((state) => state.setActiveTool);
   const setCanvasScale = useProjectWorkspaceStore((state) => state.setCanvasScale);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const spacePanPressedRef = useRef(false);
   const [panState, setPanState] = useState<{
     clientX: number;
     clientY: number;
@@ -81,6 +82,7 @@ export function ProjectWorkspaceArea({
     scrollLeft: number;
     scrollTop: number;
   } | null>(null);
+  const [spacePanPressed, setSpacePanPressed] = useState(false);
   const selectedNode = useMemo(
     () => (selectedNodeId ? findProjectFileNode(fileTree, selectedNodeId) : undefined),
     [fileTree, selectedNodeId]
@@ -111,6 +113,49 @@ export function ProjectWorkspaceArea({
         : null,
     [fileTree, selectedObjectIds, tableSetup]
   );
+  const panInteractionActive = activeTool === "pan" || spacePanPressed || Boolean(panState);
+
+  useEffect(() => {
+    function setSpacePanPressedState(pressed: boolean) {
+      spacePanPressedRef.current = pressed;
+      setSpacePanPressed(pressed);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (
+        event.code !== "Space" ||
+        isSpacePanKeyboardTargetBlocked(event.target, scrollContainerRef.current)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (!event.repeat) {
+        setSpacePanPressedState(true);
+      }
+    }
+
+    function handleKeyUp(event: KeyboardEvent) {
+      if (event.code === "Space") {
+        setSpacePanPressedState(false);
+      }
+    }
+
+    function handleBlur() {
+      setSpacePanPressedState(false);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, []);
 
   function handleZoomToFit() {
     const scrollContainer = scrollContainerRef.current;
@@ -150,7 +195,7 @@ export function ProjectWorkspaceArea({
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (activeTool !== "pan") {
+    if (activeTool !== "pan" && !spacePanPressedRef.current) {
       return;
     }
 
@@ -219,7 +264,7 @@ export function ProjectWorkspaceArea({
         ref={scrollContainerRef}
         aria-label="Workspace canvas"
         className={
-          activeTool === "pan"
+          panInteractionActive
             ? "min-h-0 flex-1 cursor-grab select-none overflow-auto"
             : "min-h-0 flex-1 select-none overflow-auto"
         }
@@ -234,6 +279,7 @@ export function ProjectWorkspaceArea({
         onPointerDownCapture={handlePointerDown}
         onPointerMoveCapture={handlePointerMove}
         onPointerUpCapture={handlePointerUp}
+        tabIndex={-1}
       >
         <WorkspaceViewport
           contentFileNode={contentFileNode}
@@ -252,6 +298,32 @@ export function ProjectWorkspaceArea({
         />
       </div>
     </main>
+  );
+}
+
+function isSpacePanKeyboardTargetBlocked(
+  target: EventTarget | null,
+  scrollContainer: HTMLElement | null
+) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (
+    scrollContainer &&
+    target !== document.body &&
+    target !== document.documentElement &&
+    !scrollContainer.contains(target)
+  ) {
+    return true;
+  }
+
+  return (
+    target.isContentEditable ||
+    target instanceof HTMLButtonElement ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
   );
 }
 

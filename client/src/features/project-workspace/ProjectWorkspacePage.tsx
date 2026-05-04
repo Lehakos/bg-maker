@@ -48,6 +48,7 @@ import {
   useElementSize,
   useResizablePanelSize
 } from "./resizable-panel-state";
+import type { WorkspaceTool } from "./project-workspace-view-state";
 import {
   getProjectFileNodeTableSetup,
   getProjectTableSetupWithDuplicatedItems,
@@ -194,6 +195,7 @@ function ProjectWorkspaceContent({
   );
   const clipboard = useProjectWorkspaceStore((state) => state.clipboard);
   const setClipboard = useProjectWorkspaceStore((state) => state.setClipboard);
+  const setActiveTool = useProjectWorkspaceStore((state) => state.setActiveTool);
   const undo = useProjectWorkspaceStore((state) => state.undo);
   const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
   const {
@@ -702,6 +704,14 @@ function ProjectWorkspaceContent({
           if (event.key === "Escape" && selectedContentFileNode?.kind === "tableSetup") {
             event.preventDefault();
             selectObject(null);
+            return;
+          }
+
+          const nextTool = getKeyboardToolShortcut(event);
+
+          if (nextTool) {
+            event.preventDefault();
+            setActiveTool(nextTool);
           }
         }
 
@@ -769,6 +779,7 @@ function ProjectWorkspaceContent({
     persistTableSetup,
     redo,
     selectObject,
+    setActiveTool,
     selectedContentFileNode,
     selectedObjectId,
     selectedObjectIds,
@@ -1170,6 +1181,32 @@ function getKeyboardShortcutKey(event: KeyboardEvent) {
   }
 
   return event.key.toLowerCase();
+}
+
+function getKeyboardToolShortcut(event: KeyboardEvent): WorkspaceTool | null {
+  if (event.altKey) {
+    return null;
+  }
+
+  switch (event.code) {
+    case "Digit1":
+    case "KeyV":
+      return "select";
+    case "Digit2":
+    case "KeyH":
+      return "pan";
+    case "Digit3":
+    case "KeyM":
+      return "move";
+    case "Digit4":
+    case "KeyR":
+      return "rotate";
+    case "Digit5":
+    case "KeyS":
+      return "resize";
+    default:
+      return null;
+  }
 }
 
 function getKeyboardNudgeDelta(event: KeyboardEvent, gridSize = 10) {
