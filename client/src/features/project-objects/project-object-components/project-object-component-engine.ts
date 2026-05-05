@@ -2,6 +2,7 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectBag,
   ProjectObjectCard,
+  ProjectCompositionSettings,
   ProjectObjectContainer,
   ProjectObjectCounter,
   ProjectObjectDeck,
@@ -26,6 +27,10 @@ import {
 } from "./appearance-component";
 import { getProjectObjectBagComponent, withProjectObjectBagComponent } from "./bag-component";
 import { getProjectObjectCardComponent, withProjectObjectCardComponent } from "./card-component";
+import {
+  getProjectObjectCompositionComponent,
+  withProjectObjectCompositionComponent
+} from "./composition-component";
 import {
   getProjectObjectCounterComponent,
   withProjectObjectCounterComponent
@@ -84,6 +89,10 @@ export class ProjectObjectComponentEngine {
 
   getCard(object: ProjectObjectNode): ProjectObjectCard {
     return getProjectObjectCardComponent(object);
+  }
+
+  getComposition(object: ProjectObjectNode): ProjectCompositionSettings {
+    return getProjectObjectCompositionComponent(object);
   }
 
   getCounter(object: ProjectObjectNode): ProjectObjectCounter {
@@ -160,14 +169,18 @@ export class ProjectObjectComponentEngine {
     return withProjectObjectCardComponent(object, card);
   }
 
+  withComposition(
+    object: ProjectObjectNode,
+    composition: ProjectCompositionSettings
+  ): ProjectObjectNode {
+    return withProjectObjectCompositionComponent(object, composition);
+  }
+
   withCounter(object: ProjectObjectNode, counter: ProjectObjectCounter): ProjectObjectNode {
     return withProjectObjectCounterComponent(object, counter);
   }
 
-  withContainer(
-    object: ProjectObjectNode,
-    container: ProjectObjectContainer
-  ): ProjectObjectNode {
+  withContainer(object: ProjectObjectNode, container: ProjectObjectContainer): ProjectObjectNode {
     return withProjectObjectContainerComponent(object, container);
   }
 

@@ -46,10 +46,12 @@ import {
   getNextTransformDragState,
   getRectTransformCommandLabel,
   getRotateDragState,
+  type ResizeHandle,
   type TransformDragOptions,
   type TransformDragState
 } from "./transform-drag-helpers";
 import { useProjectWorkspaceStore } from "./use-project-workspace-store";
+import type { CompositionSnapIndicator, CompositionSnapTarget } from "./composition-guides";
 
 type SceneObjectFrameProps = {
   fileTree: ProjectFileNode[];
@@ -67,6 +69,7 @@ type SceneObjectFrameProps = {
   selectedObjectIds: string[];
   siblingIndex: number;
   snapSize?: number | null;
+  snapTargets?: CompositionSnapTarget[];
   stackRootOffset?: boolean;
   onDieFaceChange: (objectId: string, die: ProjectObjectDie, activeFace: number) => void;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
@@ -78,6 +81,7 @@ type SceneObjectFrameProps = {
     after: ProjectObjectRectTransform
   ) => void;
   onRectTransformPreviewEnd?: () => void;
+  onSnapIndicatorsChange?: (indicators: CompositionSnapIndicator[]) => void;
   onRectTransformChange?: (
     objectId: string,
     before: ProjectObjectRectTransform,
@@ -104,6 +108,7 @@ export function SceneObjectFrame({
   selectedObjectIds,
   siblingIndex,
   snapSize = null,
+  snapTargets = [],
   stackRootOffset = true,
   onDieFaceChange,
   onExecuteCommand,
@@ -111,12 +116,14 @@ export function SceneObjectFrame({
   onObjectSideChange,
   onRectTransformPreviewChange,
   onRectTransformPreviewEnd,
+  onSnapIndicatorsChange,
   onRectTransformChange,
   onSelectObject,
   onSelectObjects
 }: SceneObjectFrameProps) {
   const activeTool = useProjectWorkspaceStore((state) => state.activeTool);
   const canvasScale = useProjectWorkspaceStore((state) => state.canvasScale);
+  const resizeAspectLocked = useProjectWorkspaceStore((state) => state.resizeAspectLocked);
   const viewObject = object;
   const objectRectTransform = getProjectObjectNodeRectTransform(viewObject);
   const effectiveObjectRectTransform = getEffectiveProjectObjectRectTransform(viewObject, fileTree);
@@ -182,6 +189,16 @@ export function SceneObjectFrame({
 
     event.stopPropagation();
 
+    const transformHandle = getTransformHandle(event.target);
+
+    if (activeTool === "resize" && !isResizeHandle(transformHandle)) {
+      return;
+    }
+
+    if (activeTool === "rotate" && transformHandle !== "rotate") {
+      return;
+    }
+
     if (!interactive) {
       return;
     }
@@ -199,6 +216,7 @@ export function SceneObjectFrame({
       current: objectRectTransform,
       pointerId: event.pointerId,
       ...rotateDragState,
+      resizeHandle: isResizeHandle(transformHandle) ? transformHandle : undefined,
       startClientX: event.clientX,
       startClientY: event.clientY
     });
@@ -220,13 +238,23 @@ export function SceneObjectFrame({
       event.clientX,
       event.clientY,
       {
-        preserveAspectRatio: activeTool === "resize" && event.shiftKey,
+        preserveAspectRatio:
+          activeTool === "resize" && (resizeAspectLocked ? !event.shiftKey : event.shiftKey),
+        positionMode: root ? "center" : "topLeft",
+        resizeHandle: activeDragState.resizeHandle,
         resizeMode,
+        snap: snapTargets.length
+          ? {
+              targets: snapTargets,
+              threshold: 6 / canvasScale
+            }
+          : undefined,
         snapSize
       }
     );
 
     setActiveDragState(nextDragState);
+    onSnapIndicatorsChange?.(nextDragState.snapIndicators ?? []);
     onRectTransformPreviewChange?.(object.id, nextDragState.before, nextDragState.current);
   }
 
@@ -238,6 +266,7 @@ export function SceneObjectFrame({
     releasePointerCapture(event);
     setActiveDragState(null);
     onRectTransformPreviewEnd?.();
+    onSnapIndicatorsChange?.([]);
   }
 
   function commitDrag(event: PointerEvent<HTMLDivElement>) {
@@ -274,6 +303,7 @@ export function SceneObjectFrame({
 
     setActiveDragState(null);
     onRectTransformPreviewEnd?.();
+    onSnapIndicatorsChange?.([]);
   }
 
   function handleClick(event: MouseEvent<HTMLDivElement>) {
@@ -412,6 +442,7 @@ export function SceneObjectFrame({
             onObjectSideChange={onObjectSideChange}
             onRectTransformPreviewChange={onRectTransformPreviewChange}
             onRectTransformPreviewEnd={onRectTransformPreviewEnd}
+            onSnapIndicatorsChange={onSnapIndicatorsChange}
             onRectTransformChange={onRectTransformChange}
             onSelectObject={onSelectObject}
             onSelectObjects={onSelectObjects}
@@ -573,4 +604,25 @@ function getSceneObjectFrameStyle(
     width: `${rectTransform.width}px`,
     zIndex: siblingIndex + 1
   };
+}
+
+function getTransformHandle(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return null;
+  }
+
+  return target.closest<HTMLElement>("[data-transform-handle]")?.dataset.transformHandle ?? null;
+}
+
+function isResizeHandle(value: string | null): value is ResizeHandle {
+  return (
+    value === "n" ||
+    value === "ne" ||
+    value === "e" ||
+    value === "se" ||
+    value === "s" ||
+    value === "sw" ||
+    value === "w" ||
+    value === "nw"
+  );
 }

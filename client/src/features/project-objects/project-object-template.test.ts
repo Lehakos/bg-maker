@@ -1,4 +1,5 @@
 import {
+  getDefaultProjectObjectText,
   resolveProjectObjectFileObjectTree,
   type ProjectFileNode,
   type ProjectObjectNode,
@@ -27,6 +28,7 @@ function labelNode(id: string, variableId: string, target = "text.content"): Pro
     bindings: [{ variableId, target: target as ProjectObjectVariableBindingTarget }],
     components: {
       text: {
+        ...getDefaultProjectObjectText("label"),
         color: "#000000",
         content: "Raw",
         fontSize: 16,

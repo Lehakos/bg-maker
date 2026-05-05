@@ -4,15 +4,15 @@ import type {
   ProjectObjectShape,
   ProjectObjectShapePoint,
   ProjectObjectTextAlign,
+  ProjectObjectTextEffectMode,
+  ProjectObjectTextFontFamily,
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
 import {
   AlignCenter,
   AlignLeft,
   AlignRight,
-  AlignVerticalJustifyCenter,
-  AlignVerticalJustifyEnd,
-  AlignVerticalJustifyStart,
+  createLucideIcon,
   ImagePlus,
   Shapes,
   Star,
@@ -28,6 +28,7 @@ import {
   InspectorIconSegmentedField,
   InspectorSection,
   InspectorSelectField,
+  InspectorSwitchField,
   InspectorTextareaField,
   TextStyleToggleField
 } from "./inspector-ui";
@@ -59,8 +60,14 @@ type ImageNumberFieldDefinition = InspectorFieldDefinition<keyof typeof imageNum
 
 const textNumberFields: readonly TextNumberFieldDefinition[] = [
   { key: "fontSize", label: "Size" },
+  { key: "minFontSize", label: "Min size" },
   { key: "lineHeight", label: "Line" }
 ];
+
+const textEffectStrengthField = {
+  key: "effectStrength",
+  label: "Strength"
+} as const satisfies TextNumberFieldDefinition;
 
 const imageNumberFields: readonly ImageNumberFieldDefinition[] = [
   { key: "positionX", label: "Pos X" },
@@ -71,6 +78,11 @@ const textColorFields = [{ key: "color", label: "Color" }] as const satisfies re
   key: Extract<TextFieldKey, "color">;
   label: string;
 }[];
+
+const textEffectColorField = { key: "effectColor", label: "Color" } as const satisfies {
+  key: Extract<TextFieldKey, "effectColor">;
+  label: string;
+};
 
 const iconColorFields = [{ key: "color", label: "Color" }] as const satisfies readonly {
   key: Extract<IconFieldKey, "color">;
@@ -87,14 +99,52 @@ const textAlignOptions = [
   value: ProjectObjectTextAlign;
 }[];
 
+const TextVerticalAlignTopIcon = createLucideIcon("text-vertical-align-top", [
+  ["path", { d: "M21 3H3", key: "line-1" }],
+  ["path", { d: "M17 7H7", key: "line-2" }],
+  ["path", { d: "M19 11H5", key: "line-3" }]
+]);
+
+const TextVerticalAlignMiddleIcon = createLucideIcon("text-vertical-align-middle", [
+  ["path", { d: "M21 7H3", key: "line-1" }],
+  ["path", { d: "M17 12H7", key: "line-2" }],
+  ["path", { d: "M19 17H5", key: "line-3" }]
+]);
+
+const TextVerticalAlignBottomIcon = createLucideIcon("text-vertical-align-bottom", [
+  ["path", { d: "M21 13H3", key: "line-1" }],
+  ["path", { d: "M17 17H7", key: "line-2" }],
+  ["path", { d: "M19 21H5", key: "line-3" }]
+]);
+
 const textVerticalAlignOptions = [
-  { icon: AlignVerticalJustifyStart, label: "Align top", value: "top" },
-  { icon: AlignVerticalJustifyCenter, label: "Align middle", value: "middle" },
-  { icon: AlignVerticalJustifyEnd, label: "Align bottom", value: "bottom" }
+  { icon: TextVerticalAlignTopIcon, label: "Align top", value: "top" },
+  { icon: TextVerticalAlignMiddleIcon, label: "Align middle", value: "middle" },
+  { icon: TextVerticalAlignBottomIcon, label: "Align bottom", value: "bottom" }
 ] as const satisfies readonly {
   icon: LucideIcon;
   label: string;
   value: ProjectObjectTextVerticalAlign;
+}[];
+
+const textFontFamilyOptions = [
+  { label: "System", value: "system" },
+  { label: "Serif", value: "serif" },
+  { label: "Mono", value: "mono" },
+  { label: "Rounded", value: "rounded" },
+  { label: "Condensed", value: "condensed" }
+] as const satisfies readonly {
+  label: string;
+  value: ProjectObjectTextFontFamily;
+}[];
+
+const textEffectModeOptions = [
+  { label: "None", value: "none" },
+  { label: "Shadow", value: "shadow" },
+  { label: "Outline", value: "outline" }
+] as const satisfies readonly {
+  label: string;
+  value: ProjectObjectTextEffectMode;
 }[];
 
 const imageFitOptions = [
@@ -139,7 +189,7 @@ type ProjectObjectTextSectionProps = {
   textColorBinding?: VariableBindingFieldState;
   onBoldChange: (isBold: boolean) => void;
   onCommitNumberField: (fieldKey: keyof typeof textNumberFieldSettings, value: string) => void;
-  onDraftChange: (fieldKey: TextFieldKey, value: string) => void;
+  onDraftChange: (fieldKey: TextFieldKey, value: string | boolean) => void;
   onItalicChange: (isItalic: boolean) => void;
   onReset: (fieldKey: TextFieldKey) => void;
 };
@@ -176,6 +226,12 @@ export function ProjectObjectTextSection({
           value={draft.color}
           onChange={onDraftChange}
         />
+        <InspectorSelectField
+          label="Font"
+          value={draft.fontFamily}
+          options={textFontFamilyOptions}
+          onChange={(value) => onDraftChange("fontFamily", value)}
+        />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <TextStyleToggleField
@@ -185,6 +241,7 @@ export function ProjectObjectTextSection({
           onItalicChange={onItalicChange}
         />
         <InspectorIconSegmentedField
+          iconSize={18}
           label="Align"
           value={draft.textAlign}
           options={textAlignOptions}
@@ -192,10 +249,16 @@ export function ProjectObjectTextSection({
         />
       </div>
       <InspectorIconSegmentedField
+        iconSize={18}
         label="Vertical"
         value={draft.verticalAlign}
         options={textVerticalAlignOptions}
         onChange={(value) => onDraftChange("verticalAlign", value)}
+      />
+      <InspectorSwitchField
+        checked={draft.autoFit}
+        label="Auto-fit"
+        onChange={(event) => onDraftChange("autoFit", event.currentTarget.checked)}
       />
       <TextNumberGrid
         fields={textNumberFields}
@@ -204,6 +267,30 @@ export function ProjectObjectTextSection({
         onDraftChange={onDraftChange}
         onReset={onReset}
       />
+      <div className="grid grid-cols-2 gap-2">
+        <InspectorSelectField
+          label="Effect"
+          value={draft.effectMode}
+          options={textEffectModeOptions}
+          onChange={(value) => onDraftChange("effectMode", value)}
+        />
+        <InspectorColorField
+          disabled={draft.effectMode === "none"}
+          field={textEffectColorField}
+          value={draft.effectColor}
+          onChange={onDraftChange}
+        />
+      </div>
+      {draft.effectMode !== "none" ? (
+        <InspectorBehaviorNumberField
+          field={textEffectStrengthField}
+          settings={textNumberFieldSettings.effectStrength}
+          value={draft.effectStrength}
+          onCommit={onCommitNumberField}
+          onDraftChange={onDraftChange}
+          onReset={onReset}
+        />
+      ) : null}
     </InspectorSection>
   );
 }

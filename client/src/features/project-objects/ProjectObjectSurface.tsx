@@ -16,7 +16,7 @@ import {
   getDefaultProjectObjectShapePolygonPoints,
   getProjectObjectContainerTotalCount
 } from "@bg-maker/shared";
-import type { CSSProperties } from "react";
+import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
 import {
   getProjectObjectNodeBag,
   getProjectObjectNodeCounter,
@@ -34,6 +34,7 @@ import { getProjectObjectZoneSlotRects } from "./project-object-zone";
 import { BagIcon, BoxIcon } from "./project-object-icons";
 import { getProjectObjectIconRegistryEntry } from "./project-object-icon-registry";
 import { ProjectObjectKindIcon } from "./project-object-tree-ui";
+import { getProjectObjectLabelTextStyle } from "./project-object-text-rendering";
 import type { ProjectImageAssetOption } from "../project-assets/project-image-assets";
 
 type ProjectObjectSurfaceProps = {
@@ -173,8 +174,7 @@ function BagVisual({ object }: ObjectVisualProps) {
     bag.appearanceVariant === "box"
       ? "border-amber-200 text-amber-700"
       : "border-violet-200 text-violet-700";
-  const emptyClassName =
-    bag.appearanceVariant === "box" ? "text-amber-800" : "text-violet-800";
+  const emptyClassName = bag.appearanceVariant === "box" ? "text-amber-800" : "text-violet-800";
 
   return (
     <div
@@ -365,10 +365,7 @@ function StackedContainerVisual({
   const container = getProjectObjectNodeContainer(object);
   const stackDisplay = getProjectObjectNodeStackDisplay(object);
   const totalCount = getProjectObjectContainerTotalCount(container);
-  const visibleLayerCount = Math.max(
-    1,
-    Math.min(totalCount || 1, stackDisplay.visibleItemCount)
-  );
+  const visibleLayerCount = Math.max(1, Math.min(totalCount || 1, stackDisplay.visibleItemCount));
 
   return (
     <div className="relative h-full w-full overflow-visible">
@@ -479,6 +476,8 @@ function DieVisual({ imageAssetById, object }: ImageVisualProps) {
 function LabelVisual({ object }: ObjectVisualProps) {
   const appearance = getProjectObjectNodeAppearance(object);
   const text = getProjectObjectNodeText(object);
+  const label = text.content || object.name;
+  const textStyle = getProjectObjectLabelTextStyle(text);
 
   return (
     <div
@@ -487,17 +486,16 @@ function LabelVisual({ object }: ObjectVisualProps) {
         ...getAppearanceStyle(appearance),
         alignItems: getVerticalAlignItems(text.verticalAlign),
         justifyContent: getTextJustifyContent(text.textAlign),
-        color: text.color,
-        fontSize: `${text.fontSize}px`,
-        fontStyle: text.fontStyle,
-        fontWeight: text.fontWeight,
-        lineHeight: text.lineHeight,
         textAlign: text.textAlign
       }}
     >
-      <span className="min-w-0 max-w-full whitespace-pre-wrap break-words">
-        {text.content || object.name}
-      </span>
+      {text.autoFit ? (
+        <AutoFitText minFontSize={text.minFontSize} text={label} textStyle={textStyle} />
+      ) : (
+        <span className="min-w-0 max-w-full whitespace-pre-wrap break-words" style={textStyle}>
+          {label}
+        </span>
+      )}
     </div>
   );
 }
@@ -913,6 +911,60 @@ function getStrokeDasharray(borderStyle: ProjectObjectBorderStyle) {
   }
 
   return undefined;
+}
+
+type AutoFitTextProps = {
+  minFontSize: number;
+  text: string;
+  textStyle: CSSProperties & { fontSize: string };
+};
+
+function AutoFitText({ minFontSize, text, textStyle }: AutoFitTextProps) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const [fontSize, setFontSize] = useState(Number.parseFloat(textStyle.fontSize) || 16);
+  const maxFontSize = Number.parseFloat(textStyle.fontSize) || 16;
+
+  useLayoutEffect(() => {
+    const element = containerRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    let low = minFontSize;
+    let high = maxFontSize;
+    let best = minFontSize;
+
+    for (let index = 0; index < 8; index += 1) {
+      const next = (low + high) / 2;
+      element.style.fontSize = `${next}px`;
+
+      if (
+        element.scrollWidth <= element.clientWidth + 1 &&
+        element.scrollHeight <= element.clientHeight + 1
+      ) {
+        best = next;
+        low = next;
+      } else {
+        high = next;
+      }
+    }
+
+    setFontSize(Math.floor(best));
+  }, [maxFontSize, minFontSize, text, textStyle]);
+
+  return (
+    <span
+      ref={containerRef}
+      className="block h-full min-w-0 max-w-full whitespace-pre-wrap break-words"
+      style={{
+        ...textStyle,
+        fontSize
+      }}
+    >
+      {text}
+    </span>
+  );
 }
 
 function getTextJustifyContent(textAlign: "center" | "left" | "right") {

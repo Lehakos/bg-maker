@@ -6,29 +6,34 @@ import type {
   ProjectObjectShapeVariant,
   ProjectObjectText,
   ProjectObjectTextAlign,
+  ProjectObjectTextEffectMode,
+  ProjectObjectTextFontFamily,
   ProjectObjectTextFontStyle,
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectShapePolygonPoints,
+  projectObjectTextEffectModes,
+  projectObjectTextFontFamilies,
   projectObjectShapePolygonCoordinateLimits,
   projectObjectShapePolygonPointCountLimits
 } from "@bg-maker/shared";
-import {
-  clamp,
-  isHexColor,
-  parseRectTransformDraftValue,
-  roundTo
-} from "./inspector-state-utils";
+import { clamp, isHexColor, parseRectTransformDraftValue, roundTo } from "./inspector-state-utils";
 
-export type TextFieldKey = keyof ProjectObjectText;
+export type TextFieldKey = keyof TextDraft;
 export type TextDraft = {
+  autoFit: boolean;
   color: string;
   content: string;
+  effectColor: string;
+  effectMode: ProjectObjectTextEffectMode;
+  effectStrength: string;
+  fontFamily: ProjectObjectTextFontFamily;
   fontSize: string;
   fontStyle: ProjectObjectTextFontStyle;
   fontWeight: string;
   lineHeight: string;
+  minFontSize: string;
   textAlign: ProjectObjectTextAlign;
   verticalAlign: ProjectObjectTextVerticalAlign;
 };
@@ -45,11 +50,16 @@ export type ShapePolygonPointFieldKey = keyof ProjectObjectShapePoint;
 export type ShapePolygonPointDraft = Record<ShapePolygonPointFieldKey, string>;
 
 export const textNumberFieldSettings = {
+  effectStrength: { decimals: 1, max: 12, min: 0, step: 0.5 },
   fontSize: { decimals: 0, max: 512, min: 1, step: 1 },
   fontWeight: { decimals: 0, max: 900, min: 100, step: 100 },
-  lineHeight: { decimals: 2, max: 4, min: 0.5, step: 0.05 }
+  lineHeight: { decimals: 2, max: 4, min: 0.5, step: 0.05 },
+  minFontSize: { decimals: 0, max: 512, min: 1, step: 1 }
 } as const satisfies Record<
-  Extract<TextFieldKey, "fontSize" | "fontWeight" | "lineHeight">,
+  Extract<
+    TextFieldKey,
+    "effectStrength" | "fontSize" | "fontWeight" | "lineHeight" | "minFontSize"
+  >,
   { decimals: number; max: number; min: number; step: number }
 >;
 
@@ -89,6 +99,8 @@ const shapeVariants = new Set<ProjectObjectShapeVariant>([
   "triangle"
 ]);
 const textAligns = new Set<ProjectObjectTextAlign>(["center", "left", "right"]);
+const textEffectModes = new Set<ProjectObjectTextEffectMode>(projectObjectTextEffectModes);
+const textFontFamilies = new Set<ProjectObjectTextFontFamily>(projectObjectTextFontFamilies);
 const textFontStyles = new Set<ProjectObjectTextFontStyle>(["italic", "normal"]);
 const textVerticalAligns = new Set<ProjectObjectTextVerticalAlign>(["bottom", "middle", "top"]);
 const boldTextFontWeight = 700;
@@ -97,12 +109,18 @@ const boldTextFontWeightThreshold = 600;
 
 export function createTextDraft(text: ProjectObjectText): TextDraft {
   return {
+    autoFit: text.autoFit,
     color: text.color,
     content: text.content,
+    effectColor: text.effect.color,
+    effectMode: text.effect.mode,
+    effectStrength: formatTextNumberValue(text.effect.strength, "effectStrength"),
+    fontFamily: text.fontFamily,
     fontSize: formatTextNumberValue(text.fontSize, "fontSize"),
     fontStyle: text.fontStyle,
     fontWeight: formatTextNumberValue(text.fontWeight, "fontWeight"),
     lineHeight: formatTextNumberValue(text.lineHeight, "lineHeight"),
+    minFontSize: formatTextNumberValue(text.minFontSize, "minFontSize"),
     textAlign: text.textAlign,
     verticalAlign: text.verticalAlign
   };
@@ -120,7 +138,7 @@ export function createImageDraft(image: ProjectObjectImage): ImageDraft {
 export function getTextWithDraftField(
   text: ProjectObjectText,
   fieldKey: TextFieldKey,
-  value: string
+  value: string | boolean
 ) {
   const nextText = createNextText(text, fieldKey, value);
 
@@ -334,17 +352,44 @@ export function formatImageNumberValue(
 function createNextText(
   text: ProjectObjectText,
   fieldKey: TextFieldKey,
-  value: string
+  value: string | boolean
 ): ProjectObjectText | null {
+  if (fieldKey === "autoFit") {
+    return {
+      ...text,
+      autoFit: Boolean(value)
+    };
+  }
+
   if (fieldKey === "content") {
     return {
       ...text,
-      content: value
+      content: String(value)
     };
   }
 
   if (fieldKey === "color") {
-    return isHexColor(value) ? { ...text, color: value.toLowerCase() } : null;
+    return typeof value === "string" && isHexColor(value)
+      ? { ...text, color: value.toLowerCase() }
+      : null;
+  }
+
+  if (fieldKey === "effectColor") {
+    return typeof value === "string" && isHexColor(value)
+      ? { ...text, effect: { ...text.effect, color: value.toLowerCase() } }
+      : null;
+  }
+
+  if (fieldKey === "effectMode") {
+    return textEffectModes.has(value as ProjectObjectTextEffectMode)
+      ? { ...text, effect: { ...text.effect, mode: value as ProjectObjectTextEffectMode } }
+      : null;
+  }
+
+  if (fieldKey === "fontFamily") {
+    return textFontFamilies.has(value as ProjectObjectTextFontFamily)
+      ? { ...text, fontFamily: value as ProjectObjectTextFontFamily }
+      : null;
   }
 
   if (fieldKey === "textAlign") {
@@ -365,16 +410,41 @@ function createNextText(
       : null;
   }
 
+  if (typeof value !== "string") {
+    return null;
+  }
+
   const parsedValue = parseRectTransformDraftValue(value);
 
   if (parsedValue === null) {
     return null;
   }
 
-  return {
-    ...text,
-    [fieldKey]: normalizeTextNumberValue(fieldKey, parsedValue)
-  };
+  if (fieldKey === "effectStrength") {
+    return {
+      ...text,
+      effect: {
+        ...text.effect,
+        strength: normalizeTextNumberValue(fieldKey, parsedValue)
+      }
+    };
+  }
+
+  if (fieldKey === "minFontSize") {
+    return {
+      ...text,
+      minFontSize: Math.min(text.fontSize, normalizeTextNumberValue(fieldKey, parsedValue))
+    };
+  }
+
+  if (fieldKey === "fontSize" || fieldKey === "fontWeight" || fieldKey === "lineHeight") {
+    return {
+      ...text,
+      [fieldKey]: normalizeTextNumberValue(fieldKey, parsedValue)
+    };
+  }
+
+  return null;
 }
 
 function createNextImage(
@@ -438,12 +508,18 @@ function normalizeShapePolygonPoints(
 
 function areTextsEqual(left: ProjectObjectText, right: ProjectObjectText) {
   return (
+    left.autoFit === right.autoFit &&
     left.color === right.color &&
     left.content === right.content &&
+    left.effect.color === right.effect.color &&
+    left.effect.mode === right.effect.mode &&
+    left.effect.strength === right.effect.strength &&
+    left.fontFamily === right.fontFamily &&
     left.fontSize === right.fontSize &&
     left.fontStyle === right.fontStyle &&
     left.fontWeight === right.fontWeight &&
     left.lineHeight === right.lineHeight &&
+    left.minFontSize === right.minFontSize &&
     left.textAlign === right.textAlign &&
     left.verticalAlign === right.verticalAlign
   );

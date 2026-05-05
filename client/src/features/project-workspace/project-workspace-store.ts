@@ -110,9 +110,11 @@ export type ProjectWorkspaceStoreState = {
   selectTableSetupLocalObject: (itemId: string, objectId?: string | null) => void;
   selectedNodeId: string | null;
   selectionTarget: ProjectWorkspaceSelectionTarget;
+  resizeAspectLocked: boolean;
   setActiveTool: (tool: WorkspaceTool) => void;
   setCanvasScale: (scale: number) => void;
   setClipboard: (clipboard: ProjectWorkspaceClipboard) => void;
+  setResizeAspectLocked: (locked: boolean) => void;
   setSaveFileTree: (saveFileTree: (fileTree: ProjectFileNode[]) => void) => void;
   setSelectedNodeId: (nodeId: string | null) => void;
   undo: () => void;
@@ -326,6 +328,7 @@ export function createProjectWorkspaceStore({
       });
     },
     redoStack: [],
+    resizeAspectLocked: false,
     saveFileTree,
     selectObject: (objectId) => {
       const state = get();
@@ -376,9 +379,7 @@ export function createProjectWorkspaceStore({
       const { selectedContentFileNode, selectionTarget } = getProjectWorkspaceSelection(state);
       const normalizedObjectIds = [...new Set(objectIds)];
       const nextPrimaryObjectId =
-        primaryObjectId === null
-          ? null
-          : (primaryObjectId ?? normalizedObjectIds.at(-1) ?? null);
+        primaryObjectId === null ? null : (primaryObjectId ?? normalizedObjectIds.at(-1) ?? null);
 
       if (!selectedContentFileNode) {
         set({ selectionTarget: null });
@@ -463,6 +464,7 @@ export function createProjectWorkspaceStore({
     setActiveTool: (activeTool) => set({ activeTool }),
     setCanvasScale: (canvasScale) => set({ canvasScale: normalizeCanvasScale(canvasScale) }),
     setClipboard: (clipboard) => set({ clipboard }),
+    setResizeAspectLocked: (resizeAspectLocked) => set({ resizeAspectLocked }),
     setSaveFileTree: (nextSaveFileTree) => set({ saveFileTree: nextSaveFileTree }),
     setSelectedNodeId: (nodeId) => get().openWorkspaceNode(nodeId),
     undo: () => {
@@ -647,8 +649,7 @@ export function getProjectWorkspaceSelection(
     selectedObjectIds,
     selectedProjectObject: selectedTableSetupLocalObject,
     selectedTableSetupItem,
-    selectedTableSetupLocalItem:
-      selectedTableSetupItem?.type === "localObject" ? selectedTableSetupItem : null,
+    selectedTableSetupLocalItem: null,
     selectedViewportObjectId: selectedObjectId,
     selectedViewportObjectIds: selectedObjectIds,
     selectionTarget: tableSetupSelectionTarget
@@ -699,11 +700,7 @@ function getValidProjectObjectIds(
     findProjectObjectNode(objectTree, objectId)
   );
 
-  return validObjectIds.length
-    ? validObjectIds
-    : defaultObjectId
-      ? [defaultObjectId]
-      : [];
+  return validObjectIds.length ? validObjectIds : defaultObjectId ? [defaultObjectId] : [];
 }
 
 function getValidProjectTableSetupItemIds(

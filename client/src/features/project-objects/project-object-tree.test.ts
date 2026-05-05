@@ -1,5 +1,6 @@
 import {
   doesProjectObjectClipChildren,
+  getDefaultProjectObjectText,
   getProjectObjectContainerAcceptedObjectKinds,
   type ProjectFileKind,
   type ProjectFileNode,
@@ -193,11 +194,7 @@ describe("project object tree helpers", () => {
     expect(clonedObject.children?.map((child) => child.id)).not.toEqual(
       source.children?.map((child) => child.id)
     );
-    expect(duplicatedTree.map((node) => node.id)).toEqual([
-      "shape-1",
-      "group-1",
-      clonedObject.id
-    ]);
+    expect(duplicatedTree.map((node) => node.id)).toEqual(["shape-1", "group-1", clonedObject.id]);
   });
 
   it("locks objects and reorders unlocked siblings", () => {
@@ -659,6 +656,7 @@ describe("project object tree helpers", () => {
       padding: 6
     };
     const text: ProjectObjectText = {
+      ...getDefaultProjectObjectText("label"),
       color: "#111111",
       content: "Updated label",
       fontSize: 18,
@@ -809,9 +807,7 @@ describe("project object tree helpers", () => {
     });
     expect(findProjectObjectNode(objectTree, "image-1")?.components?.image).toBeUndefined();
     expect(setProjectObjectNodeCounter(objectTree, "missing-object", counter)).toBe(objectTree);
-    expect(setProjectObjectNodeContainer(objectTree, "missing-object", container)).toBe(
-      objectTree
-    );
+    expect(setProjectObjectNodeContainer(objectTree, "missing-object", container)).toBe(objectTree);
     expect(setProjectObjectNodeBag(objectTree, "missing-object", bag)).toBe(objectTree);
     expect(setProjectObjectNodeMeeple(objectTree, "missing-object", meeple)).toBe(objectTree);
     expect(setProjectObjectNodeDeck(objectTree, "missing-object", deck)).toBe(objectTree);

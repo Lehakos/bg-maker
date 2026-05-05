@@ -1,4 +1,4 @@
-import type { ProjectFileNode } from "@bg-maker/shared";
+import { getDefaultProjectObjectText, type ProjectFileNode } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
   createSetProjectObjectSideSelectionCommand,
@@ -84,6 +84,7 @@ const initialFileTree: ProjectFileNode[] = [
                     y: 0
                   },
                   text: {
+                    ...getDefaultProjectObjectText("label"),
                     color: "#000000",
                     content: "Child",
                     fontSize: 12,
@@ -184,8 +185,8 @@ describe("project workspace store", () => {
       getProjectObjectNodeVisibleChildren(selection.selectedProjectObject!).map((child) => child.id)
     ).toEqual(["back-label"]);
     expect(
-      findProjectObjectNode(store.getState().fileTree[0]?.objectTree ?? [], "card-root")
-        ?.components?.doubleSide
+      findProjectObjectNode(store.getState().fileTree[0]?.objectTree ?? [], "card-root")?.components
+        ?.doubleSide
     ).toBeUndefined();
     expect(savedFileTrees).toEqual([]);
 
@@ -377,17 +378,13 @@ describe("project workspace store", () => {
     store.getState().openWorkspaceNode("object-c");
     store.getState().closeWorkspaceTabsToRight("object-b");
     expect(store.getState().openTabIds).toEqual(["object-a", "object-b"]);
-    expect(getProjectWorkspaceSelection(store.getState()).effectiveSelectedNodeId).toBe(
-      "object-b"
-    );
+    expect(getProjectWorkspaceSelection(store.getState()).effectiveSelectedNodeId).toBe("object-b");
 
     store.getState().openWorkspaceNode("object-c");
     store.getState().openWorkspaceNode("setup");
     store.getState().closeOtherWorkspaceTabs("object-c");
     expect(store.getState().openTabIds).toEqual(["object-c"]);
-    expect(getProjectWorkspaceSelection(store.getState()).effectiveSelectedNodeId).toBe(
-      "object-c"
-    );
+    expect(getProjectWorkspaceSelection(store.getState()).effectiveSelectedNodeId).toBe("object-c");
 
     store.getState().closeOtherWorkspaceTabs("missing");
     expect(store.getState().openTabIds).toEqual(["object-c"]);
@@ -495,6 +492,17 @@ describe("project workspace store", () => {
     });
     expect(selection.selectedProjectObject?.name).toBe("Local child");
     expect(selection.selectedTableSetupLocalItem?.object.id).toBe("local-root");
+
+    store.getState().selectTableSetupItems(["local-root"], "local-root");
+    const tableItemSelection = getProjectWorkspaceSelection(store.getState());
+
+    expect(tableItemSelection).toMatchObject({
+      selectedObjectId: "local-root",
+      selectedViewportObjectId: "local-root"
+    });
+    expect(tableItemSelection.selectedProjectObject?.name).toBe("Local root");
+    expect(tableItemSelection.selectedTableSetupItem?.type).toBe("localObject");
+    expect(tableItemSelection.selectedTableSetupLocalItem).toBeNull();
   });
 
   it("reconciles selected files and objects after file tree mutations", () => {

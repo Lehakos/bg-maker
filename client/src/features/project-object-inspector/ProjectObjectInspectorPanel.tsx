@@ -1858,11 +1858,14 @@ export function ProjectObjectInspectorPanel({
     }
   }
 
-  function updateTextDraft(fieldKey: TextFieldKey, value: string) {
-    setTextDraft((currentDraft) => ({
-      ...currentDraft,
-      [fieldKey]: value
-    }));
+  function updateTextDraft(fieldKey: TextFieldKey, value: string | boolean) {
+    setTextDraft(
+      (currentDraft) =>
+        ({
+          ...currentDraft,
+          [fieldKey]: value
+        }) as TextDraft
+    );
     updateObjectTreeTextField(fieldKey, value);
   }
 
@@ -1879,13 +1882,15 @@ export function ProjectObjectInspectorPanel({
       return;
     }
 
+    const nextDraft = createTextDraft(text);
+
     setTextDraft((currentDraft) => ({
       ...currentDraft,
-      [fieldKey]: String(text[fieldKey])
+      [fieldKey]: nextDraft[fieldKey]
     }));
   }
 
-  function updateObjectTreeTextField(fieldKey: TextFieldKey, value: string) {
+  function updateObjectTreeTextField(fieldKey: TextFieldKey, value: string | boolean) {
     if (!contentFileNode || !selectedObject || !text) {
       return;
     }
@@ -2278,7 +2283,6 @@ export function ProjectObjectInspectorPanel({
   const imageAssetBinding = getVariableBindingField("image.assetId");
   const textColorBinding = getVariableBindingField("text.color");
   const textContentBinding = getVariableBindingField("text.content");
-
   return (
     <aside
       className={cx(
@@ -2303,15 +2307,17 @@ export function ProjectObjectInspectorPanel({
       (!selectedTableSetupItem || selectedLinkedTableSetupItem) ? (
         <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
           {!selectedLinkedTableSetupItem ? (
-            <ProjectTableSetupSection
-              draft={tableSetupDraft}
-              onColorChange={updateTableSetupColor}
-              onCommitNumberField={commitTableSetupNumberField}
-              onDraftNumberChange={updateTableSetupNumberDraft}
-              onGridSnapChange={(value) => updateTableSetupSwitch("gridSnap", value)}
-              onGridVisibleChange={(value) => updateTableSetupSwitch("gridVisible", value)}
-              onReset={resetTableSetupDraft}
-            />
+            <>
+              <ProjectTableSetupSection
+                draft={tableSetupDraft}
+                onColorChange={updateTableSetupColor}
+                onCommitNumberField={commitTableSetupNumberField}
+                onDraftNumberChange={updateTableSetupNumberDraft}
+                onGridSnapChange={(value) => updateTableSetupSwitch("gridSnap", value)}
+                onGridVisibleChange={(value) => updateTableSetupSwitch("gridVisible", value)}
+                onReset={resetTableSetupDraft}
+              />
+            </>
           ) : (
             <>
               <ProjectTableSetupLinkedItemSection
@@ -2868,12 +2874,20 @@ function getFallbackDieDraftValue(): ProjectObjectDie {
 
 function getFallbackTextDraftValue(): ProjectObjectText {
   return {
+    autoFit: false,
     color: "#0f172a",
     content: "",
+    effect: {
+      color: "#ffffff",
+      mode: "none",
+      strength: 2
+    },
+    fontFamily: "system",
     fontSize: 16,
     fontStyle: "normal",
     fontWeight: 600,
     lineHeight: 1.2,
+    minFontSize: 8,
     textAlign: "center",
     verticalAlign: "middle"
   };

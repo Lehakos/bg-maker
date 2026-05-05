@@ -37,6 +37,8 @@ import type {
   ProjectObjectStackDisplay,
   ProjectObjectText,
   ProjectObjectTextAlign,
+  ProjectObjectTextEffectMode,
+  ProjectObjectTextFontFamily,
   ProjectObjectTextFontStyle,
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
@@ -78,9 +80,12 @@ import {
   projectObjectShapePolygonPointCountLimits,
   projectObjectSides,
   projectObjectStackDisplayOffsetLimits,
-  projectObjectStackDisplayVisibleItemCountLimits
+  projectObjectStackDisplayVisibleItemCountLimits,
+  projectObjectTextEffectModes,
+  projectObjectTextFontFamilies
 } from "@bg-maker/shared";
 import { isSafeProjectImageAssetId } from "./project-image-assets.js";
+import { normalizeProjectCompositionSettings } from "./project-composition-normalizer.js";
 import {
   hasOwnRecordKey,
   normalizeFiniteNumber,
@@ -100,6 +105,7 @@ const maxProjectTextContentLength = 2000;
 const maxProjectTextFontSize = 512;
 const maxProjectTextFontWeight = 900;
 const maxProjectTextLineHeight = 4;
+const maxProjectTextEffectStrength = 12;
 const minProjectTextFontSize = 1;
 const minProjectTextFontWeight = 100;
 const minProjectTextLineHeight = 0.5;
@@ -160,6 +166,12 @@ const projectObjectShapeVariants = new Set<ProjectObjectShapeVariant>([
   "triangle"
 ]);
 const projectObjectTextAligns = new Set<ProjectObjectTextAlign>(["center", "left", "right"]);
+const projectObjectTextEffectModeSet = new Set<ProjectObjectTextEffectMode>(
+  projectObjectTextEffectModes
+);
+const projectObjectTextFontFamilySet = new Set<ProjectObjectTextFontFamily>(
+  projectObjectTextFontFamilies
+);
 const projectObjectTextFontStyles = new Set<ProjectObjectTextFontStyle>(["italic", "normal"]);
 const projectObjectTextVerticalAligns = new Set<ProjectObjectTextVerticalAlign>([
   "bottom",
@@ -176,6 +188,7 @@ export function normalizeProjectObjectComponents(
   const rectTransform = normalizeProjectObjectRectTransform(record.rectTransform, kind);
   const components: ProjectObjectComponents = {
     appearance: normalizeProjectObjectAppearance(record.appearance, kind),
+    composition: normalizeProjectCompositionSettings(record.composition),
     rectTransform
   };
 
@@ -327,7 +340,7 @@ function normalizeProjectObjectRectTransform(
   };
 }
 
-function normalizeProjectObjectAppearance(
+export function normalizeProjectObjectAppearance(
   value: unknown,
   kind: ProjectObjectKind
 ): ProjectObjectAppearance {
@@ -698,7 +711,7 @@ function normalizeProjectObjectDieFace(value: unknown, faceNumber: number): Proj
   };
 }
 
-function normalizeProjectObjectText(
+export function normalizeProjectObjectText(
   value: unknown,
   kind: ProjectObjectKind,
   name: string
@@ -708,8 +721,13 @@ function normalizeProjectObjectText(
   const content = typeof record.content === "string" ? record.content : defaultText.content;
 
   return {
+    autoFit: typeof record.autoFit === "boolean" ? record.autoFit : defaultText.autoFit,
     color: normalizeHexColor(record.color, defaultText.color),
     content: content.slice(0, maxProjectTextContentLength),
+    effect: normalizeProjectObjectTextEffect(record.effect, defaultText.effect),
+    fontFamily: projectObjectTextFontFamilySet.has(record.fontFamily as ProjectObjectTextFontFamily)
+      ? (record.fontFamily as ProjectObjectTextFontFamily)
+      : defaultText.fontFamily,
     fontSize: normalizeFiniteNumber(record.fontSize, defaultText.fontSize, {
       max: maxProjectTextFontSize,
       min: minProjectTextFontSize
@@ -725,6 +743,13 @@ function normalizeProjectObjectText(
       max: maxProjectTextLineHeight,
       min: minProjectTextLineHeight
     }),
+    minFontSize: normalizeFiniteNumber(record.minFontSize, defaultText.minFontSize, {
+      max: normalizeFiniteNumber(record.fontSize, defaultText.fontSize, {
+        max: maxProjectTextFontSize,
+        min: minProjectTextFontSize
+      }),
+      min: minProjectTextFontSize
+    }),
     textAlign: projectObjectTextAligns.has(record.textAlign as ProjectObjectTextAlign)
       ? (record.textAlign as ProjectObjectTextAlign)
       : defaultText.textAlign,
@@ -733,6 +758,24 @@ function normalizeProjectObjectText(
     )
       ? (record.verticalAlign as ProjectObjectTextVerticalAlign)
       : defaultText.verticalAlign
+  };
+}
+
+function normalizeProjectObjectTextEffect(
+  value: unknown,
+  fallback: ProjectObjectText["effect"]
+): ProjectObjectText["effect"] {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    color: normalizeHexColor(record.color, fallback.color),
+    mode: projectObjectTextEffectModeSet.has(record.mode as ProjectObjectTextEffectMode)
+      ? (record.mode as ProjectObjectTextEffectMode)
+      : fallback.mode,
+    strength: normalizeFiniteNumber(record.strength, fallback.strength, {
+      max: maxProjectTextEffectStrength,
+      min: 0
+    })
   };
 }
 

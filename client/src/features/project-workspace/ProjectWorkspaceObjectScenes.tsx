@@ -2,6 +2,7 @@ import {
   getDefaultProjectTableSetup,
   getProjectTableSetupItemId,
   normalizeProjectObjectDieActiveFace,
+  type ProjectCompositionSettings,
   type ProjectFileNode,
   type ProjectObjectDie,
   type ProjectObjectNode,
@@ -9,11 +10,11 @@ import {
   type ProjectObjectSide,
   type ProjectTableSetup
 } from "@bg-maker/shared";
-import { Rows3 } from "lucide-react";
 import {
   type CSSProperties,
   type DragEvent,
   type PointerEvent,
+  useEffect,
   useMemo,
   useRef,
   useState
@@ -22,9 +23,12 @@ import type { ProjectImageAssetOption } from "../project-assets/project-image-as
 import {
   findProjectObjectNode,
   getProjectObjectNodeImage,
+  getProjectObjectNodeComposition,
+  getProjectObjectNodeRectTransform,
   getProjectObjectTreeWithActiveSides,
   setProjectObjectNodeDie,
-  setProjectObjectNodeImage
+  setProjectObjectNodeImage,
+  setProjectObjectNodeComposition
 } from "../project-objects/project-object-tree";
 import {
   createSetProjectObjectSideSelectionCommand,
@@ -52,10 +56,20 @@ import {
   parseProjectObjectFileDragPayload,
   projectObjectFileDragMimeType
 } from "../project-library/project-drag-payloads";
+import { CompositionGuideLayer } from "./CompositionGuideLayer";
+import type { CompositionSurfaceTarget } from "./CompositionRulerOverlay";
+import {
+  getGuideSnapTargets,
+  getObjectSnapTargets,
+  getProjectCompositionSettings,
+  type CompositionSnapIndicator,
+  type CompositionSnapTarget
+} from "./composition-guides";
 
 type ProjectWorkspaceSceneProps = {
   fileTree: ProjectFileNode[];
   fileNode: ProjectFileNode;
+  highlightedGuideId?: string | null;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
   readOnly?: boolean;
@@ -63,6 +77,7 @@ type ProjectWorkspaceSceneProps = {
   selectedObjectIds: string[];
   tableSetup?: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onCompositionSurfaceChange: (surface: CompositionSurfaceTarget | null) => void;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
@@ -72,12 +87,14 @@ type ObjectSceneSize = "large" | "small";
 export function TableLayoutWorkspace({
   fileTree,
   fileNode,
+  highlightedGuideId = null,
   imageAssets,
   readOnly = false,
   selectedObjectId,
   selectedObjectIds,
   tableSetup: resolvedTableSetup,
   onExecuteCommand,
+  onCompositionSurfaceChange,
   onSelectObject,
   onSelectObjects
 }: ProjectWorkspaceSceneProps) {
@@ -85,10 +102,13 @@ export function TableLayoutWorkspace({
     resolvedTableSetup ?? getProjectFileNodeTableSetup(fileNode) ?? getDefaultProjectTableSetup();
   const canvasScale = useProjectWorkspaceStore((state) => state.canvasScale);
   const activeTool = useProjectWorkspaceStore((state) => state.activeTool);
+  const composition = getProjectCompositionSettings(tableSetup.composition);
   const suppressNextClickRef = useRef(false);
+  const tableSurfaceRef = useRef<HTMLElement | null>(null);
   const [previewRectTransforms, setPreviewRectTransforms] = useState<
     Map<string, ProjectObjectRectTransform>
   >(() => new Map());
+  const [snapIndicators, setSnapIndicators] = useState<CompositionSnapIndicator[]>([]);
   const [marqueeState, setMarqueeState] = useState<{
     additive: boolean;
     currentX: number;
@@ -97,6 +117,21 @@ export function TableLayoutWorkspace({
     startX: number;
     startY: number;
   } | null>(null);
+
+  useEffect(() => {
+    if (!tableSurfaceRef.current) {
+      onCompositionSurfaceChange(null);
+      return;
+    }
+
+    onCompositionSurfaceChange({
+      element: tableSurfaceRef.current,
+      height: tableSetup.height,
+      width: tableSetup.width
+    });
+
+    return () => onCompositionSurfaceChange(null);
+  }, [onCompositionSurfaceChange, tableSetup.height, tableSetup.width]);
 
   function updateTableSetup(nextTableSetup: ProjectTableSetup, label: string) {
     if (nextTableSetup === tableSetup) {
@@ -161,6 +196,20 @@ export function TableLayoutWorkspace({
   function handleTableItemRectTransformPreviewEnd() {
     setPreviewRectTransforms((currentPreviewRectTransforms) =>
       currentPreviewRectTransforms.size > 0 ? new Map() : currentPreviewRectTransforms
+    );
+    setSnapIndicators([]);
+  }
+
+  function handleTableCompositionChange(
+    nextComposition: ProjectCompositionSettings,
+    label: string
+  ) {
+    updateTableSetup(
+      {
+        ...tableSetup,
+        composition: nextComposition
+      },
+      label
     );
   }
 
@@ -309,6 +358,7 @@ export function TableLayoutWorkspace({
           }}
         >
           <section
+            ref={tableSurfaceRef}
             aria-label={fileNode.name}
             className="relative shrink-0 select-none overflow-hidden rounded-lg border border-emerald-950/20 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18),0_24px_60px_rgba(15,23,42,0.18)]"
             data-workspace-export-root="true"
@@ -340,17 +390,6 @@ export function TableLayoutWorkspace({
                 <TableSetupGridSizeGuide tableSetup={tableSetup} />
               </>
             ) : null}
-            <div
-              className="absolute left-4 top-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-2 rounded-md border border-white/30 bg-white/20 px-3 py-2 text-white shadow-sm backdrop-blur-sm"
-              data-export-exclude="true"
-            >
-              <Rows3 size={17} />
-              <span className="truncate text-sm font-semibold">{fileNode.name}</span>
-              <span className="rounded border border-white/25 bg-white/15 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
-                {tableSetup.width} x {tableSetup.height}
-              </span>
-            </div>
-
             {tableSetup.items.length > 0 ? (
               <TableSetupScene
                 fileTree={fileTree}
@@ -360,10 +399,12 @@ export function TableLayoutWorkspace({
                 selectedObjectId={selectedObjectId}
                 selectedObjectIds={selectedObjectIds}
                 previewRectTransforms={previewRectTransforms}
+                composition={composition}
                 tableSetup={tableSetup}
                 onExecuteCommand={onExecuteCommand}
                 onRectTransformPreviewChange={handleTableItemRectTransformPreviewChange}
                 onRectTransformPreviewEnd={handleTableItemRectTransformPreviewEnd}
+                onSnapIndicatorsChange={setSnapIndicators}
                 onRectTransformChange={handleTableItemRectTransformChange}
                 onSelectObject={onSelectObject}
                 onSelectObjects={onSelectObjects}
@@ -383,6 +424,25 @@ export function TableLayoutWorkspace({
               />
             ) : null}
           </section>
+          <div
+            className="pointer-events-none absolute left-0 top-0 z-20"
+            style={{
+              height: tableSetup.height,
+              transform: `scale(${canvasScale})`,
+              transformOrigin: "top left",
+              width: tableSetup.width
+            }}
+          >
+            <CompositionGuideLayer
+              canvasScale={canvasScale}
+              composition={composition}
+              height={tableSetup.height}
+              highlightedGuideId={highlightedGuideId}
+              snapIndicators={snapIndicators}
+              width={tableSetup.width}
+              onCompositionChange={handleTableCompositionChange}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -392,12 +452,14 @@ export function TableLayoutWorkspace({
 export function ObjectFileWorkspace({
   fileTree,
   fileNode,
+  highlightedGuideId = null,
   imageAssets,
   objectTree,
   readOnly = false,
   selectedObjectId,
   selectedObjectIds,
   onExecuteCommand,
+  onCompositionSurfaceChange,
   onSelectObject,
   onSelectObjects
 }: ProjectWorkspaceSceneProps) {
@@ -409,12 +471,14 @@ export function ObjectFileWorkspace({
           fileTree={fileTree}
           fileNodeId={fileNode.id}
           imageAssets={imageAssets}
+          highlightedGuideId={highlightedGuideId}
           objectTree={objectTree}
           readOnly={readOnly}
           selectedObjectId={selectedObjectId}
           selectedObjectIds={selectedObjectIds}
           size="large"
           onExecuteCommand={onExecuteCommand}
+          onCompositionSurfaceChange={onCompositionSurfaceChange}
           onSelectObject={onSelectObject}
           onSelectObjects={onSelectObjects}
         />
@@ -543,6 +607,7 @@ type TableSetupSceneProps = {
   selectedObjectId: string | null;
   selectedObjectIds: string[];
   previewRectTransforms: ReadonlyMap<string, ProjectObjectRectTransform>;
+  composition: ProjectCompositionSettings;
   tableSetup: ProjectTableSetup;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onRectTransformPreviewChange: (
@@ -551,6 +616,7 @@ type TableSetupSceneProps = {
     after: ProjectObjectRectTransform
   ) => void;
   onRectTransformPreviewEnd: () => void;
+  onSnapIndicatorsChange: (indicators: CompositionSnapIndicator[]) => void;
   onRectTransformChange: (
     objectId: string,
     before: ProjectObjectRectTransform,
@@ -569,10 +635,12 @@ function TableSetupScene({
   selectedObjectId,
   selectedObjectIds,
   previewRectTransforms,
+  composition,
   tableSetup,
   onExecuteCommand,
   onRectTransformPreviewChange,
   onRectTransformPreviewEnd,
+  onSnapIndicatorsChange,
   onRectTransformChange,
   onSelectObject,
   onSelectObjects
@@ -583,6 +651,10 @@ function TableSetupScene({
   );
   const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
   const snapSize = tableSetup.grid.snap ? tableSetup.grid.size : null;
+  const snapTargets = useMemo(
+    () => getTableSetupSnapTargets(fileTree, tableSetup, selectedObjectIds, composition),
+    [composition, fileTree, selectedObjectIds, tableSetup]
+  );
 
   function handleDieFaceChange() {
     // Linked table items follow their source object, and runtime die state is out of scope for MVP.
@@ -677,15 +749,15 @@ function TableSetupScene({
             selectedObjectIds={selectedObjectIds}
             siblingIndex={index}
             snapSize={snapSize}
+            snapTargets={snapTargets}
             stackRootOffset={false}
             onDieFaceChange={handleDieFaceChange}
             onExecuteCommand={onExecuteCommand}
-            onImageAssetDrop={
-              item.type === "localObject" ? handleLocalImageAssetDrop : undefined
-            }
+            onImageAssetDrop={item.type === "localObject" ? handleLocalImageAssetDrop : undefined}
             onObjectSideChange={handleObjectSideChange}
             onRectTransformPreviewChange={onRectTransformPreviewChange}
             onRectTransformPreviewEnd={onRectTransformPreviewEnd}
+            onSnapIndicatorsChange={onSnapIndicatorsChange}
             onRectTransformChange={onRectTransformChange}
             onSelectObject={onSelectObject}
             onSelectObjects={onSelectObjects}
@@ -696,9 +768,40 @@ function TableSetupScene({
   );
 }
 
+function getTableSetupSnapTargets(
+  fileTree: readonly ProjectFileNode[],
+  tableSetup: ProjectTableSetup,
+  selectedObjectIds: readonly string[],
+  composition: ProjectCompositionSettings
+): CompositionSnapTarget[] {
+  const guideTargets = getGuideSnapTargets(composition);
+  const objectTargets = composition.snapToObjects
+    ? getObjectSnapTargets(
+        tableSetup.items.flatMap((item) => {
+          const id = getProjectTableSetupItemId(item);
+          const object = getProjectTableSetupResolvedItemObject(fileTree, item);
+
+          return object
+            ? [
+                {
+                  id,
+                  positionMode: "center" as const,
+                  rectTransform: getProjectObjectNodeRectTransform(object)
+                }
+              ]
+            : [];
+        }),
+        new Set(selectedObjectIds)
+      )
+    : [];
+
+  return [...guideTargets, ...objectTargets];
+}
+
 type ObjectSceneProps = {
   fileTree: ProjectFileNode[];
   fileNodeId: string;
+  highlightedGuideId?: string | null;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
   readOnly: boolean;
@@ -706,6 +809,7 @@ type ObjectSceneProps = {
   selectedObjectIds: string[];
   size: ObjectSceneSize;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onCompositionSurfaceChange: (surface: CompositionSurfaceTarget | null) => void;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
@@ -713,6 +817,7 @@ type ObjectSceneProps = {
 function ObjectScene({
   fileTree,
   fileNodeId,
+  highlightedGuideId = null,
   imageAssets,
   objectTree,
   readOnly,
@@ -720,10 +825,13 @@ function ObjectScene({
   selectedObjectIds,
   size,
   onExecuteCommand,
+  onCompositionSurfaceChange,
   onSelectObject,
   onSelectObjects
 }: ObjectSceneProps) {
   const canvasScale = useProjectWorkspaceStore((state) => state.canvasScale);
+  const sceneSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const [snapIndicators, setSnapIndicators] = useState<CompositionSnapIndicator[]>([]);
   const imageAssetById = useMemo(
     () => new Map(imageAssets.map((imageAsset) => [imageAsset.asset.id, imageAsset])),
     [imageAssets]
@@ -736,6 +844,58 @@ function ObjectScene({
       ),
     [fileNodeId, objectSideSelections, objectTree]
   );
+  const rootObject = objectTree[0] ?? null;
+  const composition = getProjectCompositionSettings(
+    rootObject ? getProjectObjectNodeComposition(rootObject) : undefined
+  );
+  const snapTargets = useMemo(
+    () => getObjectSceneSnapTargets(viewObjectTree, selectedObjectIds, composition),
+    [composition, selectedObjectIds, viewObjectTree]
+  );
+  const sceneSize = getObjectSceneSize(size);
+
+  useEffect(() => {
+    if (!sceneSurfaceRef.current) {
+      onCompositionSurfaceChange(null);
+      return;
+    }
+
+    onCompositionSurfaceChange({
+      element: sceneSurfaceRef.current,
+      height: sceneSize.height,
+      width: sceneSize.width
+    });
+
+    return () => onCompositionSurfaceChange(null);
+  }, [onCompositionSurfaceChange, sceneSize.height, sceneSize.width]);
+
+  function handleObjectCompositionChange(
+    nextComposition: ProjectCompositionSettings,
+    label: string
+  ) {
+    if (!rootObject || readOnly) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeComposition(
+      objectTree,
+      rootObject.id,
+      nextComposition
+    );
+
+    if (nextObjectTree === objectTree) {
+      return;
+    }
+
+    onExecuteCommand(
+      createUpdateProjectObjectTreeCommand({
+        after: nextObjectTree,
+        before: objectTree,
+        fileNodeId,
+        label
+      })
+    );
+  }
 
   function handleObjectSideChange(objectId: string, activeSide: ProjectObjectSide) {
     const currentSide = getProjectObjectSideSelection(objectSideSelections, fileNodeId, objectId);
@@ -818,17 +978,29 @@ function ObjectScene({
 
   return (
     <div
+      ref={sceneSurfaceRef}
       className={cx(
         "relative select-none overflow-visible",
-        size === "small" ? "h-full w-full" : "h-[min(70vh,760px)] min-h-[420px] w-[min(92%,960px)]"
+        size === "small" ? "h-full w-full" : "min-h-[420px]"
       )}
       style={{
+        height: sceneSize.height,
         transform: `scale(${canvasScale})`,
-        transformOrigin: "center"
+        transformOrigin: "center",
+        width: sceneSize.width
       }}
       data-workspace-export-root="true"
     >
       <WorkspaceAxes />
+      <CompositionGuideLayer
+        canvasScale={canvasScale}
+        composition={composition}
+        height={sceneSize.height}
+        highlightedGuideId={highlightedGuideId}
+        snapIndicators={snapIndicators}
+        width={sceneSize.width}
+        onCompositionChange={handleObjectCompositionChange}
+      />
       {viewObjectTree.map((object, index) => (
         <SceneObjectFrame
           key={object.id}
@@ -841,16 +1013,47 @@ function ObjectScene({
           selectedObjectId={selectedObjectId}
           selectedObjectIds={selectedObjectIds}
           siblingIndex={index}
+          snapTargets={snapTargets}
           onDieFaceChange={handleDieFaceChange}
           onExecuteCommand={onExecuteCommand}
           onImageAssetDrop={handleImageAssetDrop}
           onObjectSideChange={handleObjectSideChange}
+          onRectTransformPreviewEnd={() => setSnapIndicators([])}
+          onSnapIndicatorsChange={setSnapIndicators}
           onSelectObject={onSelectObject}
           onSelectObjects={onSelectObjects}
         />
       ))}
     </div>
   );
+}
+
+function getObjectSceneSize(size: ObjectSceneSize) {
+  if (size === "small") {
+    return { height: 360, width: 480 };
+  }
+
+  return { height: 760, width: 960 };
+}
+
+function getObjectSceneSnapTargets(
+  objectTree: readonly ProjectObjectNode[],
+  selectedObjectIds: readonly string[],
+  composition: ProjectCompositionSettings
+): CompositionSnapTarget[] {
+  const guideTargets = getGuideSnapTargets(composition);
+  const objectTargets = composition.snapToObjects
+    ? getObjectSnapTargets(
+        objectTree.map((object) => ({
+          id: object.id,
+          positionMode: "center" as const,
+          rectTransform: getProjectObjectNodeRectTransform(object)
+        })),
+        new Set(selectedObjectIds)
+      )
+    : [];
+
+  return [...guideTargets, ...objectTargets];
 }
 
 function WorkspaceAxes() {

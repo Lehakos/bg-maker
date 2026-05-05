@@ -68,14 +68,14 @@ Possible later additions:
 
 ## P1 - Composition Quality
 
-- [ ] Add rulers and guides.
-- [ ] Add snap-to-object and snap-to-guide.
-- [ ] Add rotate/resize handles per corner or edge.
-- [ ] Add aspect ratio lock for resize.
-- [ ] Add shared style presets for appearance and text.
-- [ ] Add font family selection.
-- [ ] Add auto-fit text for labels and card text blocks.
-- [ ] Add text shadow or outline for readable prototype labels.
+- [x] Add rulers and guides.
+- [x] Add snap-to-object and snap-to-guide.
+- [x] Add rotate/resize handles per corner or edge.
+- [x] Add aspect ratio lock for resize.
+- [x] Reuse templates instead of shared style presets for appearance and text.
+- [x] Add font family selection.
+- [x] Add auto-fit text for labels and card text blocks.
+- [x] Add text shadow or outline for readable prototype labels.
 
 ## P2 - Manual Playtest Later
 

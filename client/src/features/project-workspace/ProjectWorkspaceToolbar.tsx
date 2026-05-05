@@ -1,3 +1,4 @@
+import { type ProjectCompositionGuide, type ProjectCompositionSettings } from "@bg-maker/shared";
 import {
   autoUpdate,
   flip,
@@ -13,22 +14,42 @@ import {
 } from "@floating-ui/react";
 import {
   Download,
+  Eye,
+  EyeOff,
   Hand,
+  Lock,
   Maximize2,
   MousePointer2,
   Move,
+  Plus,
   Printer,
   Redo2,
   RotateCw,
+  Ruler,
   Scan,
+  Trash2,
   Undo2,
+  Unlock,
   ZoomIn,
   ZoomOut,
   type LucideIcon
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import {
+  type CSSProperties,
+  type FocusEvent,
+  type HTMLAttributes,
+  type ReactNode,
+  useEffect,
+  useState
+} from "react";
 import type { TableSetupPositionPreset } from "../project-table-setup/project-table-setup-geometry";
 import { cx } from "./project-workspace-css";
+import {
+  getProjectCompositionSettingsWithField,
+  getProjectCompositionSettingsWithGuideAdded,
+  getProjectCompositionSettingsWithGuideRemoved,
+  getProjectCompositionSettingsWithGuideUpdated
+} from "./composition-guides";
 import {
   canvasScaleStep,
   defaultCanvasScale,
@@ -50,19 +71,29 @@ type ProjectWorkspaceToolbarProps = {
   activeTool: WorkspaceTool;
   canvasScale: number;
   canAlign: boolean;
+  guideControls?: ProjectWorkspaceGuideControls | null;
   showArrangeControls: boolean;
   canRedo: boolean;
   canUndo: boolean;
   canExport: boolean;
   canPrint: boolean;
+  resizeAspectLocked: boolean;
   onCanvasScaleChange: (scale: number) => void;
   onExportPng: () => void;
   onPosition: (position: TableSetupPositionPreset) => void;
   onPrintSheets: () => void;
   onRedo: () => void;
+  onResizeAspectLockedChange: (locked: boolean) => void;
   onToolChange: (tool: WorkspaceTool) => void;
   onUndo: () => void;
   onZoomToFit: () => void;
+};
+
+type ProjectWorkspaceGuideControls = {
+  composition: ProjectCompositionSettings;
+  disabled?: boolean;
+  onCompositionChange: (composition: ProjectCompositionSettings, label: string) => void;
+  onGuideHover: (guideId: string | null) => void;
 };
 
 type ToolbarIconButtonProps = {
@@ -102,22 +133,31 @@ export function ProjectWorkspaceToolbar({
   activeTool,
   canvasScale,
   canAlign,
+  guideControls = null,
   showArrangeControls,
   canRedo,
   canUndo,
   canExport,
   canPrint,
+  resizeAspectLocked,
   onCanvasScaleChange,
   onExportPng,
   onPosition,
   onPrintSheets,
   onRedo,
+  onResizeAspectLockedChange,
   onToolChange,
   onUndo,
   onZoomToFit
 }: ProjectWorkspaceToolbarProps) {
   const [positionMenuOpen, setPositionMenuOpen] = useState(false);
+  const [guideMenuOpen, setGuideMenuOpen] = useState(false);
   const effectivePositionMenuOpen = positionMenuOpen && canAlign;
+  const guideMenuEnabled = Boolean(guideControls) && !guideControls?.disabled;
+  const effectiveGuideMenuOpen = guideMenuOpen && guideMenuEnabled;
+  const guideCount = guideControls?.composition.guides.length ?? 0;
+  const guideButtonActive = effectiveGuideMenuOpen;
+  const guideButtonLabel = guideCount ? `Guides: ${guideCount}` : "Guides";
   const positionButtonLabel = activePositionPreset
     ? `Position: ${getPositionPresetLabel(activePositionPreset)}`
     : "Place selected on table";
@@ -142,6 +182,23 @@ export function ProjectWorkspaceToolbar({
     positionMenuDismiss,
     positionMenuRole
   ]);
+  const {
+    context: guideMenuContext,
+    floatingStyles: guideMenuFloatingStyles,
+    refs: { setFloating: setGuideMenuFloating, setReference: setGuideMenuReference }
+  } = useFloating({
+    middleware: [offset(6), flip(), shift({ padding: 8 })],
+    onOpenChange: setGuideMenuOpen,
+    open: effectiveGuideMenuOpen,
+    placement: "bottom-start",
+    strategy: "fixed",
+    whileElementsMounted: autoUpdate
+  });
+  const guideMenuClick = useClick(guideMenuContext, { enabled: guideMenuEnabled });
+  const guideMenuDismiss = useDismiss(guideMenuContext);
+  const guideMenuRole = useRole(guideMenuContext, { role: "menu" });
+  const { getFloatingProps: getGuideMenuFloatingProps, getReferenceProps: getGuideReferenceProps } =
+    useInteractions([guideMenuClick, guideMenuDismiss, guideMenuRole]);
 
   function selectPosition(position: TableSetupPositionPreset) {
     onPosition(position);
@@ -182,6 +239,58 @@ export function ProjectWorkspaceToolbar({
           );
         })}
       </nav>
+      <ToolbarIconButton
+        active={resizeAspectLocked}
+        icon={resizeAspectLocked ? <Lock size={17} /> : <Unlock size={17} />}
+        label="Lock resize aspect ratio"
+        title="Lock resize aspect ratio"
+        onClick={() => onResizeAspectLockedChange(!resizeAspectLocked)}
+      />
+      <button
+        ref={setGuideMenuReference}
+        {...getGuideReferenceProps({
+          "aria-expanded": effectiveGuideMenuOpen,
+          "aria-haspopup": "menu",
+          "aria-label": guideButtonLabel,
+          className: cx(
+            "relative flex h-8 w-8 items-center justify-center rounded-md border text-slate-600 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-sky-100",
+            guideButtonActive
+              ? "border-sky-500 bg-sky-100 text-sky-800 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.18)]"
+              : "border-transparent hover:border-slate-200 hover:bg-white hover:text-slate-950",
+            !guideMenuEnabled &&
+              "cursor-not-allowed opacity-40 hover:border-transparent hover:bg-transparent"
+          ),
+          disabled: !guideMenuEnabled,
+          title: guideButtonLabel,
+          type: "button"
+        })}
+      >
+        <Ruler size={17} />
+        {guideCount ? (
+          <span
+            aria-hidden
+            className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-white bg-sky-600 px-1 text-[10px] font-bold leading-none text-white shadow-sm"
+          >
+            {guideCount > 9 ? "9+" : guideCount}
+          </span>
+        ) : null}
+      </button>
+      {effectiveGuideMenuOpen && guideControls ? (
+        <FloatingPortal>
+          <FloatingFocusManager context={guideMenuContext} initialFocus={-1} modal={false}>
+            <ProjectWorkspaceGuideMenu
+              floatingProps={getGuideMenuFloatingProps({
+                "aria-label": "Manage guides",
+                className:
+                  "z-[120] w-80 rounded-md border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/15 outline-none"
+              })}
+              floatingRef={setGuideMenuFloating}
+              floatingStyle={guideMenuFloatingStyles}
+              guideControls={guideControls}
+            />
+          </FloatingFocusManager>
+        </FloatingPortal>
+      ) : null}
       {showArrangeControls ? (
         <>
           <span className="h-6 w-px bg-slate-200" aria-hidden />
@@ -216,7 +325,7 @@ export function ProjectWorkspaceToolbar({
                     {...getPositionMenuFloatingProps({
                       "aria-label": "Position selected item",
                       className:
-                        "z-50 rounded-md border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/15 outline-none"
+                        "z-[120] rounded-md border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/15 outline-none"
                     })}
                   >
                     <div className="grid grid-cols-3 gap-1">
@@ -291,6 +400,230 @@ export function ProjectWorkspaceToolbar({
         />
       </div>
     </div>
+  );
+}
+
+type ProjectWorkspaceGuideMenuProps = {
+  floatingProps: HTMLAttributes<HTMLDivElement>;
+  floatingRef: (node: HTMLDivElement | null) => void;
+  floatingStyle: CSSProperties;
+  guideControls: ProjectWorkspaceGuideControls;
+};
+
+function ProjectWorkspaceGuideMenu({
+  floatingProps,
+  floatingRef,
+  floatingStyle,
+  guideControls
+}: ProjectWorkspaceGuideMenuProps) {
+  const { composition, onCompositionChange, onGuideHover } = guideControls;
+
+  useEffect(() => () => onGuideHover(null), [onGuideHover]);
+
+  function updateBooleanField(fieldKey: "snapToGuides" | "snapToObjects", value: boolean) {
+    onCompositionChange(
+      getProjectCompositionSettingsWithField(composition, fieldKey, value),
+      "Update guides"
+    );
+  }
+
+  function addGuide(axis: ProjectCompositionGuide["axis"]) {
+    onCompositionChange(
+      getProjectCompositionSettingsWithGuideAdded(composition, axis, 0),
+      "Add guide"
+    );
+  }
+
+  function updateGuide(
+    guide: ProjectCompositionGuide,
+    update: Partial<Omit<ProjectCompositionGuide, "id">>,
+    label = "Update guide"
+  ) {
+    onCompositionChange(
+      getProjectCompositionSettingsWithGuideUpdated(composition, guide.id, update),
+      label
+    );
+  }
+
+  function deleteGuide(guide: ProjectCompositionGuide) {
+    onGuideHover(null);
+    onCompositionChange(
+      getProjectCompositionSettingsWithGuideRemoved(composition, guide.id),
+      "Delete guide"
+    );
+  }
+
+  function handleGuideRowBlur(event: FocusEvent<HTMLDivElement>) {
+    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) {
+      return;
+    }
+
+    onGuideHover(null);
+  }
+
+  return (
+    <div ref={floatingRef} style={floatingStyle} {...floatingProps}>
+      <div className="border-b border-slate-100 px-1 pb-2">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Guides</p>
+          <p className="text-[11px] text-slate-400">{composition.guides.length} total</p>
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Snap to
+          </span>
+          <GuideMenuTextToggle
+            active={composition.snapToGuides}
+            label="Guides"
+            title="Snap objects to visible guides and axes"
+            onClick={() => updateBooleanField("snapToGuides", !composition.snapToGuides)}
+          />
+          <GuideMenuTextToggle
+            active={composition.snapToObjects}
+            label="Objects"
+            title="Snap objects to other visible objects"
+            onClick={() => updateBooleanField("snapToObjects", !composition.snapToObjects)}
+          />
+        </div>
+      </div>
+
+      <div className="mt-2 flex gap-2">
+        <button
+          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800"
+          type="button"
+          onClick={() => addGuide("vertical")}
+        >
+          <Plus size={14} />
+          Vertical
+        </button>
+        <button
+          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800"
+          type="button"
+          onClick={() => addGuide("horizontal")}
+        >
+          <Plus size={14} />
+          Horizontal
+        </button>
+      </div>
+
+      {composition.guides.length ? (
+        <div className="mt-2 max-h-72 space-y-1.5 overflow-auto pr-0.5">
+          {composition.guides.map((guide) => (
+            <div
+              key={guide.id}
+              className="grid grid-cols-[minmax(0,1fr)_72px_auto_auto_auto] items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 transition-colors hover:border-sky-200 hover:bg-sky-50/70 focus-within:border-sky-300 focus-within:bg-sky-50/70"
+              onBlur={handleGuideRowBlur}
+              onFocus={() => onGuideHover(guide.id)}
+              onMouseEnter={() => onGuideHover(guide.id)}
+              onMouseLeave={() => onGuideHover(null)}
+            >
+              <span className="truncate px-1 text-xs font-semibold text-slate-600">
+                {guide.axis === "vertical" ? "Vertical" : "Horizontal"}
+              </span>
+              <input
+                className="h-7 min-w-0 rounded border border-slate-200 bg-white px-1.5 text-xs tabular-nums text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                inputMode="decimal"
+                type="number"
+                value={String(guide.position)}
+                onChange={(event) => {
+                  const position = Number(event.currentTarget.value);
+
+                  if (Number.isFinite(position)) {
+                    updateGuide(guide, { position });
+                  }
+                }}
+              />
+              <GuideMenuIconButton
+                active={guide.visible}
+                icon={guide.visible ? Eye : EyeOff}
+                label={guide.visible ? "Hide guide" : "Show guide"}
+                onClick={() => updateGuide(guide, { visible: !guide.visible })}
+              />
+              <GuideMenuIconButton
+                active={guide.locked}
+                icon={guide.locked ? Lock : Unlock}
+                label={guide.locked ? "Unlock guide" : "Lock guide"}
+                onClick={() => updateGuide(guide, { locked: !guide.locked })}
+              />
+              <GuideMenuIconButton
+                destructive
+                icon={Trash2}
+                label="Delete guide"
+                onClick={() => deleteGuide(guide)}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs font-medium text-slate-400">
+          No guides
+        </div>
+      )}
+    </div>
+  );
+}
+
+type GuideMenuIconButtonProps = {
+  active?: boolean;
+  destructive?: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+};
+
+function GuideMenuIconButton({
+  active = false,
+  destructive = false,
+  icon: Icon,
+  label,
+  onClick
+}: GuideMenuIconButtonProps) {
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={active || undefined}
+      className={cx(
+        "flex h-7 w-7 items-center justify-center rounded border text-slate-500 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sky-100",
+        active
+          ? "border-sky-300 bg-sky-50 text-sky-700"
+          : "border-transparent hover:border-slate-200 hover:bg-white hover:text-slate-900",
+        destructive && "hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+      )}
+      title={label}
+      type="button"
+      onClick={onClick}
+    >
+      <Icon size={14} />
+    </button>
+  );
+}
+
+function GuideMenuTextToggle({
+  active,
+  label,
+  title,
+  onClick
+}: {
+  active: boolean;
+  label: string;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      className={cx(
+        "h-7 rounded border px-2 text-[11px] font-semibold transition-colors",
+        active
+          ? "border-sky-300 bg-sky-50 text-sky-700"
+          : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-900"
+      )}
+      title={title}
+      type="button"
+      onClick={onClick}
+    >
+      {label}
+    </button>
   );
 }
 

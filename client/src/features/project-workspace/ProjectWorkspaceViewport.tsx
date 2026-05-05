@@ -1,4 +1,5 @@
 import type { ProjectFileNode, ProjectObjectNode, ProjectTableSetup } from "@bg-maker/shared";
+import { useEffect } from "react";
 import {
   getProjectImageAssetOptionById,
   type ProjectImageAssetOption
@@ -7,10 +8,12 @@ import { getProjectFileNodeTypeLabel } from "../project-files/project-file-tree-
 import { ProjectFileNodeIcon } from "../project-files/project-file-tree-ui";
 import type { ProjectEditorCommand } from "./project-editor-commands";
 import { ObjectFileWorkspace, TableLayoutWorkspace } from "./ProjectWorkspaceObjectScenes";
+import type { CompositionSurfaceTarget } from "./CompositionRulerOverlay";
 
 type WorkspaceViewportProps = {
   contentFileNode: ProjectFileNode | null;
   fileTree: ProjectFileNode[];
+  highlightedGuideId?: string | null;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
   parentFolderName?: string;
@@ -20,6 +23,7 @@ type WorkspaceViewportProps = {
   selectedObjectIds: string[];
   tableSetup: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onCompositionSurfaceChange: (surface: CompositionSurfaceTarget | null) => void;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
@@ -27,6 +31,7 @@ type WorkspaceViewportProps = {
 export function WorkspaceViewport({
   contentFileNode,
   fileTree,
+  highlightedGuideId = null,
   imageAssets,
   objectTree,
   parentFolderName,
@@ -36,14 +41,22 @@ export function WorkspaceViewport({
   selectedObjectIds,
   tableSetup,
   onExecuteCommand,
+  onCompositionSurfaceChange,
   onSelectObject,
   onSelectObjects
 }: WorkspaceViewportProps) {
+  useEffect(() => {
+    if (contentFileNode?.kind !== "tableSetup" && contentFileNode?.kind !== "object") {
+      onCompositionSurfaceChange(null);
+    }
+  }, [contentFileNode?.kind, onCompositionSurfaceChange]);
+
   if (contentFileNode?.kind === "tableSetup") {
     return (
       <TableLayoutWorkspace
         fileTree={fileTree}
         fileNode={contentFileNode}
+        highlightedGuideId={highlightedGuideId}
         imageAssets={imageAssets}
         objectTree={objectTree}
         readOnly={readOnly}
@@ -51,6 +64,7 @@ export function WorkspaceViewport({
         selectedObjectIds={selectedObjectIds}
         tableSetup={tableSetup}
         onExecuteCommand={onExecuteCommand}
+        onCompositionSurfaceChange={onCompositionSurfaceChange}
         onSelectObject={onSelectObject}
         onSelectObjects={onSelectObjects}
       />
@@ -62,12 +76,14 @@ export function WorkspaceViewport({
       <ObjectFileWorkspace
         fileTree={fileTree}
         fileNode={contentFileNode}
+        highlightedGuideId={highlightedGuideId}
         imageAssets={imageAssets}
         objectTree={objectTree}
         readOnly={readOnly}
         selectedObjectId={selectedObjectId}
         selectedObjectIds={selectedObjectIds}
         onExecuteCommand={onExecuteCommand}
+        onCompositionSurfaceChange={onCompositionSurfaceChange}
         onSelectObject={onSelectObject}
         onSelectObjects={onSelectObjects}
       />

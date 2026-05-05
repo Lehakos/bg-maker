@@ -53,9 +53,11 @@ export async function createObjectFileFromFileTree(
     rootType: "Bag" | "Card" | "Group" | "Label" | "Meeple" | "Shape" | "Token";
   }
 ) {
-  await getFileTree(page).getByRole("button", { name: new RegExp(`^${escapeRegExp(parentName)}`) }).click({
-    button: "right"
-  });
+  await getFileTree(page)
+    .getByRole("button", { name: new RegExp(`^${escapeRegExp(parentName)}$`) })
+    .click({
+      button: "right"
+    });
   const menu = page.getByRole("menu", { name: "File tree context menu" });
 
   await menu.getByRole("menuitem", { name: "Create" }).hover();
@@ -228,7 +230,7 @@ export const pngPixelBuffer = Buffer.from(
 );
 
 function getFileTree(page: Page) {
-  return page.getByRole("complementary").first();
+  return page.getByRole("complementary", { name: "Project file tree" });
 }
 
 function withRequiredRootFolders(fileTree: ProjectFileNode[]): ProjectFileNode[] {

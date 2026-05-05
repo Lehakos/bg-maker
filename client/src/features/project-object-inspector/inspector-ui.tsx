@@ -277,6 +277,7 @@ type InspectorIconOption<TValue extends string> = {
 };
 
 type InspectorIconSegmentedFieldProps<TValue extends string> = {
+  iconSize?: number;
   label: string;
   options: readonly InspectorIconOption<TValue>[];
   value: TValue;
@@ -284,6 +285,7 @@ type InspectorIconSegmentedFieldProps<TValue extends string> = {
 };
 
 export function InspectorIconSegmentedField<TValue extends string>({
+  iconSize = 16,
   label,
   options,
   value,
@@ -313,7 +315,7 @@ export function InspectorIconSegmentedField<TValue extends string>({
               type="button"
               onClick={() => onChange(option.value)}
             >
-              <Icon size={16} strokeWidth={2.2} />
+              <Icon size={iconSize} strokeWidth={2.2} />
             </button>
           );
         })}

@@ -7,6 +7,10 @@ export {
 export { getProjectObjectBagComponent, withProjectObjectBagComponent } from "./bag-component";
 export { getProjectObjectCardComponent, withProjectObjectCardComponent } from "./card-component";
 export {
+  getProjectObjectCompositionComponent,
+  withProjectObjectCompositionComponent
+} from "./composition-component";
+export {
   getProjectObjectContainerComponent,
   withProjectObjectContainerComponent
 } from "./container-component";

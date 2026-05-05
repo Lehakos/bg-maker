@@ -183,18 +183,14 @@ test("keeps object proportions when resizing with Shift", async ({ page }) => {
   await openProject(page, project);
   await openFileNode(page, fileName);
 
+  const canvas = page.getByRole("region", { name: "Workspace canvas" });
+  await canvas.getByRole("button", { name: objectName, exact: true }).click();
   await page
     .getByRole("navigation", { name: "Workspace tools" })
     .getByRole("button", { name: "Resize", exact: true })
     .click();
   await page.keyboard.down("Shift");
-  await dragBy(
-    page
-      .getByRole("region", { name: "Workspace canvas" })
-      .getByRole("button", { name: objectName, exact: true }),
-    100,
-    20
-  );
+  await dragBy(canvas.getByRole("button", { name: "Resize se", exact: true }), 100, 20);
   await page.keyboard.up("Shift");
 
   await expect

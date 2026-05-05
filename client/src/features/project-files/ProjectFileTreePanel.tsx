@@ -380,6 +380,7 @@ export function ProjectFileTreePanel({
 
   return (
     <aside
+      aria-label="Project file tree"
       className={cx(
         "flex min-h-0 flex-col overflow-hidden border-b border-slate-200 bg-white text-slate-700 md:border-b-0 md:border-r",
         className
@@ -675,10 +676,10 @@ function ProjectFileTreeNode({
             : selected && protectedNode
               ? "bg-teal-100 text-teal-950 outline outline-1 -outline-offset-1 outline-teal-500"
               : selected
-              ? "bg-sky-100 text-slate-950 outline outline-1 -outline-offset-1 outline-sky-500"
-              : protectedNode
-                ? "bg-teal-50 text-teal-950 hover:bg-teal-100"
-                : "text-slate-700 hover:bg-slate-100"
+                ? "bg-sky-100 text-slate-950 outline outline-1 -outline-offset-1 outline-sky-500"
+                : protectedNode
+                  ? "bg-teal-50 text-teal-950 hover:bg-teal-100"
+                  : "text-slate-700 hover:bg-slate-100"
         )}
         style={{ paddingLeft: `${8 + depth * indentationWidth}px` }}
         onContextMenu={(event) => onContextMenu(event, node.id)}

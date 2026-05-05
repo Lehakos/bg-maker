@@ -1,20 +1,35 @@
-import type { Project, ProjectFileNode, ProjectTableSetup } from "@bg-maker/shared";
+import type {
+  Project,
+  ProjectCompositionSettings,
+  ProjectFileNode,
+  ProjectTableSetup
+} from "@bg-maker/shared";
 import { resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
-import { type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getProjectImageAssetOptions } from "../project-assets/project-image-assets";
 import {
   findProjectFileNode,
   findProjectFileNodeLocation
 } from "../project-files/project-file-tree";
-import type { ProjectEditorCommand } from "./project-editor-commands";
+import {
+  createUpdateProjectObjectTreeCommand,
+  createUpdateProjectTableSetupCommand,
+  type ProjectEditorCommand
+} from "./project-editor-commands";
 import { ProjectWorkspaceOpenTabs } from "./ProjectWorkspaceOpenTabs";
 import { ProjectWorkspaceToolbar } from "./ProjectWorkspaceToolbar";
 import { WorkspaceViewport } from "./ProjectWorkspaceViewport";
+import { CompositionRulerOverlay, type CompositionSurfaceTarget } from "./CompositionRulerOverlay";
 import { useProjectWorkspaceStore } from "./use-project-workspace-store";
 import {
   getTableSetupPositionPreset,
   type TableSetupPositionPreset
 } from "../project-table-setup/project-table-setup-geometry";
+import {
+  getProjectObjectNodeComposition,
+  setProjectObjectNodeComposition
+} from "../project-objects/project-object-tree";
+import { getProjectCompositionSettings } from "./composition-guides";
 
 type ProjectWorkspaceAreaProps = {
   canRedo: boolean;
@@ -77,10 +92,16 @@ export function ProjectWorkspaceArea({
 }: ProjectWorkspaceAreaProps) {
   const activeTool = useProjectWorkspaceStore((state) => state.activeTool);
   const canvasScale = useProjectWorkspaceStore((state) => state.canvasScale);
+  const resizeAspectLocked = useProjectWorkspaceStore((state) => state.resizeAspectLocked);
   const setActiveTool = useProjectWorkspaceStore((state) => state.setActiveTool);
   const setCanvasScale = useProjectWorkspaceStore((state) => state.setCanvasScale);
+  const setResizeAspectLocked = useProjectWorkspaceStore((state) => state.setResizeAspectLocked);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const spacePanPressedRef = useRef(false);
+  const [compositionSurface, setCompositionSurface] = useState<CompositionSurfaceTarget | null>(
+    null
+  );
+  const [highlightedGuideId, setHighlightedGuideId] = useState<string | null>(null);
   const [panState, setPanState] = useState<{
     clientX: number;
     clientY: number;
@@ -119,7 +140,32 @@ export function ProjectWorkspaceArea({
         : null,
     [fileTree, selectedObjectIds, tableSetup]
   );
+  const guideComposition = useMemo(() => {
+    if (contentFileNode?.kind === "tableSetup" && tableSetup) {
+      return getProjectCompositionSettings(tableSetup.composition);
+    }
+
+    if (contentFileNode?.kind === "object" && objectTree[0]) {
+      return getProjectCompositionSettings(getProjectObjectNodeComposition(objectTree[0]));
+    }
+
+    return null;
+  }, [contentFileNode, objectTree, tableSetup]);
+  const effectiveHighlightedGuideId =
+    highlightedGuideId && guideComposition?.guides.some((guide) => guide.id === highlightedGuideId)
+      ? highlightedGuideId
+      : null;
   const panInteractionActive = activeTool === "pan" || spacePanPressed || Boolean(panState);
+  const readOnly = Boolean(contentFileNode?.sourceRef);
+  const handleCompositionSurfaceChange = useCallback((surface: CompositionSurfaceTarget | null) => {
+    setCompositionSurface((currentSurface) =>
+      currentSurface?.element === surface?.element &&
+      currentSurface?.height === surface?.height &&
+      currentSurface?.width === surface?.width
+        ? currentSurface
+        : surface
+    );
+  }, []);
 
   useEffect(() => {
     function setSpacePanPressedState(pressed: boolean) {
@@ -200,6 +246,50 @@ export function ProjectWorkspaceArea({
     }, 0);
   }
 
+  function handleCompositionChange(nextComposition: ProjectCompositionSettings, label: string) {
+    if (contentFileNode?.kind === "tableSetup" && tableSetup) {
+      const nextTableSetup = {
+        ...tableSetup,
+        composition: nextComposition
+      };
+
+      if (nextTableSetup === tableSetup) {
+        return;
+      }
+
+      onExecuteCommand(
+        createUpdateProjectTableSetupCommand({
+          after: nextTableSetup,
+          before: tableSetup,
+          fileNodeId: contentFileNode.id,
+          label
+        })
+      );
+      return;
+    }
+
+    if (contentFileNode?.kind === "object" && objectTree[0]) {
+      const nextObjectTree = setProjectObjectNodeComposition(
+        objectTree,
+        objectTree[0].id,
+        nextComposition
+      );
+
+      if (nextObjectTree === objectTree) {
+        return;
+      }
+
+      onExecuteCommand(
+        createUpdateProjectObjectTreeCommand({
+          after: nextObjectTree,
+          before: objectTree,
+          fileNodeId: contentFileNode.id,
+          label
+        })
+      );
+    }
+  }
+
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
     if (activeTool !== "pan" && !spacePanPressedRef.current) {
       return;
@@ -258,53 +348,79 @@ export function ProjectWorkspaceArea({
         canUndo={canUndo}
         canExport={canExport}
         canPrint={canPrint}
+        guideControls={
+          guideComposition
+            ? {
+                composition: guideComposition,
+                disabled: readOnly,
+                onCompositionChange: handleCompositionChange,
+                onGuideHover: setHighlightedGuideId
+              }
+            : null
+        }
+        resizeAspectLocked={resizeAspectLocked}
         activePositionPreset={activePositionPreset}
         onCanvasScaleChange={setCanvasScale}
         onExportPng={onExportPng}
         onPosition={onPosition}
         onPrintSheets={onPrintSheets}
         onRedo={onRedo}
+        onResizeAspectLockedChange={setResizeAspectLocked}
         onToolChange={setActiveTool}
         onUndo={onUndo}
         onZoomToFit={handleZoomToFit}
       />
 
-      <div
-        ref={scrollContainerRef}
-        aria-label="Workspace canvas"
-        className={
-          panInteractionActive
-            ? "min-h-0 flex-1 cursor-grab select-none overflow-auto"
-            : "min-h-0 flex-1 select-none overflow-auto"
-        }
-        role="region"
-        style={{
-          backgroundColor: "#e7ece6",
-          backgroundImage:
-            "linear-gradient(rgba(71, 85, 105, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(71, 85, 105, 0.08) 1px, transparent 1px)",
-          backgroundSize: "32px 32px"
-        }}
-        onPointerCancelCapture={() => setPanState(null)}
-        onPointerDownCapture={handlePointerDown}
-        onPointerMoveCapture={handlePointerMove}
-        onPointerUpCapture={handlePointerUp}
-        tabIndex={-1}
-      >
-        <WorkspaceViewport
-          contentFileNode={contentFileNode}
-          fileTree={fileTree}
-          imageAssets={imageAssets}
-          objectTree={objectTree}
-          readOnly={Boolean(contentFileNode?.sourceRef)}
-          parentFolderName={parentFolder?.name}
-          selectedNode={selectedNode}
-          selectedObjectId={selectedObjectId}
-          selectedObjectIds={selectedObjectIds}
-          tableSetup={tableSetup}
-          onExecuteCommand={onExecuteCommand}
-          onSelectObject={onSelectObject}
-          onSelectObjects={onSelectObjects}
-        />
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <div
+          ref={scrollContainerRef}
+          aria-label="Workspace canvas"
+          className={
+            panInteractionActive
+              ? "h-full min-h-0 cursor-grab select-none overflow-auto"
+              : "h-full min-h-0 select-none overflow-auto"
+          }
+          role="region"
+          style={{
+            backgroundColor: "#e7ece6",
+            backgroundImage:
+              "linear-gradient(rgba(71, 85, 105, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(71, 85, 105, 0.08) 1px, transparent 1px)",
+            backgroundSize: "32px 32px"
+          }}
+          onPointerCancelCapture={() => setPanState(null)}
+          onPointerDownCapture={handlePointerDown}
+          onPointerMoveCapture={handlePointerMove}
+          onPointerUpCapture={handlePointerUp}
+          tabIndex={-1}
+        >
+          <WorkspaceViewport
+            contentFileNode={contentFileNode}
+            fileTree={fileTree}
+            highlightedGuideId={effectiveHighlightedGuideId}
+            imageAssets={imageAssets}
+            objectTree={objectTree}
+            readOnly={readOnly}
+            parentFolderName={parentFolder?.name}
+            selectedNode={selectedNode}
+            selectedObjectId={selectedObjectId}
+            selectedObjectIds={selectedObjectIds}
+            tableSetup={tableSetup}
+            onExecuteCommand={onExecuteCommand}
+            onCompositionSurfaceChange={handleCompositionSurfaceChange}
+            onSelectObject={onSelectObject}
+            onSelectObjects={onSelectObjects}
+          />
+        </div>
+        {guideComposition ? (
+          <CompositionRulerOverlay
+            canvasScale={canvasScale}
+            composition={guideComposition}
+            disabled={readOnly}
+            scrollContainerRef={scrollContainerRef}
+            surface={compositionSurface}
+            onCompositionChange={handleCompositionChange}
+          />
+        ) : null}
       </div>
     </main>
   );

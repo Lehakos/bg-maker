@@ -16,6 +16,7 @@ import type {
   ProjectObjectText,
   ProjectObjectZone
 } from "@bg-maker/shared";
+import { getDefaultProjectObjectText } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
   createAppearanceDraft,
@@ -177,6 +178,7 @@ const die: ProjectObjectDie = {
 };
 
 const text: ProjectObjectText = {
+  ...getDefaultProjectObjectText("label"),
   color: "#0f172a",
   content: "Label",
   fontSize: 16.4,
@@ -510,15 +512,22 @@ describe("project object inspector state", () => {
 
   it("creates and normalizes text drafts", () => {
     expect(createTextDraft(text)).toEqual({
+      autoFit: false,
       color: "#0f172a",
       content: "Label",
+      effectColor: "#ffffff",
+      effectMode: "none",
+      effectStrength: "2",
+      fontFamily: "system",
       fontSize: "16",
       fontStyle: "italic",
       fontWeight: "612",
       lineHeight: "1.24",
+      minFontSize: "8",
       textAlign: "center",
       verticalAlign: "middle"
     });
+    expect(normalizeTextNumberValue("effectStrength", 99)).toBe(12);
     expect(normalizeTextNumberValue("fontSize", 0)).toBe(1);
     expect(normalizeTextNumberValue("lineHeight", 10)).toBe(4);
     expect(getTextFontWeightForBold(true)).toBe(700);
@@ -527,7 +536,23 @@ describe("project object inspector state", () => {
     expect(isTextFontWeightBold(500)).toBe(false);
     expect(getTextFontStyleForItalic(true)).toBe("italic");
     expect(getTextFontStyleForItalic(false)).toBe("normal");
+    expect(getTextWithDraftField(text, "autoFit", true)).toMatchObject({ autoFit: true });
     expect(getTextWithDraftField(text, "content", "Next")).toMatchObject({ content: "Next" });
+    expect(getTextWithDraftField(text, "effectColor", "#ABCDEF")).toMatchObject({
+      effect: { color: "#abcdef" }
+    });
+    expect(getTextWithDraftField(text, "effectMode", "shadow")).toMatchObject({
+      effect: { mode: "shadow" }
+    });
+    expect(getTextWithDraftField(text, "effectStrength", "99")).toMatchObject({
+      effect: { strength: 12 }
+    });
+    expect(getTextWithDraftField(text, "fontFamily", "serif")).toMatchObject({
+      fontFamily: "serif"
+    });
+    expect(getTextWithDraftField(text, "minFontSize", "40")).toMatchObject({
+      minFontSize: 16.4
+    });
     expect(getTextWithDraftField(text, "textAlign", "left")).toMatchObject({ textAlign: "left" });
     expect(getTextWithDraftField(text, "fontStyle", "normal")).toMatchObject({
       fontStyle: "normal"

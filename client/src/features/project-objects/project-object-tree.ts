@@ -1,6 +1,7 @@
 import type {
   ProjectObjectAppearance,
   ProjectObjectBag,
+  ProjectCompositionSettings,
   ProjectObjectImage,
   ProjectFileKind,
   ProjectFileNode,
@@ -288,6 +289,12 @@ export function getProjectObjectNodeCard(object: ProjectObjectNode): ProjectObje
   return projectObjectComponentEngine.getCard(object);
 }
 
+export function getProjectObjectNodeComposition(
+  object: ProjectObjectNode
+): ProjectCompositionSettings {
+  return projectObjectComponentEngine.getComposition(object);
+}
+
 export function getProjectObjectNodeCounter(object: ProjectObjectNode): ProjectObjectCounter {
   return projectObjectComponentEngine.getCounter(object);
 }
@@ -385,6 +392,18 @@ export function setProjectObjectNodeCard(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withCard(node, card)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeComposition(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  composition: ProjectCompositionSettings
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withComposition(node, composition)
   );
 
   return result.changed ? result.nodes : objectTree;

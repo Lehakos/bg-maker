@@ -36,22 +36,17 @@ test("edits a label object through the inspector and persists after reload", asy
   await openProject(page, project);
   await openFileNode(page, fileName);
 
-  await page.getByLabel("Name").fill("Rules Headline");
+  await page.getByLabel("Name", { exact: true }).fill("Rules Headline");
   await page.keyboard.press("Enter");
   await page.getByLabel("Content").fill("Draw 2 cards, then discard 1.");
-  await expect(page.getByRole("button", { name: "Bold" })).toHaveAttribute(
-    "aria-pressed",
-    "false"
-  );
+  await expect(page.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "false");
   await page.getByRole("button", { name: "Bold" }).click();
 
   await expect
     .poll(async () => (await getRootObject(page, project.id, fileName))?.name)
     .toBe("Rules Headline");
   await expect
-    .poll(
-      async () => (await getRootObject(page, project.id, fileName))?.components?.text?.content
-    )
+    .poll(async () => (await getRootObject(page, project.id, fileName))?.components?.text?.content)
     .toBe("Draw 2 cards, then discard 1.");
   await expect
     .poll(
@@ -63,7 +58,7 @@ test("edits a label object through the inspector and persists after reload", asy
   await new ProjectWorkspacePage(page).expectProjectOpen(project.name);
   await openFileNode(page, fileName);
 
-  await expect(page.getByLabel("Name")).toHaveValue("Rules Headline");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Rules Headline");
   await expect(page.getByLabel("Content")).toHaveValue("Draw 2 cards, then discard 1.");
   await expect(page.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "true");
 });

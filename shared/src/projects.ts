@@ -48,6 +48,23 @@ export type ProjectImageAsset = {
 
 export type ProjectObjectBorderStyle = "none" | "solid" | "dashed" | "dotted";
 
+export type ProjectCompositionGuideAxis = "horizontal" | "vertical";
+
+export type ProjectCompositionGuide = {
+  axis: ProjectCompositionGuideAxis;
+  id: string;
+  locked: boolean;
+  position: number;
+  visible: boolean;
+};
+
+export type ProjectCompositionSettings = {
+  guides: ProjectCompositionGuide[];
+  rulersVisible: boolean;
+  snapToGuides: boolean;
+  snapToObjects: boolean;
+};
+
 export type ProjectObjectAppearance = {
   backgroundColor: string;
   backgroundOpacity: number;
@@ -65,13 +82,37 @@ export type ProjectObjectTextFontStyle = "italic" | "normal";
 
 export type ProjectObjectTextVerticalAlign = "bottom" | "middle" | "top";
 
+export const projectObjectTextFontFamilies = [
+  "system",
+  "serif",
+  "mono",
+  "rounded",
+  "condensed"
+] as const;
+
+export type ProjectObjectTextFontFamily = (typeof projectObjectTextFontFamilies)[number];
+
+export const projectObjectTextEffectModes = ["none", "shadow", "outline"] as const;
+
+export type ProjectObjectTextEffectMode = (typeof projectObjectTextEffectModes)[number];
+
+export type ProjectObjectTextEffect = {
+  color: string;
+  mode: ProjectObjectTextEffectMode;
+  strength: number;
+};
+
 export type ProjectObjectText = {
+  autoFit: boolean;
   color: string;
   content: string;
+  effect: ProjectObjectTextEffect;
+  fontFamily: ProjectObjectTextFontFamily;
   fontSize: number;
   fontStyle: ProjectObjectTextFontStyle;
   fontWeight: number;
   lineHeight: number;
+  minFontSize: number;
   textAlign: ProjectObjectTextAlign;
   verticalAlign: ProjectObjectTextVerticalAlign;
 };
@@ -357,6 +398,7 @@ export type ProjectObjectComponents = {
   appearance?: ProjectObjectAppearance;
   bag?: ProjectObjectBag;
   card?: ProjectObjectCard;
+  composition?: ProjectCompositionSettings;
   container?: ProjectObjectContainer;
   counter?: ProjectObjectCounter;
   deck?: ProjectObjectDeck;
@@ -461,6 +503,7 @@ export type ProjectTableSetupItem =
 
 export type ProjectTableSetup = {
   backgroundColor: string;
+  composition?: ProjectCompositionSettings;
   grid: ProjectTableSetupGrid;
   height: number;
   items: ProjectTableSetupItem[];
@@ -713,17 +756,38 @@ export function getDefaultProjectObjectAppearance(
   };
 }
 
+export function getDefaultProjectCompositionSettings(): ProjectCompositionSettings {
+  return {
+    guides: [],
+    rulersVisible: true,
+    snapToGuides: true,
+    snapToObjects: true
+  };
+}
+
+export function getDefaultProjectObjectTextEffect(): ProjectObjectTextEffect {
+  return {
+    color: "#ffffff",
+    mode: "none",
+    strength: 2
+  };
+}
+
 export function getDefaultProjectObjectText(
   kind: ProjectObjectKind = "label",
   content = getDefaultProjectObjectName(kind)
 ): ProjectObjectText {
   return {
+    autoFit: false,
     color: "#0f172a",
     content: kind === "label" ? content : "",
+    effect: getDefaultProjectObjectTextEffect(),
+    fontFamily: "system",
     fontSize: 16,
     fontStyle: "normal",
     fontWeight: 600,
     lineHeight: 1.2,
+    minFontSize: 8,
     textAlign: "center",
     verticalAlign: "middle"
   };
@@ -1026,6 +1090,7 @@ export function createDefaultProjectObjectComponents(
 ): ProjectObjectComponents {
   const components: ProjectObjectComponents = {
     appearance: getDefaultProjectObjectAppearance(kind),
+    composition: getDefaultProjectCompositionSettings(),
     rectTransform: getDefaultProjectObjectRectTransform(kind)
   };
 
@@ -1140,6 +1205,7 @@ export function getDefaultProjectTableSetupItemTransform(): ProjectTableSetupIte
 export function getDefaultProjectTableSetup(): ProjectTableSetup {
   return {
     backgroundColor: defaultProjectTableSetupBackgroundColor,
+    composition: getDefaultProjectCompositionSettings(),
     grid: getDefaultProjectTableSetupGrid(),
     height: 600,
     items: [],

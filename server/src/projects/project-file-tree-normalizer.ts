@@ -33,6 +33,7 @@ import {
   normalizeHexColor,
   normalizeIntegerNumber
 } from "./project-normalization-utils.js";
+import { normalizeProjectCompositionSettings } from "./project-composition-normalizer.js";
 
 const maxProjectFileTreeDepth = 12;
 const maxProjectFileTreeNodes = 500;
@@ -296,6 +297,7 @@ function normalizeProjectTableSetup(value: unknown): ProjectTableSetup {
 
   return {
     backgroundColor: normalizeHexColor(record.backgroundColor, defaultTableSetup.backgroundColor),
+    composition: normalizeProjectCompositionSettings(record.composition),
     grid: {
       size: normalizeIntegerNumber(grid.size, defaultGrid.size, projectTableSetupGridSizeLimits),
       snap: grid.snap === true,

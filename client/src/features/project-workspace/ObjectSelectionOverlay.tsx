@@ -1,5 +1,6 @@
-import { Maximize2, Move, RotateCw } from "lucide-react";
+import { Move, RotateCw } from "lucide-react";
 import type { WorkspaceTool } from "./project-workspace-view-state";
+import type { ResizeHandle } from "./transform-drag-helpers";
 
 type ObjectSelectionOverlayProps = {
   activeTool: WorkspaceTool;
@@ -68,6 +69,7 @@ function WorkspaceToolHandles({
         />
         <span
           className="pointer-events-auto absolute left-1/2 flex h-8 w-8 items-center justify-center rounded-full border border-sky-500 bg-white text-sky-700 shadow-sm"
+          data-transform-handle="rotate"
           style={{
             top: `${handleTop / canvasScale}px`,
             transform: `translateX(-50%) scale(${inverseCanvasScale})`,
@@ -96,19 +98,102 @@ function WorkspaceToolHandles({
 
   if (activeTool === "resize") {
     return (
-      <span
-        className="pointer-events-auto absolute flex h-8 w-8 items-center justify-center rounded-full border border-sky-500 bg-white text-sky-700 shadow-sm"
-        style={{
-          bottom: `${-16 / canvasScale}px`,
-          right: `${-16 / canvasScale}px`,
-          transform: `scale(${inverseCanvasScale})`,
-          transformOrigin: "center"
-        }}
-      >
-        <Maximize2 size={15} />
-      </span>
+      <>
+        {resizeHandles.map((handle) => (
+          <ResizeHandleControl
+            key={handle}
+            canvasScale={canvasScale}
+            handle={handle}
+            inverseCanvasScale={inverseCanvasScale}
+          />
+        ))}
+      </>
     );
   }
 
   return null;
+}
+
+const resizeHandles = [
+  "n",
+  "ne",
+  "e",
+  "se",
+  "s",
+  "sw",
+  "w",
+  "nw"
+] as const satisfies readonly ResizeHandle[];
+
+type ResizeHandleControlProps = {
+  canvasScale: number;
+  handle: ResizeHandle;
+  inverseCanvasScale: number;
+};
+
+function ResizeHandleControl({
+  canvasScale,
+  handle,
+  inverseCanvasScale
+}: ResizeHandleControlProps) {
+  const position = getResizeHandlePosition(handle, canvasScale);
+
+  return (
+    <span
+      aria-label={`Resize ${handle}`}
+      className="pointer-events-auto absolute block h-3.5 w-3.5 rounded-[3px] border border-sky-500 bg-white shadow-sm"
+      data-transform-handle={handle}
+      role="button"
+      style={{
+        ...position,
+        cursor: getResizeHandleCursor(handle),
+        transform: `${position.transform ?? ""} scale(${inverseCanvasScale})`,
+        transformOrigin: "center"
+      }}
+      title={`Resize ${handle}`}
+    />
+  );
+}
+
+function getResizeHandlePosition(handle: ResizeHandle, canvasScale: number) {
+  const offset = -7 / canvasScale;
+
+  if (handle === "n") {
+    return { left: "50%", top: `${offset}px`, transform: "translateX(-50%)" };
+  }
+
+  if (handle === "s") {
+    return { bottom: `${offset}px`, left: "50%", transform: "translateX(-50%)" };
+  }
+
+  if (handle === "e") {
+    return { right: `${offset}px`, top: "50%", transform: "translateY(-50%)" };
+  }
+
+  if (handle === "w") {
+    return { left: `${offset}px`, top: "50%", transform: "translateY(-50%)" };
+  }
+
+  return {
+    bottom: handle.includes("s") ? `${offset}px` : undefined,
+    left: handle.includes("w") ? `${offset}px` : undefined,
+    right: handle.includes("e") ? `${offset}px` : undefined,
+    top: handle.includes("n") ? `${offset}px` : undefined
+  };
+}
+
+function getResizeHandleCursor(handle: ResizeHandle) {
+  if (handle === "n" || handle === "s") {
+    return "ns-resize";
+  }
+
+  if (handle === "e" || handle === "w") {
+    return "ew-resize";
+  }
+
+  if (handle === "ne" || handle === "sw") {
+    return "nesw-resize";
+  }
+
+  return "nwse-resize";
 }

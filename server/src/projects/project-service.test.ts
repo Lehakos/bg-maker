@@ -594,6 +594,96 @@ describe("ProjectService", () => {
     expect(updatedProject?.fileTree[0]).not.toHaveProperty("objectTree");
   });
 
+  it("normalizes composition settings in table setups and object components", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "setup-1",
+        kind: "tableSetup",
+        name: "Setup",
+        tableSetup: {
+          composition: {
+            guides: [
+              {
+                axis: "vertical",
+                id: " guide-1 ",
+                locked: true,
+                position: 12000,
+                visible: false
+              },
+              { axis: "sideways", id: "bad-guide", position: 20 },
+              { axis: "horizontal", id: "guide-1", position: 40 }
+            ],
+            rulersVisible: false,
+            snapToGuides: false,
+            snapToObjects: true
+          },
+          items: [],
+          width: 1000,
+          height: 700
+        },
+        type: "file"
+      },
+      {
+        id: "object-file",
+        kind: "object",
+        name: "Token",
+        objectTree: [
+          {
+            components: {
+              composition: {
+                guides: [{ axis: "horizontal", id: "object-guide", position: -12000 }],
+                snapToObjects: false
+              }
+            },
+            id: "root",
+            kind: "group",
+            name: "Root",
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ]);
+
+    expect(updatedProject?.fileTree[0]).toMatchObject({
+      tableSetup: {
+        composition: {
+          guides: [
+            {
+              axis: "vertical",
+              id: "guide-1",
+              locked: true,
+              position: 10000,
+              visible: false
+            }
+          ],
+          rulersVisible: false,
+          snapToGuides: false,
+          snapToObjects: true
+        }
+      }
+    });
+    expect(updatedProject?.fileTree[1]?.objectTree?.[0]).toMatchObject({
+      components: {
+        composition: {
+          guides: [
+            {
+              axis: "horizontal",
+              id: "object-guide",
+              position: -10000,
+              visible: true
+            }
+          ],
+          rulersVisible: true,
+          snapToGuides: true,
+          snapToObjects: false
+        }
+      }
+    });
+  });
+
   it("normalizes card components and locks preset dimensions", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 

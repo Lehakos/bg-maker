@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
-import type {
-  CreateProjectRequest,
-  Project,
-  ProjectImageAsset,
-  ProjectSummary
+import {
+  type CreateProjectRequest,
+  type Project,
+  type ProjectImageAsset,
+  type ProjectSummary
 } from "@bg-maker/shared";
 import {
   createDefaultProjectFileTree,
