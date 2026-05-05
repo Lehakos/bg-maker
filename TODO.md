@@ -59,10 +59,10 @@ Possible later additions:
 
 ## P1 - Variant Creation
 
-- [ ] Add "create object from selected object" flow.
-- [ ] Add "save as reusable object" from a table setup local object.
-- [ ] Add detach linked object from source.
-- [ ] Add CSV/table import for creating card or token variants.
+- [x] Add "create object from selected object" flow.
+- [x] Add "save as reusable object" from a table setup local object.
+- [x] Add detach linked object from source.
+- [x] Add CSV/table import for creating card or token variants.
 - [ ] Add batch edit for template variable values.
 - [ ] Add thumbnail previews for generated variants.
 

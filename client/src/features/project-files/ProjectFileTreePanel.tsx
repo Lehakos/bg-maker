@@ -21,13 +21,15 @@ import {
   Boxes,
   ChevronDown,
   ChevronRight,
-  Copy,
+  CopyPlus,
+  FileSpreadsheet,
   Folder,
   LockKeyhole,
   Pencil,
   Plus,
   Rows3,
-  Trash2
+  Trash2,
+  Unlink
 } from "lucide-react";
 import {
   type CSSProperties,
@@ -61,7 +63,15 @@ import {
   type ProjectFileCreateType
 } from "./ProjectFileCreateModal";
 import { ProjectFileNodeIcon } from "./project-file-tree-ui";
+import { getProjectFileTreeSelectionAfterClick } from "./project-file-tree-selection";
 import { getProjectImageAssetUrl } from "../project-assets/project-image-assets";
+import { VariantImportModal } from "../project-variants/VariantImportModal";
+import {
+  canImportVariantsFromObjectFile,
+  createLinkedObjectFilesFromVariantRows,
+  detachLinkedObjectFile,
+  type ParsedVariantImportRow
+} from "../project-variants/project-variants";
 
 const indentationWidth = 18;
 const nodeDropActivationPadding = 8;
@@ -89,6 +99,10 @@ type FileTreeCreateRequest = {
   parentId: ProjectFileTreeParentId;
 };
 
+type VariantImportRequest = {
+  sourceObjectFileNodeId: string;
+};
+
 type NodeDropTargetData = {
   depth: number;
 };
@@ -100,7 +114,7 @@ type ProjectFileTreePanelProps = {
   saving: boolean;
   saveError?: Error | null;
   selectedNodeId: string | null;
-  onFileTreeChange: (fileTree: ProjectFileNode[]) => void;
+  onFileTreeChange: (fileTree: ProjectFileNode[], label?: string) => void;
   onSelectNode: (nodeId: string | null) => void;
 };
 
@@ -119,15 +133,45 @@ export function ProjectFileTreePanel({
   );
   const [contextMenu, setContextMenu] = useState<FileTreeContextMenuState | null>(null);
   const [createRequest, setCreateRequest] = useState<FileTreeCreateRequest | null>(null);
+  const [variantImportRequest, setVariantImportRequest] = useState<VariantImportRequest | null>(
+    null
+  );
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [overDropTargetId, setOverDropTargetId] = useState<string | null>(null);
   const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(
+    () => (selectedNodeId ? [selectedNodeId] : [])
+  );
+  const [selectionAnchorNodeId, setSelectionAnchorNodeId] = useState<string | null>(
+    selectedNodeId
+  );
   const sortedFileTree = useMemo(() => sortProjectFileTree(fileTree), [fileTree]);
   const flattenedFileTree = useMemo(
     () => flattenProjectFileTree(sortedFileTree, expandedFolderIds),
     [expandedFolderIds, sortedFileTree]
   );
+  const visibleNodeIds = useMemo(
+    () => flattenedFileTree.map((item) => item.id),
+    [flattenedFileTree]
+  );
+  const validSelectedNodeIds = useMemo(
+    () => selectedNodeIds.filter((nodeId) => Boolean(findProjectFileNode(fileTree, nodeId))),
+    [fileTree, selectedNodeIds]
+  );
+  const effectiveSelectedNodeIds = useMemo(() => {
+    if (!selectedNodeId || !findProjectFileNode(fileTree, selectedNodeId)) {
+      return [];
+    }
+
+    return validSelectedNodeIds.includes(selectedNodeId)
+      ? validSelectedNodeIds
+      : [selectedNodeId];
+  }, [fileTree, selectedNodeId, validSelectedNodeIds]);
+  const effectiveSelectionAnchorNodeId =
+    selectionAnchorNodeId && findProjectFileNode(fileTree, selectionAnchorNodeId)
+      ? selectionAnchorNodeId
+      : selectedNodeId;
   const objectSourceOptions = useMemo(
     () => collectObjectSourceOptions(sortedFileTree),
     [sortedFileTree]
@@ -143,15 +187,41 @@ export function ProjectFileTreePanel({
   const contextMenuNode = contextMenu?.nodeId
     ? findProjectFileNode(fileTree, contextMenu.nodeId)
     : undefined;
+  const contextMenuSelectedNodeIds =
+    contextMenu?.nodeId && effectiveSelectedNodeIds.includes(contextMenu.nodeId)
+      ? effectiveSelectedNodeIds
+      : contextMenu?.nodeId
+        ? [contextMenu.nodeId]
+        : [];
+  const contextMenuSelectedNodes = contextMenuSelectedNodeIds
+    .map((nodeId) => findProjectFileNode(fileTree, nodeId))
+    .filter((node): node is ProjectFileNode => Boolean(node));
+  const singleContextMenuNode =
+    contextMenuSelectedNodeIds.length === 1 ? contextMenuSelectedNodes[0] : undefined;
+  const editableContextMenuSelectedNodes = contextMenuSelectedNodes.filter(
+    (node) => !isProtectedProjectFileNode(node)
+  );
+  const variantImportSourceNode = variantImportRequest
+    ? findProjectFileNode(fileTree, variantImportRequest.sourceObjectFileNodeId)
+    : undefined;
   const contextMenuActions = createContextMenuActions({
     disabled: saving,
-    canDelete: Boolean(contextMenuNode && !isProtectedProjectFileNode(contextMenuNode)),
-    canDuplicate: Boolean(contextMenuNode && !isProtectedProjectFileNode(contextMenuNode)),
-    canRename: Boolean(contextMenuNode && !isProtectedProjectFileNode(contextMenuNode)),
+    canDelete: editableContextMenuSelectedNodes.length > 0,
+    canDetachLinkedObject: Boolean(
+      singleContextMenuNode?.type === "file" &&
+        singleContextMenuNode.kind === "object" &&
+        singleContextMenuNode.sourceRef
+    ),
+    canDuplicate: editableContextMenuSelectedNodes.length > 0,
+    canImportVariants: canImportVariantsFromObjectFile(fileTree, singleContextMenuNode),
+    canRename: Boolean(singleContextMenuNode && !isProtectedProjectFileNode(singleContextMenuNode)),
     onCreate: handleRequestCreateNode,
+    onDetachLinkedObject: handleDetachLinkedObject,
     onDuplicate: handleDuplicateNode,
+    onImportVariants: handleRequestImportVariants,
     onRename: handleRequestRenameNode,
-    onDelete: handleDeleteNode
+    onDelete: handleDeleteNode,
+    selectedCount: editableContextMenuSelectedNodes.length
   });
   const autoExpandFolderId = getAutoExpandFolderId({
     activeNodeId,
@@ -182,7 +252,9 @@ export function ProjectFileTreePanel({
     event.preventDefault();
     event.stopPropagation();
 
-    if (nodeId) {
+    if (nodeId && !effectiveSelectedNodeIds.includes(nodeId)) {
+      setSelectedNodeIds([nodeId]);
+      setSelectionAnchorNodeId(nodeId);
       onSelectNode(nodeId);
     }
 
@@ -191,6 +263,28 @@ export function ProjectFileTreePanel({
       x: event.clientX,
       y: event.clientY
     });
+  }
+
+  function handleSelectNode(event: MouseEvent, nodeId: string) {
+    const nextSelection = getProjectFileTreeSelectionAfterClick({
+      additive: event.metaKey || event.ctrlKey,
+      clickedNodeId: nodeId,
+      range: event.shiftKey,
+      selectedNodeId,
+      selectedNodeIds: effectiveSelectedNodeIds,
+      selectionAnchorNodeId: effectiveSelectionAnchorNodeId,
+      visibleNodeIds
+    });
+
+    setSelectedNodeIds(nextSelection.selectedNodeIds);
+    setSelectionAnchorNodeId(nextSelection.selectionAnchorNodeId);
+    onSelectNode(nextSelection.selectedNodeId);
+  }
+
+  function selectFileTreeNodes(primaryNodeId: string | null, nodeIds?: string[]) {
+    setSelectedNodeIds(nodeIds ?? (primaryNodeId ? [primaryNodeId] : []));
+    setSelectionAnchorNodeId(primaryNodeId);
+    onSelectNode(primaryNodeId);
   }
 
   function handleToggleFolder(folderId: string) {
@@ -245,7 +339,7 @@ export function ProjectFileTreePanel({
     }
 
     setCreateRequest(null);
-    onSelectNode(nextNode.id);
+    selectFileTreeNodes(nextNode.id);
     onFileTreeChange(nextFileTree);
   }
 
@@ -256,7 +350,7 @@ export function ProjectFileTreePanel({
 
     setRenamingNodeId(contextMenuNode.id);
     setRenameDraft(contextMenuNode.name);
-    onSelectNode(contextMenuNode.id);
+    selectFileTreeNodes(contextMenuNode.id);
   }
 
   function handleCommitRenameNode(nodeId: string) {
@@ -279,49 +373,134 @@ export function ProjectFileTreePanel({
   }
 
   function handleDeleteNode() {
-    if (!contextMenu?.nodeId) {
+    const nodeIds = getEditableContextMenuNodeIds({
+      fileTree,
+      nodeIds: contextMenuSelectedNodeIds
+    });
+
+    if (!nodeIds.length) {
       return;
     }
 
-    const nodeLocation = findProjectFileNodeLocation(fileTree, contextMenu.nodeId);
+    const nodeLocation = contextMenu?.nodeId
+      ? findProjectFileNodeLocation(fileTree, contextMenu.nodeId)
+      : undefined;
 
-    if (!nodeLocation) {
-      return;
-    }
-
-    const nextFileTree = deleteProjectFileNode(fileTree, contextMenu.nodeId);
-    const nextSelectedNodeId = nodeLocation.parentId ?? nextFileTree[0]?.id ?? null;
+    const nextFileTree = getProjectFileTreeWithDeletedNodes(fileTree, nodeIds);
+    const preferredSelectedNodeId =
+      nodeLocation?.parentId && findProjectFileNode(nextFileTree, nodeLocation.parentId)
+        ? nodeLocation.parentId
+        : null;
+    const nextSelectedNodeId = preferredSelectedNodeId ?? nextFileTree[0]?.id ?? null;
 
     setExpandedFolderIds((currentFolderIds) => {
       const nextFolderIds = new Set(currentFolderIds);
-      nextFolderIds.delete(contextMenu.nodeId as string);
+      nodeIds.forEach((nodeId) => nextFolderIds.delete(nodeId));
       return nextFolderIds;
     });
-    onSelectNode(nextSelectedNodeId);
+    selectFileTreeNodes(nextSelectedNodeId);
     onFileTreeChange(nextFileTree);
   }
 
   function handleDuplicateNode() {
+    const nodeIds = getTopLevelSelectedFileNodeIds({
+      fileTree,
+      nodeIds: getEditableContextMenuNodeIds({
+        fileTree,
+        nodeIds: contextMenuSelectedNodeIds
+      })
+    });
+
+    if (!nodeIds.length) {
+      return;
+    }
+
+    let nextFileTree = fileTree;
+    const duplicatedNodeIds: string[] = [];
+
+    for (const nodeId of nodeIds) {
+      const result = duplicateProjectFileNode(nextFileTree, nodeId);
+
+      if (!result) {
+        continue;
+      }
+
+      nextFileTree = result.fileTree;
+      duplicatedNodeIds.push(result.node.id);
+
+      const duplicatedLocation = findProjectFileNodeLocation(result.fileTree, result.node.id);
+
+      if (duplicatedLocation?.parentId) {
+        setExpandedFolderIds((currentFolderIds) =>
+          new Set(currentFolderIds).add(duplicatedLocation.parentId as string)
+        );
+      }
+    }
+
+    if (!duplicatedNodeIds.length) {
+      return;
+    }
+
+    selectFileTreeNodes(duplicatedNodeIds.at(-1) ?? null, duplicatedNodeIds);
+    onFileTreeChange(nextFileTree);
+  }
+
+  function handleDetachLinkedObject() {
     if (!contextMenu?.nodeId) {
       return;
     }
 
-    const result = duplicateProjectFileNode(fileTree, contextMenu.nodeId);
+    const result = detachLinkedObjectFile({
+      fileTree,
+      objectFileNodeId: contextMenu.nodeId
+    });
 
     if (!result) {
       return;
     }
 
-    const duplicatedLocation = findProjectFileNodeLocation(result.fileTree, result.node.id);
+    selectFileTreeNodes(result.selectedFileNodeId ?? contextMenu.nodeId);
+    onFileTreeChange(result.fileTree, "Make independent");
+  }
 
-    if (duplicatedLocation?.parentId) {
+  function handleRequestImportVariants() {
+    if (!contextMenu?.nodeId) {
+      return;
+    }
+
+    setVariantImportRequest({
+      sourceObjectFileNodeId: contextMenu.nodeId
+    });
+  }
+
+  function handleImportVariants(rows: ParsedVariantImportRow[]) {
+    if (!variantImportRequest) {
+      return;
+    }
+
+    const result = createLinkedObjectFilesFromVariantRows({
+      fileTree,
+      rows,
+      sourceObjectFileNodeId: variantImportRequest.sourceObjectFileNodeId
+    });
+
+    if (!result) {
+      return;
+    }
+
+    const createdLocation = result.selectedFileNodeId
+      ? findProjectFileNodeLocation(result.fileTree, result.selectedFileNodeId)
+      : undefined;
+
+    if (createdLocation?.parentId) {
       setExpandedFolderIds((currentFolderIds) =>
-        new Set(currentFolderIds).add(duplicatedLocation.parentId as string)
+        new Set(currentFolderIds).add(createdLocation.parentId as string)
       );
     }
 
-    onSelectNode(result.node.id);
-    onFileTreeChange(result.fileTree);
+    setVariantImportRequest(null);
+    selectFileTreeNodes(result.selectedFileNodeId ?? variantImportRequest.sourceObjectFileNodeId);
+    onFileTreeChange(result.fileTree, "Import variants");
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -365,7 +544,7 @@ export function ProjectFileTreePanel({
       setExpandedFolderIds((currentFolderIds) => new Set(currentFolderIds).add(targetParentId));
     }
 
-    onSelectNode(activeId);
+    selectFileTreeNodes(activeId);
     onFileTreeChange(nextFileTree);
   }
 
@@ -404,11 +583,12 @@ export function ProjectFileTreePanel({
           renameDraft={renameDraft}
           renamingNodeId={renamingNodeId}
           selectedNodeId={selectedNodeId}
+          selectedNodeIds={effectiveSelectedNodeIds}
           onCancelRename={handleCancelRenameNode}
           onCommitRename={handleCommitRenameNode}
           onContextMenu={handleContextMenu}
           onRenameDraftChange={setRenameDraft}
-          onSelectNode={onSelectNode}
+          onSelectNode={handleSelectNode}
           onToggleFolder={handleToggleFolder}
         />
       </DndContext>
@@ -439,6 +619,20 @@ export function ProjectFileTreePanel({
           type={createRequest.type}
           onClose={() => setCreateRequest(null)}
           onCreate={handleCreateNode}
+        />
+      ) : null}
+
+      {variantImportRequest &&
+      variantImportSourceNode?.type === "file" &&
+      variantImportSourceNode.kind === "object" &&
+      variantImportSourceNode.template ? (
+        <VariantImportModal
+          fileTree={fileTree}
+          opened
+          sourceName={variantImportSourceNode.name}
+          template={variantImportSourceNode.template}
+          onClose={() => setVariantImportRequest(null)}
+          onImport={handleImportVariants}
         />
       ) : null}
     </aside>
@@ -480,11 +674,12 @@ type ProjectFileTreeListProps = {
   renameDraft: string;
   renamingNodeId: string | null;
   selectedNodeId: string | null;
+  selectedNodeIds: string[];
   onCancelRename: () => void;
   onCommitRename: (nodeId: string) => void;
   onContextMenu: (event: MouseEvent, nodeId: string | null) => void;
   onRenameDraftChange: (value: string) => void;
-  onSelectNode: (nodeId: string | null) => void;
+  onSelectNode: (event: MouseEvent, nodeId: string) => void;
   onToggleFolder: (folderId: string) => void;
 };
 
@@ -497,6 +692,7 @@ function ProjectFileTreeList({
   renameDraft,
   renamingNodeId,
   selectedNodeId,
+  selectedNodeIds,
   onCancelRename,
   onCommitRename,
   onContextMenu,
@@ -535,7 +731,8 @@ function ProjectFileTreeList({
             projectId={projectId}
             renameDraft={renameDraft}
             renaming={renamingNodeId === item.id}
-            selected={selectedNodeId === item.id}
+            primarySelected={selectedNodeId === item.id}
+            selected={selectedNodeIds.includes(item.id)}
             onCancelRename={onCancelRename}
             onCommitRename={onCommitRename}
             onContextMenu={onContextMenu}
@@ -558,12 +755,13 @@ type ProjectFileTreeNodeProps = {
   projectId: string;
   renameDraft: string;
   renaming: boolean;
+  primarySelected: boolean;
   selected: boolean;
   onCancelRename: () => void;
   onCommitRename: (nodeId: string) => void;
   onContextMenu: (event: MouseEvent, nodeId: string | null) => void;
   onRenameDraftChange: (value: string) => void;
-  onSelectNode: (nodeId: string | null) => void;
+  onSelectNode: (event: MouseEvent, nodeId: string) => void;
   onToggleFolder: (folderId: string) => void;
 };
 
@@ -576,6 +774,7 @@ function ProjectFileTreeNode({
   projectId,
   renameDraft,
   renaming,
+  primarySelected,
   selected,
   onCancelRename,
   onCommitRename,
@@ -630,12 +829,12 @@ function ProjectFileTreeNode({
     }
   }, [renaming]);
 
-  function handleSelect() {
+  function handleSelect(event: MouseEvent<HTMLButtonElement>) {
     if (renaming) {
       return;
     }
 
-    onSelectNode(node.id);
+    onSelectNode(event, node.id);
   }
 
   function handleToggle(event: MouseEvent<HTMLButtonElement>) {
@@ -673,10 +872,14 @@ function ProjectFileTreeNode({
           "group flex h-7 min-w-max items-center pr-2 text-[13px] leading-none transition-colors",
           isOver && canHighlightDrop
             ? "bg-emerald-100 text-slate-950 outline outline-1 -outline-offset-1 outline-emerald-500"
-            : selected && protectedNode
+            : primarySelected && protectedNode
               ? "bg-teal-100 text-teal-950 outline outline-1 -outline-offset-1 outline-teal-500"
-              : selected
+              : primarySelected
                 ? "bg-sky-100 text-slate-950 outline outline-1 -outline-offset-1 outline-sky-500"
+                : selected && protectedNode
+                  ? "bg-teal-50 text-teal-950 outline outline-1 -outline-offset-1 outline-teal-200"
+                  : selected
+                    ? "bg-sky-50 text-slate-950 outline outline-1 -outline-offset-1 outline-sky-200"
                 : protectedNode
                   ? "bg-teal-50 text-teal-950 hover:bg-teal-100"
                   : "text-slate-700 hover:bg-slate-100"
@@ -780,21 +983,31 @@ function ProjectFileNodeVisual({ iconClassName, node, projectId }: ProjectFileNo
 function createContextMenuActions({
   disabled,
   canDelete,
+  canDetachLinkedObject,
   canDuplicate,
+  canImportVariants,
   canRename,
   onCreate,
+  onDetachLinkedObject,
   onDuplicate,
+  onImportVariants,
   onRename,
-  onDelete
+  onDelete,
+  selectedCount
 }: {
   disabled: boolean;
   canDelete: boolean;
+  canDetachLinkedObject: boolean;
   canDuplicate: boolean;
+  canImportVariants: boolean;
   canRename: boolean;
   onCreate: (kind: ProjectFileCreateType) => void;
+  onDetachLinkedObject: () => void;
   onDuplicate: () => void;
+  onImportVariants: () => void;
   onRename: () => void;
   onDelete: () => void;
+  selectedCount: number;
 }): ContextMenuAction[] {
   return [
     {
@@ -827,11 +1040,25 @@ function createContextMenuActions({
       ]
     },
     {
-      id: "duplicate",
-      label: "Duplicate",
-      icon: <Copy size={14} />,
-      disabled: disabled || !canDuplicate,
+      id: "import-variants",
+      label: "Import variants from CSV",
+      icon: <FileSpreadsheet size={14} />,
+      disabled: disabled || !canImportVariants,
       separatorBefore: true,
+      onSelect: onImportVariants
+    },
+    {
+      id: "detach-linked-object",
+      label: "Make independent",
+      icon: <Unlink size={14} />,
+      disabled: disabled || !canDetachLinkedObject,
+      onSelect: onDetachLinkedObject
+    },
+    {
+      id: "duplicate",
+      label: selectedCount > 1 ? `Duplicate ${selectedCount} items` : "Duplicate",
+      icon: <CopyPlus size={14} />,
+      disabled: disabled || !canDuplicate,
       onSelect: onDuplicate
     },
     {
@@ -843,7 +1070,7 @@ function createContextMenuActions({
     },
     {
       id: "delete",
-      label: "Delete",
+      label: selectedCount > 1 ? `Delete ${selectedCount} items` : "Delete",
       icon: <Trash2 size={14} />,
       destructive: true,
       disabled: disabled || !canDelete,
@@ -867,6 +1094,48 @@ function getCreateTargetParentId(
   }
 
   return findProjectFileNodeLocation(fileTree, targetNodeId)?.parentId ?? null;
+}
+
+function getEditableContextMenuNodeIds({
+  fileTree,
+  nodeIds
+}: {
+  fileTree: ProjectFileNode[];
+  nodeIds: readonly string[];
+}) {
+  return nodeIds.filter((nodeId) => {
+    const node = findProjectFileNode(fileTree, nodeId);
+
+    return Boolean(node && !isProtectedProjectFileNode(node));
+  });
+}
+
+function getProjectFileTreeWithDeletedNodes(
+  fileTree: ProjectFileNode[],
+  nodeIds: readonly string[]
+) {
+  return getTopLevelSelectedFileNodeIds({ fileTree, nodeIds }).reduce(
+    (currentFileTree, nodeId) => deleteProjectFileNode(currentFileTree, nodeId),
+    fileTree
+  );
+}
+
+function getTopLevelSelectedFileNodeIds({
+  fileTree,
+  nodeIds
+}: {
+  fileTree: ProjectFileNode[];
+  nodeIds: readonly string[];
+}) {
+  const selectedNodeIdSet = new Set(nodeIds);
+
+  return nodeIds.filter((nodeId) => {
+    const location = findProjectFileNodeLocation(fileTree, nodeId);
+
+    return Boolean(
+      location && !location.ancestors.some((ancestorId) => selectedNodeIdSet.has(ancestorId))
+    );
+  });
 }
 
 function flattenProjectFileTree(

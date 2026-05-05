@@ -24,6 +24,7 @@ type WorkspaceViewportProps = {
   tableSetup: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onCompositionSurfaceChange: (surface: CompositionSurfaceTarget | null) => void;
+  onObjectContextMenu?: (objectId: string, clientX: number, clientY: number) => void;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
@@ -42,6 +43,7 @@ export function WorkspaceViewport({
   tableSetup,
   onExecuteCommand,
   onCompositionSurfaceChange,
+  onObjectContextMenu,
   onSelectObject,
   onSelectObjects
 }: WorkspaceViewportProps) {
@@ -65,6 +67,7 @@ export function WorkspaceViewport({
         tableSetup={tableSetup}
         onExecuteCommand={onExecuteCommand}
         onCompositionSurfaceChange={onCompositionSurfaceChange}
+        onObjectContextMenu={onObjectContextMenu}
         onSelectObject={onSelectObject}
         onSelectObjects={onSelectObjects}
       />
@@ -84,6 +87,7 @@ export function WorkspaceViewport({
         selectedObjectIds={selectedObjectIds}
         onExecuteCommand={onExecuteCommand}
         onCompositionSurfaceChange={onCompositionSurfaceChange}
+        onObjectContextMenu={onObjectContextMenu}
         onSelectObject={onSelectObject}
         onSelectObjects={onSelectObjects}
       />

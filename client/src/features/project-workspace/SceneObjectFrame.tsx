@@ -75,6 +75,7 @@ type SceneObjectFrameProps = {
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onImageAssetDrop?: (objectId: string, assetId: string) => void;
   onObjectSideChange: (objectId: string, activeSide: ProjectObjectSide) => void;
+  onObjectContextMenu?: (objectId: string, clientX: number, clientY: number) => void;
   onRectTransformPreviewChange?: (
     objectId: string,
     before: ProjectObjectRectTransform,
@@ -113,6 +114,7 @@ export function SceneObjectFrame({
   onDieFaceChange,
   onExecuteCommand,
   onImageAssetDrop,
+  onObjectContextMenu,
   onObjectSideChange,
   onRectTransformPreviewChange,
   onRectTransformPreviewEnd,
@@ -333,6 +335,21 @@ export function SceneObjectFrame({
     onSelectObject(selectableObjectId);
   }
 
+  function handleContextMenu(event: MouseEvent<HTMLDivElement>) {
+    if (!handlesOwnInteraction) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!selectedObjectIds.includes(selectableObjectId)) {
+      onSelectObject(selectableObjectId);
+    }
+
+    onObjectContextMenu?.(selectableObjectId, event.clientX, event.clientY);
+  }
+
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (!handlesOwnInteraction) {
       return;
@@ -405,6 +422,7 @@ export function SceneObjectFrame({
       style={getSceneObjectFrameStyle(visibleRectTransform, root, siblingIndex, stackRootOffset)}
       tabIndex={handlesOwnInteraction ? 0 : undefined}
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onKeyDown={handleKeyDown}
@@ -439,6 +457,7 @@ export function SceneObjectFrame({
             onDieFaceChange={onDieFaceChange}
             onExecuteCommand={onExecuteCommand}
             onImageAssetDrop={onImageAssetDrop}
+            onObjectContextMenu={onObjectContextMenu}
             onObjectSideChange={onObjectSideChange}
             onRectTransformPreviewChange={onRectTransformPreviewChange}
             onRectTransformPreviewEnd={onRectTransformPreviewEnd}

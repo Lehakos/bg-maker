@@ -15,7 +15,7 @@ type ProjectWorkspaceLeftPanelProps = {
   saveError?: Error | null;
   saving: boolean;
   selectedNodeId: string | null;
-  onFileTreeChange: (fileTree: ProjectFileNode[]) => void;
+  onFileTreeChange: (fileTree: ProjectFileNode[], label?: string) => void;
   onSelectNode: (nodeId: string | null) => void;
 };
 

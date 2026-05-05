@@ -13,6 +13,8 @@ import {
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useEffect, useMemo } from "react";
 
+const contextMenuZIndex = 1000;
+
 export type ContextMenuAction = {
   id: string;
   label: string;
@@ -87,11 +89,11 @@ export function ContextMenu({
       <FloatingFocusManager context={context} initialFocus={-1} modal={false}>
         <div
           ref={setFloating}
-          style={floatingStyles}
+          style={{ ...floatingStyles, zIndex: contextMenuZIndex }}
           {...getFloatingProps({
             "aria-label": ariaLabel,
             className:
-              "z-50 min-w-52 rounded-md border border-slate-200 bg-white py-1 text-sm text-slate-700 shadow-xl shadow-slate-900/15 outline-none"
+              "w-max min-w-52 max-w-[calc(100vw-1rem)] rounded-md border border-slate-200 bg-white py-1 text-sm text-slate-700 shadow-xl shadow-slate-900/15 outline-none"
           })}
         >
           <ContextMenuActionList actions={actions} onOpenChange={onOpenChange} />
@@ -140,7 +142,7 @@ function ContextMenuActionButton({ action, onOpenChange }: ContextMenuActionButt
     <div className="group/menu-item relative px-1">
       <button
         className={cx(
-          "flex h-8 w-full items-center gap-2 rounded px-2 text-left outline-none",
+          "flex min-h-8 w-full items-center gap-2 rounded px-2 py-1.5 text-left outline-none",
           action.destructive ? "text-red-600" : "text-slate-700",
           action.disabled
             ? "cursor-not-allowed opacity-45"
@@ -156,12 +158,12 @@ function ContextMenuActionButton({ action, onOpenChange }: ContextMenuActionButt
         <span className="flex h-4 w-4 shrink-0 items-center justify-center text-current">
           {action.icon}
         </span>
-        <span className="min-w-0 flex-1 truncate">{action.label}</span>
+        <span className="min-w-0 flex-1 whitespace-nowrap">{action.label}</span>
         {hasChildren ? <ChevronRight className="shrink-0 text-slate-400" size={14} /> : null}
       </button>
 
       {hasChildren ? (
-        <div className="invisible absolute left-full top-0 z-10 min-w-48 rounded-md border border-slate-200 bg-white py-1 opacity-0 shadow-xl shadow-slate-900/15 group-hover/menu-item:visible group-hover/menu-item:opacity-100 group-focus-within/menu-item:visible group-focus-within/menu-item:opacity-100">
+        <div className="invisible absolute left-full top-0 z-10 w-max min-w-48 max-w-[calc(100vw-1rem)] rounded-md border border-slate-200 bg-white py-1 opacity-0 shadow-xl shadow-slate-900/15 group-hover/menu-item:visible group-hover/menu-item:opacity-100 group-focus-within/menu-item:visible group-focus-within/menu-item:opacity-100">
           <ContextMenuActionList actions={action.children ?? []} onOpenChange={onOpenChange} />
         </div>
       ) : null}

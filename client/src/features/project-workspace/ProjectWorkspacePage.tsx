@@ -9,9 +9,10 @@ import type {
 import { getProjectTableSetupItemId, resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
 import { Alert, Button, Center, Loader } from "@mantine/core";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { AlertCircle, ArrowLeft } from "lucide-react";
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef } from "react";
+import { AlertCircle, ArrowLeft, Boxes, Copy, CopyPlus, Trash2, Unlink } from "lucide-react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppHeaderContent } from "../../app/app-header-context";
+import { ContextMenu, type ContextMenuAction } from "../../components/ContextMenu";
 import { PanelResizeHandle } from "./PanelResizeHandle";
 import { ProjectWorkspaceLeftPanel } from "../project-library/ProjectWorkspaceLeftPanel";
 import { ProjectObjectInspectorPanel } from "../project-object-inspector/ProjectObjectInspectorPanel";
@@ -35,6 +36,7 @@ import {
   appendProjectObjectNode,
   clearProjectObjectTreeActiveSides,
   cloneProjectObjectNode,
+  deleteProjectObjectNode,
   findProjectObjectNode,
   findProjectObjectNodeLocation,
   getProjectObjectNodeRectTransform,
@@ -48,13 +50,22 @@ import {
   useElementSize,
   useResizablePanelSize
 } from "./resizable-panel-state";
+import { shouldIgnoreWorkspaceShortcut } from "./workspace-keyboard-shortcuts";
 import type { WorkspaceTool } from "./project-workspace-view-state";
 import {
   getProjectFileNodeTableSetup,
   getProjectTableSetupWithDuplicatedItems,
   getProjectTableSetupWithInsertedItems,
-  getProjectTableSetupWithLocalObjectTree
+  getProjectTableSetupWithLocalObjectTree,
+  getProjectTableSetupWithRemovedItem
 } from "../project-table-setup/project-table-setup";
+import { ReusableObjectNameModal } from "../project-variants/ReusableObjectNameModal";
+import {
+  createReusableObjectFromSelection,
+  detachLinkedObjectFile,
+  detachLinkedTableItem,
+  saveTableLocalObjectAsReusable
+} from "../project-variants/project-variants";
 import {
   getProjectTableSetupWithNudgedItems,
   getProjectTableSetupWithPositionedItems,
@@ -79,6 +90,24 @@ type WorkspaceStyle = CSSProperties & {
   "--workspace-right-inspector-panel-height": string;
   "--workspace-right-panel-width": string;
 };
+
+type WorkspaceContextMenuState = {
+  objectId: string;
+  x: number;
+  y: number;
+};
+
+type WorkspaceReusableObjectRequest =
+  | {
+      initialName: string;
+      objectId: string;
+      type: "objectSelection";
+    }
+  | {
+      initialName: string;
+      itemId: string;
+      type: "tableLocalItem";
+    };
 
 export function ProjectWorkspacePage() {
   const { projectId } = useParams({ from: "/projects/$projectId" });
@@ -233,6 +262,10 @@ function ProjectWorkspaceContent({
       objectSideSelections
     );
   }, [fileTree, objectSideSelections, selectedContentFileNode, selectedTableSetupItem]);
+  const [workspaceContextMenu, setWorkspaceContextMenu] =
+    useState<WorkspaceContextMenuState | null>(null);
+  const [workspaceReusableRequest, setWorkspaceReusableRequest] =
+    useState<WorkspaceReusableObjectRequest | null>(null);
   useAppHeaderContent(headerContent);
   const [workspaceElementRef, workspaceSize] = useElementSize<HTMLElement>();
   const [rightPanelElementRef, rightPanelSize] = useElementSize<HTMLDivElement>();
@@ -611,6 +644,166 @@ function ProjectWorkspaceContent({
     selectedTableSetup
   ]);
 
+  function handleWorkspaceObjectContextMenu(objectId: string, x: number, y: number) {
+    setWorkspaceContextMenu({
+      objectId,
+      x,
+      y
+    });
+  }
+
+  function handleRequestWorkspaceReusableObject() {
+    setWorkspaceContextMenu(null);
+
+    if (
+      selectedContentFileNode?.kind === "object" &&
+      !selectedContentFileNode.sourceRef &&
+      selectedObjectId &&
+      selectedProjectObject
+    ) {
+      setWorkspaceReusableRequest({
+        initialName: selectedProjectObject.name,
+        objectId: selectedObjectId,
+        type: "objectSelection"
+      });
+      return;
+    }
+
+    if (selectedContentFileNode?.kind === "tableSetup" && selectedTableSetupItem?.type === "localObject") {
+      setWorkspaceReusableRequest({
+        initialName: selectedTableSetupItem.object.name,
+        itemId: getProjectTableSetupItemId(selectedTableSetupItem),
+        type: "tableLocalItem"
+      });
+    }
+  }
+
+  function handleCreateWorkspaceReusableObject(name: string) {
+    if (!workspaceReusableRequest || !selectedContentFileNode) {
+      return;
+    }
+
+    if (workspaceReusableRequest.type === "objectSelection") {
+      const result = createReusableObjectFromSelection({
+        fileTree,
+        name,
+        objectFileNodeId: selectedContentFileNode.id,
+        objectId: workspaceReusableRequest.objectId
+      });
+
+      if (!result) {
+        return;
+      }
+
+      setWorkspaceReusableRequest(null);
+      persistFileTree(result.fileTree, "Create reusable object");
+      selectObject(result.selectedObjectId ?? workspaceReusableRequest.objectId);
+      return;
+    }
+
+    const result = saveTableLocalObjectAsReusable({
+      fileTree,
+      itemId: workspaceReusableRequest.itemId,
+      name,
+      tableSetupFileNodeId: selectedContentFileNode.id
+    });
+
+    if (!result) {
+      return;
+    }
+
+    setWorkspaceReusableRequest(null);
+    persistFileTree(result.fileTree, "Save reusable object");
+    selectTableSetupItems([result.selectedTableSetupItemId ?? workspaceReusableRequest.itemId]);
+  }
+
+  function handleMakeWorkspaceObjectIndependent() {
+    setWorkspaceContextMenu(null);
+
+    if (selectedContentFileNode?.kind === "object" && selectedContentFileNode.sourceRef) {
+      const result = detachLinkedObjectFile({
+        fileTree,
+        objectFileNodeId: selectedContentFileNode.id
+      });
+
+      if (!result) {
+        return;
+      }
+
+      persistFileTree(result.fileTree, "Make independent");
+      selectObject(result.selectedObjectId ?? selectedObjectId);
+      return;
+    }
+
+    if (
+      selectedContentFileNode?.kind === "tableSetup" &&
+      selectedTableSetupItem?.type === "linkedObject"
+    ) {
+      const itemId = getProjectTableSetupItemId(selectedTableSetupItem);
+      const result = detachLinkedTableItem({
+        fileTree,
+        itemId,
+        tableSetupFileNodeId: selectedContentFileNode.id
+      });
+
+      if (!result) {
+        return;
+      }
+
+      persistFileTree(result.fileTree, "Make independent");
+      selectTableSetupItems([result.selectedTableSetupItemId ?? itemId]);
+    }
+  }
+
+  function handleWorkspaceDelete() {
+    setWorkspaceContextMenu(null);
+
+    if (
+      selectedContentFileNode?.kind === "object" &&
+      !selectedContentFileNode.sourceRef &&
+      selectedObjectId
+    ) {
+      const objectTree = selectedContentFileNode.objectTree ?? [];
+      const selectedLocation = findProjectObjectNodeLocation(objectTree, selectedObjectId);
+
+      if (!selectedLocation || isSingleObjectFileRoot(objectTree, selectedObjectId)) {
+        return;
+      }
+
+      const nextObjectTree = deleteProjectObjectNode(objectTree, selectedObjectId);
+
+      if (nextObjectTree === objectTree) {
+        return;
+      }
+
+      executeEditorCommand(
+        createUpdateProjectObjectTreeCommand({
+          after: nextObjectTree,
+          before: objectTree,
+          fileNodeId: selectedContentFileNode.id,
+          label: "Delete object"
+        })
+      );
+      selectObject(selectedLocation.parentId ?? null);
+      return;
+    }
+
+    if (selectedContentFileNode?.kind === "tableSetup" && selectedTableSetup) {
+      let nextTableSetup = selectedTableSetup;
+
+      for (const itemId of selectedObjectIds) {
+        nextTableSetup = getProjectTableSetupWithRemovedItem(nextTableSetup, itemId);
+      }
+
+      if (nextTableSetup === selectedTableSetup) {
+        return;
+      }
+
+      persistTableSetup(selectedContentFileNode.id, nextTableSetup, "Delete table item");
+      selectObject(null);
+    }
+  }
+
   useEffect(() => {
     function handleWorkspaceNudgeKey(event: KeyboardEvent) {
       const delta = getKeyboardNudgeDelta(event, selectedTableSetup?.grid.size);
@@ -697,29 +890,31 @@ function ProjectWorkspaceContent({
     }
 
     function handleKeyDown(event: KeyboardEvent) {
+      if (shouldIgnoreWorkspaceShortcut(event)) {
+        return;
+      }
+
       const key = getKeyboardShortcutKey(event);
       const commandModifierPressed = event.metaKey || event.ctrlKey;
 
-      if (!commandModifierPressed || isEditableKeyboardTarget(event.target)) {
-        if (!commandModifierPressed) {
-          const nudged = handleWorkspaceNudgeKey(event);
+      if (!commandModifierPressed) {
+        const nudged = handleWorkspaceNudgeKey(event);
 
-          if (nudged) {
-            return;
-          }
+        if (nudged) {
+          return;
+        }
 
-          if (event.key === "Escape" && selectedContentFileNode?.kind === "tableSetup") {
-            event.preventDefault();
-            selectObject(null);
-            return;
-          }
+        if (event.key === "Escape" && selectedContentFileNode?.kind === "tableSetup") {
+          event.preventDefault();
+          selectObject(null);
+          return;
+        }
 
-          const nextTool = getKeyboardToolShortcut(event);
+        const nextTool = getKeyboardToolShortcut(event);
 
-          if (nextTool) {
-            event.preventDefault();
-            setActiveTool(nextTool);
-          }
+        if (nextTool) {
+          event.preventDefault();
+          setActiveTool(nextTool);
         }
 
         return;
@@ -796,12 +991,12 @@ function ProjectWorkspaceContent({
     undo
   ]);
 
-  function persistFileTree(nextFileTree: ProjectFileNode[]) {
+  function persistFileTree(nextFileTree: ProjectFileNode[], label = "Update file tree") {
     executeEditorCommand(
       createReplaceProjectFileTreeCommand({
         after: nextFileTree,
         before: fileTree,
-        label: "Update file tree"
+        label
       })
     );
   }
@@ -949,6 +1144,55 @@ function ProjectWorkspaceContent({
   const canExport =
     selectedContentFileNode?.kind === "object" || selectedContentFileNode?.kind === "tableSetup";
   const canPrint = getPrintableObjectFileNodes(fileTree, selectedFileNode).length > 0 || canExport;
+  const workspaceContextObjectIsRoot = Boolean(
+    selectedObjectId &&
+      selectedContentFileNode?.kind === "object" &&
+      isSingleObjectFileRoot(selectedContentFileNode.objectTree ?? [], selectedObjectId)
+  );
+  const workspaceContextMenuActions = createWorkspaceContextMenuActions({
+    canCopy: Boolean(selectedProjectObject || selectedTableSetupItem),
+    canCreateReusable: Boolean(
+      (selectedContentFileNode?.kind === "object" &&
+        !selectedContentFileNode.sourceRef &&
+        selectedProjectObject) ||
+        (selectedContentFileNode?.kind === "tableSetup" &&
+          selectedTableSetupItem?.type === "localObject")
+    ),
+    canDelete: Boolean(
+      (selectedContentFileNode?.kind === "object" &&
+        !selectedContentFileNode.sourceRef &&
+        selectedObjectId &&
+        !workspaceContextObjectIsRoot) ||
+        (selectedContentFileNode?.kind === "tableSetup" && selectedObjectIds.length > 0)
+    ),
+    canDuplicate: Boolean(
+      (selectedContentFileNode?.kind === "object" &&
+        !selectedContentFileNode.sourceRef &&
+        selectedObjectId &&
+        !workspaceContextObjectIsRoot) ||
+        (selectedContentFileNode?.kind === "tableSetup" && selectedObjectIds.length > 0)
+    ),
+    canMakeIndependent: Boolean(
+      (selectedContentFileNode?.kind === "object" && selectedContentFileNode.sourceRef) ||
+        (selectedContentFileNode?.kind === "tableSetup" &&
+          selectedTableSetupItem?.type === "linkedObject")
+    ),
+    onCopy: () => {
+      setWorkspaceContextMenu(null);
+      handleWorkspaceCopy();
+    },
+    onCreateReusable: handleRequestWorkspaceReusableObject,
+    onDelete: handleWorkspaceDelete,
+    onDuplicate: () => {
+      setWorkspaceContextMenu(null);
+      handleWorkspaceDuplicate();
+    },
+    onMakeIndependent: handleMakeWorkspaceObjectIndependent,
+    reusableLabel:
+      selectedContentFileNode?.kind === "tableSetup"
+        ? "Save as reusable object"
+        : "Create reusable object"
+  });
 
   return (
     <section
@@ -1002,6 +1246,7 @@ function ProjectWorkspaceContent({
         canPrint={canPrint}
         onPosition={handlePositionTableItems}
         onExportPng={handleExportPng}
+        onObjectContextMenu={handleWorkspaceObjectContextMenu}
         onPrintSheets={handlePrintSheets}
         onSelectObject={selectObject}
         onSelectObjects={selectObjects}
@@ -1064,6 +1309,7 @@ function ProjectWorkspaceContent({
             tableSetup={selectedTableSetup}
             tableSetupLocalItem={selectedTableSetupLocalItem}
             onExitTableSetupLocalObject={handleExitTableSetupLocalObject}
+            onFileTreeChange={persistFileTree}
             onObjectTreeChange={persistObjectTree}
             onOpenTableSetupItemObject={handleOpenTableSetupItemObject}
             onTableSetupChange={(tableSetup, label) =>
@@ -1076,6 +1322,31 @@ function ProjectWorkspaceContent({
           />
         </div>
       </div>
+      <ContextMenu
+        actions={workspaceContextMenuActions}
+        ariaLabel="Workspace object context menu"
+        open={Boolean(workspaceContextMenu)}
+        x={workspaceContextMenu?.x ?? 0}
+        y={workspaceContextMenu?.y ?? 0}
+        onOpenChange={(open) => {
+          if (!open) {
+            setWorkspaceContextMenu(null);
+          }
+        }}
+      />
+      {workspaceReusableRequest ? (
+        <ReusableObjectNameModal
+          initialName={workspaceReusableRequest.initialName}
+          opened
+          title={
+            workspaceReusableRequest.type === "objectSelection"
+              ? "Create reusable object"
+              : "Save as reusable object"
+          }
+          onClose={() => setWorkspaceReusableRequest(null)}
+          onCreate={handleCreateWorkspaceReusableObject}
+        />
+      ) : null}
     </section>
   );
 }
@@ -1156,17 +1427,71 @@ function ProjectWorkspaceHeader({ project, onBack }: ProjectWorkspaceHeaderProps
   );
 }
 
-function isEditableKeyboardTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return (
-    target.isContentEditable ||
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement
-  );
+function createWorkspaceContextMenuActions({
+  canCopy,
+  canCreateReusable,
+  canDelete,
+  canDuplicate,
+  canMakeIndependent,
+  onCopy,
+  onCreateReusable,
+  onDelete,
+  onDuplicate,
+  onMakeIndependent,
+  reusableLabel
+}: {
+  canCopy: boolean;
+  canCreateReusable: boolean;
+  canDelete: boolean;
+  canDuplicate: boolean;
+  canMakeIndependent: boolean;
+  onCopy: () => void;
+  onCreateReusable: () => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onMakeIndependent: () => void;
+  reusableLabel: string;
+}): ContextMenuAction[] {
+  return [
+    {
+      id: "create-reusable",
+      label: reusableLabel,
+      icon: <Boxes size={14} />,
+      disabled: !canCreateReusable,
+      onSelect: onCreateReusable
+    },
+    {
+      id: "make-independent",
+      label: "Make independent",
+      icon: <Unlink size={14} />,
+      disabled: !canMakeIndependent,
+      onSelect: onMakeIndependent
+    },
+    {
+      id: "duplicate",
+      label: "Duplicate",
+      icon: <CopyPlus size={14} />,
+      disabled: !canDuplicate,
+      separatorBefore: true,
+      onSelect: onDuplicate
+    },
+    {
+      id: "copy",
+      label: "Copy",
+      icon: <Copy size={14} />,
+      disabled: !canCopy,
+      onSelect: onCopy
+    },
+    {
+      id: "delete",
+      label: "Delete",
+      icon: <Trash2 size={14} />,
+      destructive: true,
+      disabled: !canDelete,
+      separatorBefore: true,
+      onSelect: onDelete
+    }
+  ];
 }
 
 function getKeyboardShortcutKey(event: KeyboardEvent) {

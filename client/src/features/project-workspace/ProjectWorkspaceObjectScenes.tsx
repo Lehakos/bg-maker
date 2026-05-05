@@ -78,6 +78,7 @@ type ProjectWorkspaceSceneProps = {
   tableSetup?: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onCompositionSurfaceChange: (surface: CompositionSurfaceTarget | null) => void;
+  onObjectContextMenu?: (objectId: string, clientX: number, clientY: number) => void;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
@@ -95,6 +96,7 @@ export function TableLayoutWorkspace({
   tableSetup: resolvedTableSetup,
   onExecuteCommand,
   onCompositionSurfaceChange,
+  onObjectContextMenu,
   onSelectObject,
   onSelectObjects
 }: ProjectWorkspaceSceneProps) {
@@ -402,6 +404,7 @@ export function TableLayoutWorkspace({
                 composition={composition}
                 tableSetup={tableSetup}
                 onExecuteCommand={onExecuteCommand}
+                onObjectContextMenu={onObjectContextMenu}
                 onRectTransformPreviewChange={handleTableItemRectTransformPreviewChange}
                 onRectTransformPreviewEnd={handleTableItemRectTransformPreviewEnd}
                 onSnapIndicatorsChange={setSnapIndicators}
@@ -460,6 +463,7 @@ export function ObjectFileWorkspace({
   selectedObjectIds,
   onExecuteCommand,
   onCompositionSurfaceChange,
+  onObjectContextMenu,
   onSelectObject,
   onSelectObjects
 }: ProjectWorkspaceSceneProps) {
@@ -479,6 +483,7 @@ export function ObjectFileWorkspace({
           size="large"
           onExecuteCommand={onExecuteCommand}
           onCompositionSurfaceChange={onCompositionSurfaceChange}
+          onObjectContextMenu={onObjectContextMenu}
           onSelectObject={onSelectObject}
           onSelectObjects={onSelectObjects}
         />
@@ -623,6 +628,7 @@ type TableSetupSceneProps = {
     after: ProjectObjectRectTransform,
     label: string
   ) => void;
+  onObjectContextMenu?: (objectId: string, clientX: number, clientY: number) => void;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
@@ -642,6 +648,7 @@ function TableSetupScene({
   onRectTransformPreviewEnd,
   onSnapIndicatorsChange,
   onRectTransformChange,
+  onObjectContextMenu,
   onSelectObject,
   onSelectObjects
 }: TableSetupSceneProps) {
@@ -754,6 +761,7 @@ function TableSetupScene({
             onDieFaceChange={handleDieFaceChange}
             onExecuteCommand={onExecuteCommand}
             onImageAssetDrop={item.type === "localObject" ? handleLocalImageAssetDrop : undefined}
+            onObjectContextMenu={onObjectContextMenu}
             onObjectSideChange={handleObjectSideChange}
             onRectTransformPreviewChange={onRectTransformPreviewChange}
             onRectTransformPreviewEnd={onRectTransformPreviewEnd}
@@ -810,6 +818,7 @@ type ObjectSceneProps = {
   size: ObjectSceneSize;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
   onCompositionSurfaceChange: (surface: CompositionSurfaceTarget | null) => void;
+  onObjectContextMenu?: (objectId: string, clientX: number, clientY: number) => void;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
@@ -826,6 +835,7 @@ function ObjectScene({
   size,
   onExecuteCommand,
   onCompositionSurfaceChange,
+  onObjectContextMenu,
   onSelectObject,
   onSelectObjects
 }: ObjectSceneProps) {
@@ -1017,6 +1027,7 @@ function ObjectScene({
           onDieFaceChange={handleDieFaceChange}
           onExecuteCommand={onExecuteCommand}
           onImageAssetDrop={handleImageAssetDrop}
+          onObjectContextMenu={onObjectContextMenu}
           onObjectSideChange={handleObjectSideChange}
           onRectTransformPreviewEnd={() => setSnapIndicators([])}
           onSnapIndicatorsChange={setSnapIndicators}

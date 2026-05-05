@@ -30,6 +30,7 @@ import {
   setProjectObjectNodeComposition
 } from "../project-objects/project-object-tree";
 import { getProjectCompositionSettings } from "./composition-guides";
+import { isSpacePanShortcutTargetBlocked } from "./workspace-keyboard-shortcuts";
 
 type ProjectWorkspaceAreaProps = {
   canRedo: boolean;
@@ -55,6 +56,7 @@ type ProjectWorkspaceAreaProps = {
   canPrint: boolean;
   onPosition: (position: TableSetupPositionPreset) => void;
   onExportPng: () => void;
+  onObjectContextMenu?: (objectId: string, clientX: number, clientY: number) => void;
   onPrintSheets: () => void;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
@@ -85,6 +87,7 @@ export function ProjectWorkspaceArea({
   canPrint,
   onPosition,
   onExportPng,
+  onObjectContextMenu,
   onPrintSheets,
   onSelectObject,
   onSelectObjects,
@@ -176,7 +179,7 @@ export function ProjectWorkspaceArea({
     function handleKeyDown(event: KeyboardEvent) {
       if (
         event.code !== "Space" ||
-        isSpacePanKeyboardTargetBlocked(event.target, scrollContainerRef.current)
+        isSpacePanShortcutTargetBlocked(event.target, scrollContainerRef.current)
       ) {
         return;
       }
@@ -407,6 +410,7 @@ export function ProjectWorkspaceArea({
             tableSetup={tableSetup}
             onExecuteCommand={onExecuteCommand}
             onCompositionSurfaceChange={handleCompositionSurfaceChange}
+            onObjectContextMenu={onObjectContextMenu}
             onSelectObject={onSelectObject}
             onSelectObjects={onSelectObjects}
           />
@@ -426,31 +430,6 @@ export function ProjectWorkspaceArea({
   );
 }
 
-function isSpacePanKeyboardTargetBlocked(
-  target: EventTarget | null,
-  scrollContainer: HTMLElement | null
-) {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  if (
-    scrollContainer &&
-    target !== document.body &&
-    target !== document.documentElement &&
-    !scrollContainer.contains(target)
-  ) {
-    return true;
-  }
-
-  return (
-    target.isContentEditable ||
-    target instanceof HTMLButtonElement ||
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement
-  );
-}
 
 function getObjectTreeApproximateSize(
   objectTree: ReturnType<typeof resolveProjectObjectFileObjectTree>
