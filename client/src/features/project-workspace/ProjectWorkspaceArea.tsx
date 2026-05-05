@@ -26,7 +26,10 @@ type ProjectWorkspaceAreaProps = {
   selectedNodeId: string | null;
   tableSetup: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onCloseAllTabs: () => void;
+  onCloseOtherTabs: (nodeId: string) => void;
   onCloseTab: (nodeId: string) => void;
+  onCloseTabsToRight: (nodeId: string) => void;
   onOpenTab: (nodeId: string) => void;
   onRedo: () => void;
   selectedObjectId: string | null;
@@ -53,7 +56,10 @@ export function ProjectWorkspaceArea({
   selectedNodeId,
   tableSetup,
   onExecuteCommand,
+  onCloseAllTabs,
+  onCloseOtherTabs,
   onCloseTab,
+  onCloseTabsToRight,
   onOpenTab,
   onRedo,
   selectedObjectId,
@@ -237,7 +243,10 @@ export function ProjectWorkspaceArea({
         activeNodeId={selectedNodeId}
         fileTree={fileTree}
         openTabIds={openTabIds}
+        onCloseAllTabs={onCloseAllTabs}
+        onCloseOtherTabs={onCloseOtherTabs}
         onCloseTab={onCloseTab}
+        onCloseTabsToRight={onCloseTabsToRight}
         onOpenTab={onOpenTab}
       />
       <ProjectWorkspaceToolbar

@@ -13,6 +13,7 @@ pleasant for building objects and table setups.
 - [x] Add align and distribute commands for selected objects.
 - [x] Add z-order controls for table setup items and sibling objects.
 - [x] Add lock/unlock so background boards and guides are not moved accidentally.
+- [x] Improve the open tabs panel with a context menu for closing all tabs, tabs to the right, other tabs, and related tab actions.
 - [x] Add zoom-to-fit and pan controls for the viewport.
 - [x] Add export for object previews and table setup screenshots.
 - [x] Add print/export sheets for cards, tokens, and tiles.

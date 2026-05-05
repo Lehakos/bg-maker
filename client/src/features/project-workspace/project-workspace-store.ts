@@ -89,7 +89,10 @@ export type ProjectWorkspaceStoreState = {
   canRedo: boolean;
   canUndo: boolean;
   canvasScale: number;
+  closeAllWorkspaceTabs: () => void;
+  closeOtherWorkspaceTabs: (nodeId: string) => void;
   closeWorkspaceTab: (nodeId: string) => void;
+  closeWorkspaceTabsToRight: (nodeId: string) => void;
   clipboard: ProjectWorkspaceClipboard;
   executeCommand: (command: ProjectEditorCommand) => void;
   fileTree: ProjectFileNode[];
@@ -138,7 +141,61 @@ export function createProjectWorkspaceStore({
     canRedo: false,
     canUndo: false,
     canvasScale: defaultCanvasScale,
+    closeAllWorkspaceTabs: () => {
+      const state = get();
+      const nextTabState = getProjectWorkspaceClosedTabState({
+        fileTree: state.fileTree,
+        openTabIds: state.openTabIds,
+        selectedNodeId: state.selectedNodeId,
+        tabIdsToClose: state.openTabIds
+      });
+
+      if (nextTabState.openTabIds === state.openTabIds) {
+        return;
+      }
+
+      writeProjectWorkspaceOpenTabIds(state.projectId, nextTabState.openTabIds);
+      set(nextTabState);
+    },
+    closeOtherWorkspaceTabs: (nodeId) => {
+      const state = get();
+
+      if (!state.openTabIds.includes(nodeId)) {
+        return;
+      }
+
+      const nextTabState = getProjectWorkspaceClosedTabState({
+        fileTree: state.fileTree,
+        openTabIds: state.openTabIds,
+        preferredSelectedNodeId: nodeId,
+        selectedNodeId: state.selectedNodeId,
+        tabIdsToClose: state.openTabIds.filter((openTabId) => openTabId !== nodeId)
+      });
+
+      if (nextTabState.openTabIds === state.openTabIds) {
+        return;
+      }
+
+      writeProjectWorkspaceOpenTabIds(state.projectId, nextTabState.openTabIds);
+      set(nextTabState);
+    },
     closeWorkspaceTab: (nodeId) => {
+      const state = get();
+      const nextTabState = getProjectWorkspaceClosedTabState({
+        fileTree: state.fileTree,
+        openTabIds: state.openTabIds,
+        selectedNodeId: state.selectedNodeId,
+        tabIdsToClose: [nodeId]
+      });
+
+      if (nextTabState.openTabIds === state.openTabIds) {
+        return;
+      }
+
+      writeProjectWorkspaceOpenTabIds(state.projectId, nextTabState.openTabIds);
+      set(nextTabState);
+    },
+    closeWorkspaceTabsToRight: (nodeId) => {
       const state = get();
       const openTabIndex = state.openTabIds.indexOf(nodeId);
 
@@ -146,14 +203,20 @@ export function createProjectWorkspaceStore({
         return;
       }
 
-      const openTabIds = state.openTabIds.filter((id) => id !== nodeId);
-      const selectedNodeId =
-        state.selectedNodeId === nodeId
-          ? (openTabIds[openTabIndex] ?? openTabIds[openTabIndex - 1] ?? state.fileTree[0]?.id ?? null)
-          : state.selectedNodeId;
+      const nextTabState = getProjectWorkspaceClosedTabState({
+        fileTree: state.fileTree,
+        openTabIds: state.openTabIds,
+        preferredSelectedNodeId: nodeId,
+        selectedNodeId: state.selectedNodeId,
+        tabIdsToClose: state.openTabIds.slice(openTabIndex + 1)
+      });
 
-      writeProjectWorkspaceOpenTabIds(state.projectId, openTabIds);
-      set({ openTabIds, selectedNodeId });
+      if (nextTabState.openTabIds === state.openTabIds) {
+        return;
+      }
+
+      writeProjectWorkspaceOpenTabIds(state.projectId, nextTabState.openTabIds);
+      set(nextTabState);
     },
     clipboard: null,
     executeCommand: (command) => {
@@ -659,6 +722,78 @@ function getValidProjectTableSetupItemIds(
 
 function addProjectWorkspaceOpenTabId(openTabIds: string[], nodeId: string) {
   return openTabIds.includes(nodeId) ? openTabIds : [...openTabIds, nodeId];
+}
+
+type ProjectWorkspaceClosedTabStateOptions = {
+  fileTree: ProjectFileNode[];
+  openTabIds: string[];
+  preferredSelectedNodeId?: string | null;
+  selectedNodeId: string | null;
+  tabIdsToClose: readonly string[];
+};
+
+function getProjectWorkspaceClosedTabState({
+  fileTree,
+  openTabIds,
+  preferredSelectedNodeId = null,
+  selectedNodeId,
+  tabIdsToClose
+}: ProjectWorkspaceClosedTabStateOptions): Pick<
+  ProjectWorkspaceStoreState,
+  "openTabIds" | "selectedNodeId"
+> {
+  const tabIdsToCloseSet = new Set(tabIdsToClose);
+  const firstClosedTabIndex = openTabIds.findIndex((nodeId) => tabIdsToCloseSet.has(nodeId));
+
+  if (firstClosedTabIndex < 0) {
+    return { openTabIds, selectedNodeId };
+  }
+
+  const nextOpenTabIds = openTabIds.filter((nodeId) => !tabIdsToCloseSet.has(nodeId));
+  const nextSelectedNodeId = getSelectedNodeIdAfterClosingWorkspaceTabs({
+    fileTree,
+    firstClosedTabIndex,
+    openTabIds: nextOpenTabIds,
+    preferredSelectedNodeId,
+    selectedNodeId,
+    tabIdsToClose: tabIdsToCloseSet
+  });
+
+  return {
+    openTabIds: nextOpenTabIds,
+    selectedNodeId: nextSelectedNodeId
+  };
+}
+
+function getSelectedNodeIdAfterClosingWorkspaceTabs({
+  fileTree,
+  firstClosedTabIndex,
+  openTabIds,
+  preferredSelectedNodeId,
+  selectedNodeId,
+  tabIdsToClose
+}: {
+  fileTree: ProjectFileNode[];
+  firstClosedTabIndex: number;
+  openTabIds: string[];
+  preferredSelectedNodeId: string | null;
+  selectedNodeId: string | null;
+  tabIdsToClose: ReadonlySet<string>;
+}) {
+  if (!selectedNodeId || !tabIdsToClose.has(selectedNodeId)) {
+    return selectedNodeId;
+  }
+
+  if (preferredSelectedNodeId && openTabIds.includes(preferredSelectedNodeId)) {
+    return preferredSelectedNodeId;
+  }
+
+  return (
+    openTabIds[firstClosedTabIndex] ??
+    openTabIds[firstClosedTabIndex - 1] ??
+    fileTree[0]?.id ??
+    null
+  );
 }
 
 function pruneProjectWorkspaceOpenTabIds(openTabIds: string[], fileTree: ProjectFileNode[]) {

@@ -318,6 +318,89 @@ describe("project workspace store", () => {
     expect(store.getState().openTabIds).toEqual([]);
   });
 
+  it("closes workspace tab groups while keeping the active selection sensible", () => {
+    const tabFileTree: ProjectFileNode[] = [
+      {
+        id: "workspace",
+        name: "Workspace",
+        type: "folder",
+        children: [
+          {
+            id: "object-a",
+            kind: "object",
+            name: "Object A",
+            objectTree: [],
+            type: "file"
+          },
+          {
+            id: "object-b",
+            kind: "object",
+            name: "Object B",
+            objectTree: [],
+            type: "file"
+          },
+          {
+            id: "object-c",
+            kind: "object",
+            name: "Object C",
+            objectTree: [],
+            type: "file"
+          },
+          {
+            id: "setup",
+            kind: "tableSetup",
+            name: "Setup",
+            tableSetup: {
+              backgroundColor: "#6f8b70",
+              grid: { size: 50, snap: false, visible: true },
+              height: 600,
+              items: [],
+              width: 900
+            },
+            type: "file"
+          }
+        ]
+      }
+    ];
+    const store = createProjectWorkspaceStore({
+      initialFileTree: tabFileTree,
+      projectId: "project-tabs",
+      saveFileTree: () => undefined
+    });
+
+    store.getState().openWorkspaceNode("object-a");
+    store.getState().openWorkspaceNode("object-b");
+    store.getState().openWorkspaceNode("object-c");
+    store.getState().openWorkspaceNode("setup");
+    expect(store.getState().openTabIds).toEqual(["object-a", "object-b", "object-c", "setup"]);
+
+    store.getState().openWorkspaceNode("object-c");
+    store.getState().closeWorkspaceTabsToRight("object-b");
+    expect(store.getState().openTabIds).toEqual(["object-a", "object-b"]);
+    expect(getProjectWorkspaceSelection(store.getState()).effectiveSelectedNodeId).toBe(
+      "object-b"
+    );
+
+    store.getState().openWorkspaceNode("object-c");
+    store.getState().openWorkspaceNode("setup");
+    store.getState().closeOtherWorkspaceTabs("object-c");
+    expect(store.getState().openTabIds).toEqual(["object-c"]);
+    expect(getProjectWorkspaceSelection(store.getState()).effectiveSelectedNodeId).toBe(
+      "object-c"
+    );
+
+    store.getState().closeOtherWorkspaceTabs("missing");
+    expect(store.getState().openTabIds).toEqual(["object-c"]);
+
+    store.getState().openWorkspaceNode("object-a");
+    store.getState().openWorkspaceNode("object-b");
+    store.getState().closeAllWorkspaceTabs();
+    expect(store.getState().openTabIds).toEqual([]);
+    expect(getProjectWorkspaceSelection(store.getState()).effectiveSelectedNodeId).toBe(
+      "workspace"
+    );
+  });
+
   it("opens linked table setup sources in object tabs", () => {
     const tableFileTree: ProjectFileNode[] = [
       ...initialFileTree,

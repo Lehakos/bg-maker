@@ -181,7 +181,14 @@ function ProjectWorkspaceContent({
   const fileTree = useProjectWorkspaceStore((state) => state.fileTree);
   const canRedo = useProjectWorkspaceStore((state) => state.canRedo);
   const canUndo = useProjectWorkspaceStore((state) => state.canUndo);
+  const closeAllWorkspaceTabs = useProjectWorkspaceStore((state) => state.closeAllWorkspaceTabs);
+  const closeOtherWorkspaceTabs = useProjectWorkspaceStore(
+    (state) => state.closeOtherWorkspaceTabs
+  );
   const closeWorkspaceTab = useProjectWorkspaceStore((state) => state.closeWorkspaceTab);
+  const closeWorkspaceTabsToRight = useProjectWorkspaceStore(
+    (state) => state.closeWorkspaceTabsToRight
+  );
   const executeEditorCommand = useProjectWorkspaceStore((state) => state.executeCommand);
   const openObjectForEditing = useProjectWorkspaceStore((state) => state.openObjectForEditing);
   const openTabIds = useProjectWorkspaceStore((state) => state.openTabIds);
@@ -980,7 +987,10 @@ function ProjectWorkspaceContent({
         tableSetup={selectedTableSetup}
         canRedo={canRedo}
         canUndo={canUndo}
+        onCloseAllTabs={closeAllWorkspaceTabs}
+        onCloseOtherTabs={closeOtherWorkspaceTabs}
         onCloseTab={closeWorkspaceTab}
+        onCloseTabsToRight={closeWorkspaceTabsToRight}
         onExecuteCommand={executeEditorCommand}
         onOpenTab={openWorkspaceNode}
         onRedo={redo}
