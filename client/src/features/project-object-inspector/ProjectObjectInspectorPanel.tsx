@@ -6,7 +6,6 @@ import type {
   ProjectObjectCardSizePresetValue,
   ProjectObjectContainer,
   ProjectObjectCounter,
-  ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectIcon,
   ProjectObjectImage,
@@ -14,6 +13,7 @@ import type {
   ProjectObjectLayout,
   ProjectObjectMeeple,
   ProjectObjectNode,
+  ProjectObjectScoreTrack,
   ProjectObjectShape,
   ProjectObjectShapePoint,
   ProjectObjectTemplate,
@@ -32,17 +32,19 @@ import {
   getDefaultProjectObjectVariableValue,
   getDefaultProjectObjectCounter,
   getDefaultProjectObjectBag,
-  getDefaultProjectObjectDeck,
   getDefaultProjectObjectDie,
   getDefaultProjectObjectIcon,
   getDefaultProjectObjectMeeple,
+  getDefaultProjectObjectScoreTrack,
   getDefaultProjectObjectStackDisplay,
   getDefaultProjectObjectZone,
   getProjectObjectContainerAcceptedObjectKinds,
   getProjectObjectContainerTotalCount,
   getProjectObjectVariableDefaultValues,
   hasProjectObjectLayout,
+  hasProjectObjectSides,
   isProjectObjectCardSizePresetLocked,
+  projectObjectScoreTrackMarkerCountLimits,
   projectObjectCardCustomSizePresetId,
   projectObjectCardSizePresets,
   projectTableSetupGridSizeLimits,
@@ -65,7 +67,6 @@ import {
   getProjectObjectNodeCard,
   getProjectObjectNodeContainer,
   getProjectObjectNodeCounter,
-  getProjectObjectNodeDeck,
   getProjectObjectNodeDie,
   getProjectObjectNodeDoubleSide,
   getProjectObjectNodeIcon,
@@ -73,6 +74,7 @@ import {
   getProjectObjectNodeLayout,
   getProjectObjectNodeMeeple,
   getProjectObjectNodeRectTransform,
+  getProjectObjectNodeScoreTrack,
   getProjectObjectNodeShape,
   getProjectObjectNodeStackDisplay,
   getProjectObjectNodeText,
@@ -83,7 +85,6 @@ import {
   setProjectObjectNodeCard,
   setProjectObjectNodeContainer,
   setProjectObjectNodeCounter,
-  setProjectObjectNodeDeck,
   setProjectObjectNodeDie,
   setProjectObjectNodeDoubleSide,
   setProjectObjectNodeIcon,
@@ -91,6 +92,7 @@ import {
   setProjectObjectNodeLayout,
   setProjectObjectNodeMeeple,
   setProjectObjectNodeRectTransform,
+  setProjectObjectNodeScoreTrack,
   setProjectObjectNodeShape,
   setProjectObjectNodeStackDisplay,
   setProjectObjectNodeText,
@@ -104,12 +106,12 @@ import {
   createBagDraft,
   createCardDraft,
   createCounterDraft,
-  createDeckDraft,
   createDieDraft,
   createIconDraft,
   createImageDraft,
   createLayoutDraft,
   createMeepleDraft,
+  createScoreTrackDraft,
   createStackDisplayDraft,
   createTextDraft,
   createZoneDraft,
@@ -122,6 +124,7 @@ import {
   formatLayoutNumberValue,
   formatRectTransformValue,
   formatStackDisplayNumberValue,
+  formatScoreTrackMarkerValue,
   formatTextNumberValue,
   formatZoneNumberValue,
   getAppearanceWithDraftField,
@@ -133,7 +136,6 @@ import {
   getContainerWithMovedEntry,
   getContainerWithRemovedEntry,
   getCounterWithDraftField,
-  getDeckWithDraftField,
   getDieFace,
   getDieWithDraftField,
   getDieWithFaceField,
@@ -149,6 +151,10 @@ import {
   getShapeWithPolygonPointDraftField,
   getShapeWithRemovedPolygonPoint,
   getShapeWithVariant,
+  getScoreTrackWithAddedMarker,
+  getScoreTrackWithDraftField,
+  getScoreTrackWithMarkerField,
+  getScoreTrackWithRemovedMarker,
   getStackDisplayWithDraftField,
   getTextFontStyleForItalic,
   getTextFontWeightForBold,
@@ -163,6 +169,8 @@ import {
   normalizeDieNumberValue,
   normalizeImageNumberValue,
   normalizeLayoutNumberValue,
+  normalizeScoreTrackMarkerValue,
+  normalizeScoreTrackNumberValue,
   normalizeStackDisplayNumberValue,
   normalizeTextNumberValue,
   normalizeZoneNumberValue,
@@ -180,8 +188,6 @@ import {
   type CounterDraft,
   type CounterFieldKey,
   type CounterNumberFieldKey,
-  type DeckDraft,
-  type DeckFieldKey,
   type DieDraft,
   type DieFaceFieldKey,
   type DieFieldKey,
@@ -195,6 +201,10 @@ import {
   type MeepleFieldKey,
   type RectTransformDraft,
   type RectTransformFieldKey,
+  type ScoreTrackDraft,
+  type ScoreTrackFieldKey,
+  type ScoreTrackMarkerFieldKey,
+  type ScoreTrackNumberFieldKey,
   type ShapePolygonPointFieldKey,
   type StackDisplayDraft,
   type StackDisplayFieldKey,
@@ -226,13 +236,13 @@ import { ProjectObjectHeaderSection } from "./ProjectObjectHeaderSection";
 import {
   ProjectObjectCounterSection,
   ProjectObjectDieSection,
-  ProjectObjectDoubleSidedSection
+  ProjectObjectDoubleSidedSection,
+  ProjectObjectScoreTrackSection
 } from "./ProjectObjectMechanicsSections";
 import {
   ProjectObjectBagSection,
   ProjectObjectCardSection,
   ProjectObjectContainerSection,
-  ProjectObjectDeckSection,
   ProjectObjectMeepleSection,
   ProjectObjectStackSection,
   ProjectObjectZoneSection
@@ -443,10 +453,6 @@ export function ProjectObjectInspectorPanel({
     () => (selectedObject?.kind === "counter" ? getProjectObjectNodeCounter(selectedObject) : null),
     [selectedObject]
   );
-  const deck = useMemo(
-    () => (selectedObject?.kind === "deck" ? getProjectObjectNodeDeck(selectedObject) : null),
-    [selectedObject]
-  );
   const bag = useMemo(
     () => (selectedObject?.kind === "bag" ? getProjectObjectNodeBag(selectedObject) : null),
     [selectedObject]
@@ -457,14 +463,23 @@ export function ProjectObjectInspectorPanel({
   );
   const container = useMemo(
     () =>
-      selectedObject?.kind === "deck" || selectedObject?.kind === "bag"
+      selectedObject?.kind === "deck" ||
+      selectedObject?.kind === "bag" ||
+      selectedObject?.kind === "stack"
         ? getProjectObjectNodeContainer(selectedObject)
         : null,
     [selectedObject]
   );
   const stackDisplay = useMemo(
     () =>
-      selectedObject?.kind === "deck" ? getProjectObjectNodeStackDisplay(selectedObject) : null,
+      selectedObject?.kind === "deck" || selectedObject?.kind === "stack"
+        ? getProjectObjectNodeStackDisplay(selectedObject)
+        : null,
+    [selectedObject]
+  );
+  const scoreTrack = useMemo(
+    () =>
+      selectedObject?.kind === "scoreTrack" ? getProjectObjectNodeScoreTrack(selectedObject) : null,
     [selectedObject]
   );
   const zone = useMemo(
@@ -477,7 +492,7 @@ export function ProjectObjectInspectorPanel({
   );
   const doubleSide = useMemo(
     () =>
-      selectedObject?.kind === "card" || selectedObject?.kind === "token"
+      selectedObject && hasProjectObjectSides(selectedObject.kind)
         ? getProjectObjectNodeDoubleSide(selectedObject)
         : null,
     [selectedObject]
@@ -503,7 +518,9 @@ export function ProjectObjectInspectorPanel({
   );
   const shape = useMemo(
     () =>
-      selectedObject?.kind === "shape" || selectedObject?.kind === "token"
+      selectedObject?.kind === "shape" ||
+      selectedObject?.kind === "token" ||
+      selectedObject?.kind === "tile"
         ? getProjectObjectNodeShape(selectedObject)
         : null,
     [selectedObject]
@@ -524,9 +541,6 @@ export function ProjectObjectInspectorPanel({
   const [counterDraft, setCounterDraft] = useState<CounterDraft>(() =>
     counter ? createCounterDraft(counter) : createCounterDraft(getFallbackCounterDraftValue())
   );
-  const [deckDraft, setDeckDraft] = useState<DeckDraft>(() =>
-    deck ? createDeckDraft(deck) : createDeckDraft(getFallbackDeckDraftValue())
-  );
   const [bagDraft, setBagDraft] = useState<BagDraft>(() =>
     bag ? createBagDraft(bag) : createBagDraft(getFallbackBagDraftValue())
   );
@@ -537,6 +551,11 @@ export function ProjectObjectInspectorPanel({
     stackDisplay
       ? createStackDisplayDraft(stackDisplay)
       : createStackDisplayDraft(getFallbackStackDisplayDraftValue())
+  );
+  const [scoreTrackDraft, setScoreTrackDraft] = useState<ScoreTrackDraft>(() =>
+    scoreTrack
+      ? createScoreTrackDraft(scoreTrack)
+      : createScoreTrackDraft(getFallbackScoreTrackDraftValue())
   );
   const [zoneDraft, setZoneDraft] = useState<ZoneDraft>(() =>
     zone ? createZoneDraft(zone) : createZoneDraft(getFallbackZoneDraftValue())
@@ -610,12 +629,6 @@ export function ProjectObjectInspectorPanel({
   }, [counter, selectedObject?.id]);
 
   useEffect(() => {
-    if (deck) {
-      setDeckDraft(createDeckDraft(deck));
-    }
-  }, [deck, selectedObject?.id]);
-
-  useEffect(() => {
     if (bag) {
       setBagDraft(createBagDraft(bag));
     }
@@ -632,6 +645,12 @@ export function ProjectObjectInspectorPanel({
       setStackDisplayDraft(createStackDisplayDraft(stackDisplay));
     }
   }, [selectedObject?.id, stackDisplay]);
+
+  useEffect(() => {
+    if (scoreTrack) {
+      setScoreTrackDraft(createScoreTrackDraft(scoreTrack));
+    }
+  }, [scoreTrack, selectedObject?.id]);
 
   useEffect(() => {
     if (zone) {
@@ -1169,11 +1188,9 @@ export function ProjectObjectInspectorPanel({
   }
 
   function isRectTransformFieldLocked(fieldKey: RectTransformFieldKey) {
-    const sizedObject = card ?? deck;
-
     const presetLocked = Boolean(
-      sizedObject &&
-      isProjectObjectCardSizePresetLocked(sizedObject) &&
+      card &&
+      isProjectObjectCardSizePresetLocked(card) &&
       cardPresetLockedRectTransformFields.has(fieldKey)
     );
 
@@ -1422,38 +1439,6 @@ export function ProjectObjectInspectorPanel({
     }));
   }
 
-  function updateDeckDraft<TFieldKey extends DeckFieldKey>(
-    fieldKey: TFieldKey,
-    value: ProjectObjectDeck[TFieldKey]
-  ) {
-    setDeckDraft((currentDraft) => ({
-      ...currentDraft,
-      [fieldKey]: value
-    }));
-    updateObjectTreeDeckField(fieldKey, value);
-  }
-
-  function updateObjectTreeDeckField<TFieldKey extends DeckFieldKey>(
-    fieldKey: TFieldKey,
-    value: ProjectObjectDeck[TFieldKey]
-  ) {
-    if (!contentFileNode || !selectedObject || !deck) {
-      return;
-    }
-
-    const nextDeck = getDeckWithDraftField(deck, fieldKey, value);
-
-    if (!nextDeck) {
-      return;
-    }
-
-    const nextObjectTree = setProjectObjectNodeDeck(objectTree, selectedObject.id, nextDeck);
-
-    if (nextObjectTree !== objectTree) {
-      onObjectTreeChange(contentFileNode.id, nextObjectTree);
-    }
-  }
-
   function updateBagDraft<TFieldKey extends BagFieldKey>(
     fieldKey: TFieldKey,
     value: ProjectObjectBag[TFieldKey]
@@ -1587,6 +1572,191 @@ export function ProjectObjectInspectorPanel({
         fieldKey
       )
     }));
+  }
+
+  function updateScoreTrackDraft(fieldKey: ScoreTrackFieldKey, value: string | boolean) {
+    setScoreTrackDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: value
+    }));
+    updateObjectTreeScoreTrackField(fieldKey, value);
+  }
+
+  function resetScoreTrackDraft(fieldKey: ScoreTrackFieldKey) {
+    if (!scoreTrack) {
+      return;
+    }
+
+    const nextDraft = createScoreTrackDraft(scoreTrack);
+
+    setScoreTrackDraft((currentDraft) => ({
+      ...currentDraft,
+      [fieldKey]: nextDraft[fieldKey]
+    }));
+  }
+
+  function updateObjectTreeScoreTrackField(fieldKey: ScoreTrackFieldKey, value: string | boolean) {
+    if (!contentFileNode || !selectedObject || !scoreTrack) {
+      return;
+    }
+
+    const nextScoreTrack = getScoreTrackWithDraftField(scoreTrack, fieldKey, value);
+
+    if (!nextScoreTrack) {
+      return;
+    }
+
+    updateObjectTreeScoreTrack(nextScoreTrack);
+  }
+
+  function commitScoreTrackNumberField(
+    fieldKey: ScoreTrackNumberFieldKey,
+    value = scoreTrackDraft[fieldKey]
+  ) {
+    if (!scoreTrack) {
+      return;
+    }
+
+    const parsedValue = parseRectTransformDraftValue(value);
+
+    if (parsedValue === null) {
+      resetScoreTrackDraft(fieldKey);
+      return;
+    }
+
+    updateObjectTreeScoreTrackField(fieldKey, value);
+    const nextScoreTrack = getScoreTrackWithDraftField(scoreTrack, fieldKey, value) ?? scoreTrack;
+
+    setScoreTrackDraft(
+      createScoreTrackDraft({
+        ...nextScoreTrack,
+        [fieldKey]: normalizeScoreTrackNumberValue(fieldKey, parsedValue)
+      })
+    );
+  }
+
+  function addScoreTrackMarker() {
+    if (!scoreTrack) {
+      return;
+    }
+
+    const nextScoreTrack = getScoreTrackWithAddedMarker(scoreTrack, crypto.randomUUID());
+
+    if (!nextScoreTrack) {
+      return;
+    }
+
+    updateObjectTreeScoreTrack(nextScoreTrack);
+  }
+
+  function removeScoreTrackMarker(markerId: string) {
+    if (!scoreTrack) {
+      return;
+    }
+
+    const nextScoreTrack = getScoreTrackWithRemovedMarker(scoreTrack, markerId);
+
+    if (!nextScoreTrack) {
+      return;
+    }
+
+    updateObjectTreeScoreTrack(nextScoreTrack);
+  }
+
+  function updateScoreTrackMarkerField(
+    markerId: string,
+    fieldKey: ScoreTrackMarkerFieldKey,
+    value: string
+  ) {
+    setScoreTrackDraft((currentDraft) => ({
+      ...currentDraft,
+      markers: currentDraft.markers.map((marker) =>
+        marker.id === markerId ? { ...marker, [fieldKey]: value } : marker
+      )
+    }));
+    updateObjectTreeScoreTrackMarkerField(markerId, fieldKey, value);
+  }
+
+  function updateObjectTreeScoreTrackMarkerField(
+    markerId: string,
+    fieldKey: ScoreTrackMarkerFieldKey,
+    value: string
+  ) {
+    if (!scoreTrack) {
+      return;
+    }
+
+    const nextScoreTrack = getScoreTrackWithMarkerField(scoreTrack, markerId, fieldKey, value);
+
+    if (!nextScoreTrack) {
+      return;
+    }
+
+    updateObjectTreeScoreTrack(nextScoreTrack);
+  }
+
+  function commitScoreTrackMarkerValue(markerId: string, value: string) {
+    if (!scoreTrack) {
+      return;
+    }
+
+    const parsedValue = parseRectTransformDraftValue(value);
+
+    if (parsedValue === null) {
+      resetScoreTrackMarkerValueDraft(markerId);
+      return;
+    }
+
+    updateObjectTreeScoreTrackMarkerField(markerId, "value", value);
+    setScoreTrackDraft((currentDraft) => ({
+      ...currentDraft,
+      markers: currentDraft.markers.map((marker) =>
+        marker.id === markerId
+          ? {
+              ...marker,
+              value: formatScoreTrackMarkerValue(normalizeScoreTrackMarkerValue(parsedValue))
+            }
+          : marker
+      )
+    }));
+  }
+
+  function resetScoreTrackMarkerValueDraft(markerId: string) {
+    if (!scoreTrack) {
+      return;
+    }
+
+    const marker = scoreTrack.markers.find((candidate) => candidate.id === markerId);
+
+    if (!marker) {
+      return;
+    }
+
+    setScoreTrackDraft((currentDraft) => ({
+      ...currentDraft,
+      markers: currentDraft.markers.map((draftMarker) =>
+        draftMarker.id === markerId
+          ? { ...draftMarker, value: formatScoreTrackMarkerValue(marker.value) }
+          : draftMarker
+      )
+    }));
+  }
+
+  function updateObjectTreeScoreTrack(nextScoreTrack: ProjectObjectScoreTrack) {
+    if (!contentFileNode || !selectedObject) {
+      return;
+    }
+
+    const nextObjectTree = setProjectObjectNodeScoreTrack(
+      objectTree,
+      selectedObject.id,
+      nextScoreTrack
+    );
+
+    if (nextObjectTree !== objectTree) {
+      setScoreTrackDraft(createScoreTrackDraft(nextScoreTrack));
+      onObjectTreeChange(contentFileNode.id, nextObjectTree);
+    }
   }
 
   function updateZoneDraft(fieldKey: ZoneFieldKey, value: string) {
@@ -2262,10 +2432,10 @@ export function ProjectObjectInspectorPanel({
           ...zoneReferenceObjectFileOptions
         ]
       : [{ label: "No reference", value: "" }, ...zoneReferenceObjectFileOptions];
-  const activeSizePresetObject = card ?? deck;
-  const sizePresetLocked = activeSizePresetObject
-    ? isProjectObjectCardSizePresetLocked(activeSizePresetObject)
+  const canAddScoreTrackMarker = scoreTrack
+    ? scoreTrack.markers.length < projectObjectScoreTrackMarkerCountLimits.max
     : false;
+  const sizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
   const textDraftBold = isTextFontWeightBold(textDraft.fontWeight);
   const textDraftItalic = textDraft.fontStyle === "italic";
   const sizeLockedRectTransformFields = zone
@@ -2405,14 +2575,6 @@ export function ProjectObjectInspectorPanel({
                 />
               ) : null}
 
-              {deck ? (
-                <ProjectObjectDeckSection
-                  draft={deckDraft}
-                  sizePresetOptions={cardSizePresetOptions}
-                  onSizePresetChange={(value) => updateDeckDraft("sizePreset", value)}
-                />
-              ) : null}
-
               {bag ? (
                 <ProjectObjectBagSection
                   draft={bagDraft}
@@ -2487,6 +2649,21 @@ export function ProjectObjectInspectorPanel({
                   onCommitNumberField={commitCounterNumberField}
                   onDraftChange={updateCounterDraft}
                   onReset={resetCounterDraft}
+                />
+              ) : null}
+
+              {scoreTrack ? (
+                <ProjectObjectScoreTrackSection
+                  canAddMarker={canAddScoreTrackMarker}
+                  draft={scoreTrackDraft}
+                  onAddMarker={addScoreTrackMarker}
+                  onCommitMarkerValue={commitScoreTrackMarkerValue}
+                  onCommitNumberField={commitScoreTrackNumberField}
+                  onDraftChange={updateScoreTrackDraft}
+                  onMarkerFieldChange={updateScoreTrackMarkerField}
+                  onRemoveMarker={removeScoreTrackMarker}
+                  onReset={resetScoreTrackDraft}
+                  onResetMarkerValue={resetScoreTrackMarkerValueDraft}
                 />
               ) : null}
 
@@ -2848,10 +3025,6 @@ function getFallbackCounterDraftValue(): ProjectObjectCounter {
   return getDefaultProjectObjectCounter();
 }
 
-function getFallbackDeckDraftValue(): ProjectObjectDeck {
-  return getDefaultProjectObjectDeck();
-}
-
 function getFallbackBagDraftValue(): ProjectObjectBag {
   return getDefaultProjectObjectBag();
 }
@@ -2862,6 +3035,10 @@ function getFallbackMeepleDraftValue(): ProjectObjectMeeple {
 
 function getFallbackStackDisplayDraftValue(): ProjectObjectStackDisplay {
   return getDefaultProjectObjectStackDisplay();
+}
+
+function getFallbackScoreTrackDraftValue(): ProjectObjectScoreTrack {
+  return getDefaultProjectObjectScoreTrack();
 }
 
 function getFallbackZoneDraftValue(): ProjectObjectZone {

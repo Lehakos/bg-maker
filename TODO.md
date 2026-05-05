@@ -30,9 +30,9 @@ pleasant for building objects and table setups.
 
 ## P1 - New Object Types And Presets
 
-- [ ] Add an `Icon` object type.
-- [ ] Add tabletop-native presets for Board, Tile, Hand, Player Area, Score Track, and Market Row.
-- [ ] Decide whether presets are separate object kinds or recipes built from existing kinds.
+- [x] Add an `Icon` object type.
+- [x] Add tabletop-native object kinds for Tile, Stack, and Score Track.
+- [x] Defer Hand until playtest semantics exist.
 
 ### Icon Object
 

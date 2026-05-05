@@ -6,5 +6,6 @@ export * from "./project-object-inspector-state/icon-state";
 export * from "./project-object-inspector-state/inspector-state-utils";
 export * from "./project-object-inspector-state/layout-state";
 export * from "./project-object-inspector-state/rect-transform-state";
+export * from "./project-object-inspector-state/score-track-state";
 export * from "./project-object-inspector-state/text-image-shape-state";
 export * from "./project-object-inspector-state/zone-state";

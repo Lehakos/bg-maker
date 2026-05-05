@@ -3,18 +3,24 @@ import type {
   ProjectObjectAppearance,
   ProjectObjectBagAppearanceVariant,
   ProjectObjectBorderStyle,
+  ProjectObjectContainer,
   ProjectObjectCounter,
   ProjectObjectKind,
   ProjectObjectMeepleVisualVariant,
   ProjectObjectNode,
+  ProjectObjectRectTransform,
+  ProjectObjectScoreTrack,
   ProjectObjectShapePoint,
   ProjectObjectShapeVariant,
   ProjectObjectTextVerticalAlign
 } from "@bg-maker/shared";
 import {
+  doesProjectObjectClipChildren,
   getDefaultProjectObjectDieFace,
   getDefaultProjectObjectShapePolygonPoints,
-  getProjectObjectContainerTotalCount
+  getProjectObjectContainerTotalCount,
+  hasProjectObjectLayout,
+  resolveProjectObjectFileObjectTreeById
 } from "@bg-maker/shared";
 import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
 import {
@@ -25,12 +31,20 @@ import {
   getProjectObjectNodeDie,
   getProjectObjectNodeIcon,
   getProjectObjectNodeImage,
+  getProjectObjectNodeLayout,
   getProjectObjectNodeMeeple,
+  getProjectObjectNodeRectTransform,
+  getProjectObjectNodeScoreTrack,
   getProjectObjectNodeShape,
   getProjectObjectNodeStackDisplay,
-  getProjectObjectNodeText
+  getProjectObjectNodeText,
+  getProjectObjectNodeVisibleChildren
 } from "./project-object-tree";
-import { getProjectObjectZoneSlotRects } from "./project-object-zone";
+import { getProjectObjectLayoutRectTransformOverrides } from "./project-object-layout";
+import {
+  getEffectiveProjectObjectRectTransform,
+  getProjectObjectZoneSlotRects
+} from "./project-object-zone";
 import { BagIcon, BoxIcon } from "./project-object-icons";
 import { getProjectObjectIconRegistryEntry } from "./project-object-icon-registry";
 import { ProjectObjectKindIcon } from "./project-object-tree-ui";
@@ -38,12 +52,14 @@ import { getProjectObjectLabelTextStyle } from "./project-object-text-rendering"
 import type { ProjectImageAssetOption } from "../project-assets/project-image-assets";
 
 type ProjectObjectSurfaceProps = {
+  containerPreviewDepth?: number;
   fileTree: ProjectFileNode[];
   imageAssetById: Map<string, ProjectImageAssetOption>;
   object: ProjectObjectNode;
 };
 
 export function ProjectObjectSurface({
+  containerPreviewDepth = 0,
   fileTree,
   imageAssetById,
   object
@@ -57,7 +73,25 @@ export function ProjectObjectSurface({
   }
 
   if (object.kind === "deck") {
-    return <DeckVisual object={object} />;
+    return (
+      <DeckVisual
+        containerPreviewDepth={containerPreviewDepth}
+        fileTree={fileTree}
+        imageAssetById={imageAssetById}
+        object={object}
+      />
+    );
+  }
+
+  if (object.kind === "stack") {
+    return (
+      <StackVisual
+        containerPreviewDepth={containerPreviewDepth}
+        fileTree={fileTree}
+        imageAssetById={imageAssetById}
+        object={object}
+      />
+    );
   }
 
   if (object.kind === "bag") {
@@ -78,6 +112,14 @@ export function ProjectObjectSurface({
 
   if (object.kind === "token") {
     return <TokenVisual object={object} />;
+  }
+
+  if (object.kind === "tile") {
+    return <TileVisual object={object} />;
+  }
+
+  if (object.kind === "scoreTrack") {
+    return <ScoreTrackVisual object={object} />;
   }
 
   if (object.kind === "group") {
@@ -105,6 +147,12 @@ type ObjectVisualProps = {
 
 type ZoneVisualProps = ObjectVisualProps & {
   fileTree: ProjectFileNode[];
+};
+
+type ContainerVisualProps = ObjectVisualProps & {
+  containerPreviewDepth: number;
+  fileTree: ProjectFileNode[];
+  imageAssetById: Map<string, ProjectImageAssetOption>;
 };
 
 function GroupVisual({ object }: ObjectVisualProps) {
@@ -151,13 +199,41 @@ function CounterVisual({ object }: ObjectVisualProps) {
   );
 }
 
-function DeckVisual({ object }: ObjectVisualProps) {
+function DeckVisual({
+  containerPreviewDepth,
+  fileTree,
+  imageAssetById,
+  object
+}: ContainerVisualProps) {
   return (
     <StackedContainerVisual
+      containerPreviewDepth={containerPreviewDepth}
       countClassName="border-sky-200 text-sky-700"
       emptyClassName="text-sky-800"
       emptyLabel="Empty deck"
+      fileTree={fileTree}
+      imageAssetById={imageAssetById}
       iconKind="deck"
+      object={object}
+    />
+  );
+}
+
+function StackVisual({
+  containerPreviewDepth,
+  fileTree,
+  imageAssetById,
+  object
+}: ContainerVisualProps) {
+  return (
+    <StackedContainerVisual
+      containerPreviewDepth={containerPreviewDepth}
+      countClassName="border-slate-200 text-slate-700"
+      emptyClassName="text-slate-700"
+      emptyLabel="Empty stack"
+      fileTree={fileTree}
+      imageAssetById={imageAssetById}
+      iconKind="stack"
       object={object}
     />
   );
@@ -348,16 +424,22 @@ function BoxContainerShapeSvg({
 }
 
 type StackedContainerVisualProps = ObjectVisualProps & {
+  containerPreviewDepth: number;
   countClassName: string;
   emptyClassName: string;
   emptyLabel: string;
+  fileTree: ProjectFileNode[];
+  imageAssetById: Map<string, ProjectImageAssetOption>;
   iconKind: ProjectObjectKind;
 };
 
 function StackedContainerVisual({
+  containerPreviewDepth,
   countClassName,
   emptyClassName,
   emptyLabel,
+  fileTree,
+  imageAssetById,
   iconKind,
   object
 }: StackedContainerVisualProps) {
@@ -365,12 +447,18 @@ function StackedContainerVisual({
   const container = getProjectObjectNodeContainer(object);
   const stackDisplay = getProjectObjectNodeStackDisplay(object);
   const totalCount = getProjectObjectContainerTotalCount(container);
+  const topObject = getProjectObjectContainerTopObject(fileTree, container);
+  const visibleTopObject = containerPreviewDepth < 4 ? topObject : null;
+  const topAppearance = topObject ? getProjectObjectNodeAppearance(topObject) : appearance;
   const visibleLayerCount = Math.max(1, Math.min(totalCount || 1, stackDisplay.visibleItemCount));
+  const backgroundLayerCount = visibleTopObject
+    ? Math.max(0, visibleLayerCount - 1)
+    : visibleLayerCount;
 
   return (
     <div className="relative h-full w-full overflow-visible">
-      {Array.from({ length: visibleLayerCount }, (_, index) => {
-        const reverseIndex = visibleLayerCount - index - 1;
+      {Array.from({ length: backgroundLayerCount }, (_, index) => {
+        const reverseIndex = backgroundLayerCount - index;
 
         return (
           <div
@@ -378,12 +466,23 @@ function StackedContainerVisual({
             aria-hidden={index > 0}
             className="absolute inset-0 overflow-hidden shadow-[0_14px_30px_rgba(15,23,42,0.16)]"
             style={{
-              ...getAppearanceStyle(appearance),
+              ...getAppearanceStyle(topAppearance),
               transform: `translate(${reverseIndex * stackDisplay.stackOffsetX}px, ${reverseIndex * stackDisplay.stackOffsetY}px)`
             }}
           />
         );
       })}
+      {visibleTopObject ? (
+        <div className="absolute inset-0 overflow-hidden shadow-[0_14px_30px_rgba(15,23,42,0.16)]">
+          <ObjectPreviewFrame
+            containerPreviewDepth={containerPreviewDepth + 1}
+            fileTree={fileTree}
+            imageAssetById={imageAssetById}
+            object={visibleTopObject}
+            root
+          />
+        </div>
+      ) : null}
       {totalCount === 0 ? (
         <div
           className={`absolute inset-0 flex min-w-0 flex-col items-center justify-center px-2 ${emptyClassName}`}
@@ -400,6 +499,120 @@ function StackedContainerVisual({
         </span>
       ) : null}
     </div>
+  );
+}
+
+type ObjectPreviewFrameProps = {
+  containerPreviewDepth: number;
+  fileTree: ProjectFileNode[];
+  imageAssetById: Map<string, ProjectImageAssetOption>;
+  object: ProjectObjectNode;
+  parentRectTransform?: ProjectObjectRectTransform;
+  rectTransformOverride?: ProjectObjectRectTransform;
+  root?: boolean;
+  siblingIndex?: number;
+};
+
+function ObjectPreviewFrame({
+  containerPreviewDepth,
+  fileTree,
+  imageAssetById,
+  object,
+  parentRectTransform,
+  rectTransformOverride,
+  root = false,
+  siblingIndex = 0
+}: ObjectPreviewFrameProps) {
+  const rectTransform =
+    rectTransformOverride ?? getEffectiveProjectObjectRectTransform(object, fileTree);
+  const children = getProjectObjectNodeVisibleChildren(object);
+  const appearance = getProjectObjectNodeAppearance(object);
+  const clipsChildren = doesProjectObjectClipChildren(object.kind);
+  const childRectTransformOverrides = hasProjectObjectLayout(object.kind)
+    ? getProjectObjectLayoutRectTransformOverrides(
+        rectTransform,
+        children,
+        getProjectObjectNodeLayout(object),
+        appearance.padding,
+        (child) => getEffectiveProjectObjectRectTransform(child, fileTree)
+      )
+    : new Map<string, ProjectObjectRectTransform>();
+
+  if (!object.visible) {
+    return null;
+  }
+
+  return (
+    <div
+      className={root ? "relative h-full w-full" : "absolute overflow-visible"}
+      style={getObjectPreviewFrameStyle(rectTransform, root, parentRectTransform, siblingIndex)}
+    >
+      <ProjectObjectSurface
+        containerPreviewDepth={containerPreviewDepth}
+        fileTree={fileTree}
+        imageAssetById={imageAssetById}
+        object={object}
+      />
+      <div
+        className={
+          clipsChildren ? "absolute inset-0 overflow-hidden" : "absolute inset-0 overflow-visible"
+        }
+        style={{ borderRadius: `${appearance.borderRadius}px` }}
+      >
+        {children.map((child, index) => (
+          <ObjectPreviewFrame
+            key={child.id}
+            containerPreviewDepth={containerPreviewDepth}
+            fileTree={fileTree}
+            imageAssetById={imageAssetById}
+            object={child}
+            parentRectTransform={rectTransform}
+            rectTransformOverride={childRectTransformOverrides.get(child.id)}
+            siblingIndex={index}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function getObjectPreviewFrameStyle(
+  rectTransform: ProjectObjectRectTransform,
+  root: boolean,
+  parentRectTransform: ProjectObjectRectTransform | undefined,
+  siblingIndex: number
+): CSSProperties {
+  if (root || !parentRectTransform) {
+    return {
+      height: "100%",
+      width: "100%"
+    };
+  }
+
+  return {
+    height: `${(rectTransform.height / parentRectTransform.height) * 100}%`,
+    left: `${(rectTransform.x / parentRectTransform.width) * 100}%`,
+    top: `${(rectTransform.y / parentRectTransform.height) * 100}%`,
+    transform: `rotate(${rectTransform.rotation}deg) scale(${rectTransform.scaleX}, ${rectTransform.scaleY})`,
+    transformOrigin: `${rectTransform.pivotX * 100}% ${rectTransform.pivotY * 100}%`,
+    width: `${(rectTransform.width / parentRectTransform.width) * 100}%`,
+    zIndex: siblingIndex + 1
+  };
+}
+
+function getProjectObjectContainerTopObject(
+  fileTree: readonly ProjectFileNode[],
+  container: ProjectObjectContainer
+) {
+  const topEntry = container.entries[0];
+
+  if (!topEntry) {
+    return null;
+  }
+
+  return (
+    resolveProjectObjectFileObjectTreeById(fileTree, topEntry.objectFileNodeId, {}, new Set())[0] ??
+    null
   );
 }
 
@@ -667,6 +880,123 @@ function TokenVisual({ object }: ObjectVisualProps) {
   );
 }
 
+function TileVisual({ object }: ObjectVisualProps) {
+  const appearance = getProjectObjectNodeAppearance(object);
+  const shape = getProjectObjectNodeShape(object);
+  const strokeDasharray = getStrokeDasharray(appearance.borderStyle);
+  const strokeWidth = appearance.borderStyle === "none" ? 0 : appearance.borderWidth;
+
+  return (
+    <div
+      className="relative flex h-full w-full items-center justify-center overflow-visible text-center text-yellow-950 shadow-[0_14px_30px_rgba(15,23,42,0.14)]"
+      style={{ opacity: appearance.opacity }}
+    >
+      <svg
+        aria-hidden
+        className="absolute inset-0 h-full w-full overflow-visible"
+        preserveAspectRatio="none"
+        viewBox="0 0 100 100"
+      >
+        <ShapeSvgElement
+          borderRadius={appearance.borderRadius}
+          fill={appearance.backgroundColor}
+          fillOpacity={appearance.backgroundOpacity}
+          stroke={appearance.borderColor}
+          strokeDasharray={strokeDasharray}
+          strokeWidth={strokeWidth}
+          polygonPoints={shape.polygonPoints}
+          variant={shape.variant}
+        />
+      </svg>
+    </div>
+  );
+}
+
+function ScoreTrackVisual({ object }: ObjectVisualProps) {
+  const appearance = getProjectObjectNodeAppearance(object);
+  const scoreTrack = getProjectObjectNodeScoreTrack(object);
+  const vertical = scoreTrack.orientation === "vertical";
+  const ticks = getScoreTrackTickValues(scoreTrack);
+
+  return (
+    <div
+      className="relative h-full w-full overflow-hidden shadow-[0_14px_30px_rgba(15,23,42,0.12)]"
+      style={getAppearanceStyle(appearance)}
+    >
+      <div
+        className={
+          vertical
+            ? "absolute bottom-5 left-0 right-0 top-5"
+            : "absolute bottom-0 left-5 right-5 top-0"
+        }
+      >
+        <div
+          className={
+            vertical
+              ? "absolute bottom-0 left-1/2 top-0 w-0.5 -translate-x-1/2 rounded-full bg-slate-300"
+              : "absolute left-0 right-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-slate-300"
+          }
+        />
+        {ticks.map((tick) => {
+          const position = getScoreTrackPositionPercent(scoreTrack, tick);
+
+          return (
+            <span
+              key={tick}
+              className={
+                vertical
+                  ? "pointer-events-none absolute left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full bg-slate-500"
+                  : "pointer-events-none absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded-full bg-slate-500"
+              }
+              style={vertical ? { bottom: `${position}%` } : { left: `${position}%` }}
+            >
+              {scoreTrack.showLabels ? (
+                <span
+                  className={
+                    vertical
+                      ? "absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-semibold leading-none text-slate-500"
+                      : "absolute left-1/2 top-4 -translate-x-1/2 text-[10px] font-semibold leading-none text-slate-500"
+                  }
+                >
+                  {tick}
+                </span>
+              ) : null}
+            </span>
+          );
+        })}
+        {scoreTrack.markers.map((marker, index) => {
+          const position = getScoreTrackPositionPercent(scoreTrack, marker.value);
+          const laneOffset = (index - (scoreTrack.markers.length - 1) / 2) * 12;
+
+          return (
+            <span
+              key={marker.id}
+              className="pointer-events-none absolute flex h-5 w-5 items-center justify-center rounded-full border-2 border-white text-[9px] font-bold leading-none text-white shadow-sm"
+              style={{
+                backgroundColor: marker.color,
+                ...(vertical
+                  ? {
+                      bottom: `${position}%`,
+                      left: `calc(50% + ${laneOffset}px)`,
+                      transform: "translate(-50%, 50%)"
+                    }
+                  : {
+                      left: `${position}%`,
+                      top: `calc(50% + ${laneOffset}px)`,
+                      transform: "translate(-50%, -50%)"
+                    })
+              }}
+              title={`${marker.label}: ${marker.value}`}
+            >
+              {marker.label.trim().charAt(0).toUpperCase() || index + 1}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 type MeepleSvgElementProps = {
   fill: string;
   fillOpacity: number;
@@ -868,6 +1198,35 @@ function getPolygonPointsAttribute(polygonPoints: readonly ProjectObjectShapePoi
     polygonPoints.length >= 3 ? polygonPoints : getDefaultProjectObjectShapePolygonPoints();
 
   return points.map((point) => `${point.x},${point.y}`).join(" ");
+}
+
+function getScoreTrackTickValues(scoreTrack: ProjectObjectScoreTrack) {
+  const range = Math.max(1, scoreTrack.maxValue - scoreTrack.minValue);
+  const step = Math.max(1, scoreTrack.step);
+  const maxTickCount = 51;
+  const exactTickCount = Math.floor(range / step) + 1;
+
+  if (exactTickCount <= maxTickCount) {
+    const ticks = Array.from(
+      { length: exactTickCount },
+      (_, index) => scoreTrack.minValue + index * step
+    );
+
+    return ticks.at(-1) === scoreTrack.maxValue ? ticks : [...ticks, scoreTrack.maxValue];
+  }
+
+  const interval = range / (maxTickCount - 1);
+
+  return Array.from({ length: maxTickCount }, (_, index) =>
+    Math.round(scoreTrack.minValue + index * interval)
+  );
+}
+
+function getScoreTrackPositionPercent(scoreTrack: ProjectObjectScoreTrack, value: number) {
+  const range = Math.max(1, scoreTrack.maxValue - scoreTrack.minValue);
+  const clampedValue = Math.min(scoreTrack.maxValue, Math.max(scoreTrack.minValue, value));
+
+  return ((clampedValue - scoreTrack.minValue) / range) * 100;
 }
 
 function getCounterDisplayValue(counter: ProjectObjectCounter) {

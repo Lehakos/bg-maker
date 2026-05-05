@@ -14,7 +14,6 @@ export {
   getProjectObjectContainerComponent,
   withProjectObjectContainerComponent
 } from "./container-component";
-export { getProjectObjectDeckComponent, withProjectObjectDeckComponent } from "./deck-component";
 export { getProjectObjectDieComponent, withProjectObjectDieComponent } from "./die-component";
 export {
   getProjectObjectDoubleSideComponent,
@@ -44,6 +43,10 @@ export {
   withProjectObjectMeepleComponent
 } from "./meeple-component";
 export { getProjectObjectShapeComponent, withProjectObjectShapeComponent } from "./shape-component";
+export {
+  getProjectObjectScoreTrackComponent,
+  withProjectObjectScoreTrackComponent
+} from "./score-track-component";
 export { getProjectObjectTextComponent, withProjectObjectTextComponent } from "./text-component";
 export { getProjectObjectZoneComponent, withProjectObjectZoneComponent } from "./zone-component";
 

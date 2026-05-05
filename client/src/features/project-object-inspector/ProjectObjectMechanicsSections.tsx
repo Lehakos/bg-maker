@@ -2,18 +2,21 @@ import type {
   ProjectObjectCounterBoundsMode,
   ProjectObjectCounterDisplayMode,
   ProjectObjectDieFace,
-  ProjectObjectDieFaceMode
+  ProjectObjectDieFaceMode,
+  ProjectObjectScoreTrackOrientation
 } from "@bg-maker/shared";
-import { Copy, Dices, Hash } from "lucide-react";
+import { Copy, Dices, Hash, Plus, Trash2 } from "lucide-react";
 import type { ChangeEvent, DragEvent } from "react";
 import {
   InspectorBehaviorNumberField,
+  InspectorColorField,
   InspectorDoubleSidedControls,
   type InspectorFieldDefinition,
   InspectorInlineTextField,
   InspectorModeInfo,
   InspectorSection,
-  InspectorSelectField
+  InspectorSelectField,
+  InspectorSwitchField
 } from "./inspector-ui";
 import {
   counterNumberFieldSettings,
@@ -23,7 +26,13 @@ import {
   type CounterNumberFieldKey,
   type DieDraft,
   type DieFaceFieldKey,
-  type DieFieldKey
+  type DieFieldKey,
+  scoreTrackMarkerValueFieldSettings,
+  scoreTrackNumberFieldSettings,
+  type ScoreTrackDraft,
+  type ScoreTrackFieldKey,
+  type ScoreTrackMarkerFieldKey,
+  type ScoreTrackNumberFieldKey
 } from "./project-object-inspector-state";
 import {
   getProjectImageAssetDragPayload,
@@ -53,6 +62,30 @@ const dieFaceModeOptions = [
 ] as const satisfies readonly {
   label: string;
   value: ProjectObjectDieFaceMode;
+}[];
+
+const scoreTrackNumberFields = [
+  { key: "minValue", label: "Min" },
+  { key: "maxValue", label: "Max" },
+  { key: "step", label: "Step" }
+] as const satisfies readonly InspectorFieldDefinition<ScoreTrackNumberFieldKey>[];
+
+const scoreTrackMarkerValueField = {
+  key: "value",
+  label: "Value"
+} as const satisfies InspectorFieldDefinition<Extract<ScoreTrackMarkerFieldKey, "value">>;
+
+const scoreTrackMarkerColorField = {
+  key: "color",
+  label: "Color"
+} as const satisfies InspectorFieldDefinition<Extract<ScoreTrackMarkerFieldKey, "color">>;
+
+const scoreTrackOrientationOptions = [
+  { label: "Horizontal", value: "horizontal" },
+  { label: "Vertical", value: "vertical" }
+] as const satisfies readonly {
+  label: string;
+  value: ProjectObjectScoreTrackOrientation;
 }[];
 
 const counterBoundsModeOptions = [
@@ -157,6 +190,130 @@ export function ProjectObjectCounterSection({
           value={draft.suffix}
           onChange={(value) => onDraftChange("suffix", value)}
         />
+      </div>
+    </InspectorSection>
+  );
+}
+
+type ProjectObjectScoreTrackSectionProps = {
+  draft: ScoreTrackDraft;
+  canAddMarker: boolean;
+  onAddMarker: () => void;
+  onCommitMarkerValue: (markerId: string, value: string) => void;
+  onCommitNumberField: (fieldKey: ScoreTrackNumberFieldKey, value: string) => void;
+  onDraftChange: (fieldKey: ScoreTrackFieldKey, value: string | boolean) => void;
+  onMarkerFieldChange: (
+    markerId: string,
+    fieldKey: ScoreTrackMarkerFieldKey,
+    value: string
+  ) => void;
+  onRemoveMarker: (markerId: string) => void;
+  onReset: (fieldKey: ScoreTrackFieldKey) => void;
+  onResetMarkerValue: (markerId: string) => void;
+};
+
+export function ProjectObjectScoreTrackSection({
+  draft,
+  canAddMarker,
+  onAddMarker,
+  onCommitMarkerValue,
+  onCommitNumberField,
+  onDraftChange,
+  onMarkerFieldChange,
+  onRemoveMarker,
+  onReset,
+  onResetMarkerValue
+}: ProjectObjectScoreTrackSectionProps) {
+  return (
+    <InspectorSection icon={<Hash size={15} />} title="Score track">
+      <div className="grid grid-cols-3 gap-2">
+        {scoreTrackNumberFields.map((field) => (
+          <InspectorBehaviorNumberField
+            key={field.key}
+            field={field}
+            settings={scoreTrackNumberFieldSettings[field.key]}
+            value={draft[field.key]}
+            onCommit={onCommitNumberField}
+            onDraftChange={onDraftChange}
+            onReset={onReset}
+          />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <InspectorSelectField
+          label="Orientation"
+          value={draft.orientation}
+          options={scoreTrackOrientationOptions}
+          onChange={(value) => onDraftChange("orientation", value)}
+        />
+        <div className="flex items-end pb-0.5">
+          <InspectorSwitchField
+            checked={draft.showLabels}
+            label="Show labels"
+            onChange={(event) => onDraftChange("showLabels", event.currentTarget.checked)}
+          />
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold text-slate-500">Markers</span>
+          <button
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={!canAddMarker}
+            title="Add marker"
+            type="button"
+            onClick={onAddMarker}
+          >
+            <Plus size={15} />
+          </button>
+        </div>
+        {draft.markers.length ? (
+          <div className="space-y-2">
+            {draft.markers.map((marker) => (
+              <div
+                key={marker.id}
+                className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2"
+              >
+                <div className="flex items-end gap-2">
+                  <div className="min-w-0 flex-1">
+                    <InspectorInlineTextField
+                      label="Label"
+                      value={marker.label}
+                      onChange={(value) => onMarkerFieldChange(marker.id, "label", value)}
+                    />
+                  </div>
+                  <button
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-600"
+                    title="Remove marker"
+                    type="button"
+                    onClick={() => onRemoveMarker(marker.id)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <InspectorColorField
+                    field={scoreTrackMarkerColorField}
+                    value={marker.color}
+                    onChange={(_, value) => onMarkerFieldChange(marker.id, "color", value)}
+                  />
+                  <InspectorBehaviorNumberField
+                    field={scoreTrackMarkerValueField}
+                    settings={scoreTrackMarkerValueFieldSettings}
+                    value={marker.value}
+                    onCommit={(_, value) => onCommitMarkerValue(marker.id, value)}
+                    onDraftChange={(_, value) => onMarkerFieldChange(marker.id, "value", value)}
+                    onReset={() => onResetMarkerValue(marker.id)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-500">
+            No markers assigned.
+          </p>
+        )}
       </div>
     </InspectorSection>
   );

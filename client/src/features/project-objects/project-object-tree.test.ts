@@ -9,7 +9,6 @@ import {
   type ProjectObjectCard,
   type ProjectObjectContainer,
   type ProjectObjectCounter,
-  type ProjectObjectDeck,
   type ProjectObjectDie,
   type ProjectObjectIcon,
   type ProjectObjectImage,
@@ -18,6 +17,7 @@ import {
   type ProjectObjectMeeple,
   type ProjectObjectNode,
   type ProjectObjectRectTransform,
+  type ProjectObjectScoreTrack,
   type ProjectObjectShape,
   type ProjectObjectStackDisplay,
   type ProjectObjectText,
@@ -39,7 +39,6 @@ import {
   getProjectObjectNodeCard,
   getProjectObjectNodeContainer,
   getProjectObjectNodeCounter,
-  getProjectObjectNodeDeck,
   getProjectObjectNodeDie,
   getProjectObjectNodeChildren,
   getProjectObjectNodeDoubleSide,
@@ -49,6 +48,7 @@ import {
   getProjectObjectNodeLayout,
   getProjectObjectNodeMeeple,
   getProjectObjectNodeRectTransform,
+  getProjectObjectNodeScoreTrack,
   getProjectObjectNodeShape,
   getProjectObjectNodeStackDisplay,
   getProjectObjectNodeText,
@@ -65,7 +65,6 @@ import {
   setProjectObjectNodeCard,
   setProjectObjectNodeContainer,
   setProjectObjectNodeCounter,
-  setProjectObjectNodeDeck,
   setProjectObjectNodeDie,
   setProjectObjectNodeDoubleSide,
   setProjectObjectNodeIcon,
@@ -73,6 +72,7 @@ import {
   setProjectObjectNodeLayout,
   setProjectObjectNodeMeeple,
   setProjectObjectNodeRectTransform,
+  setProjectObjectNodeScoreTrack,
   setProjectObjectNodeShape,
   setProjectObjectNodeStackDisplay,
   setProjectObjectNodeText,
@@ -331,11 +331,8 @@ describe("project object tree helpers", () => {
     ).toEqual({ enabled: false });
   });
 
-  it("creates deck defaults and locks deck dimensions to the selected size preset", () => {
+  it("creates deck defaults as a free-sized card stack", () => {
     const objectTree = [objectNode("deck-1", "Deck", "deck")];
-    const bridgeDeck: ProjectObjectDeck = {
-      sizePreset: "bridge"
-    };
     const oversizedRectTransform: ProjectObjectRectTransform = {
       height: 200,
       pivotX: 0.5,
@@ -348,15 +345,13 @@ describe("project object tree helpers", () => {
       y: 20
     };
 
-    const bridgeTree = setProjectObjectNodeDeck(objectTree, "deck-1", bridgeDeck);
     const resizedBridgeTree = setProjectObjectNodeRectTransform(
-      bridgeTree,
+      objectTree,
       "deck-1",
       oversizedRectTransform
     );
-    const deck = findProjectObjectNode(bridgeTree, "deck-1")!;
+    const deck = findProjectObjectNode(resizedBridgeTree, "deck-1")!;
 
-    expect(getProjectObjectNodeDeck(deck)).toEqual(bridgeDeck);
     expect(getProjectObjectNodeContainer(deck)).toEqual({
       entries: []
     });
@@ -367,13 +362,14 @@ describe("project object tree helpers", () => {
     expect(
       getProjectObjectNodeRectTransform(findProjectObjectNode(resizedBridgeTree, "deck-1")!)
     ).toMatchObject({
-      height: 89,
-      scaleX: 1,
-      scaleY: 1,
-      width: 57,
+      height: 200,
+      scaleX: 2,
+      scaleY: 3,
+      width: 200,
       x: 10,
       y: 20
     });
+    expect(deck.components).not.toHaveProperty("deck");
   });
 
   it("creates bag defaults as a free-sized token container", () => {
@@ -404,7 +400,11 @@ describe("project object tree helpers", () => {
       entries: []
     });
     expect(bag.components?.stackDisplay).toBeUndefined();
-    expect(getProjectObjectContainerAcceptedObjectKinds("bag")).toEqual(["token", "meeple"]);
+    expect(getProjectObjectContainerAcceptedObjectKinds("bag")).toEqual([
+      "token",
+      "tile",
+      "meeple"
+    ]);
     expect(getProjectObjectContainerAcceptedObjectKinds("deck")).toEqual(["card"]);
     expect(getProjectObjectNodeRectTransform(bag)).toMatchObject({
       height: 200,
@@ -461,6 +461,94 @@ describe("project object tree helpers", () => {
     expect(meeple.components?.shape).toBeUndefined();
   });
 
+  it("creates tile defaults as a free-sized double-sided shape piece", () => {
+    const objectTree = [objectNode("tile-1", "Tile", "tile")];
+    const resizedTree = setProjectObjectNodeRectTransform(objectTree, "tile-1", {
+      height: 140,
+      pivotX: 0.5,
+      pivotY: 0.5,
+      rotation: 0,
+      scaleX: 2,
+      scaleY: 3,
+      width: 180,
+      x: 10,
+      y: 20
+    });
+    const tile = findProjectObjectNode(resizedTree, "tile-1")!;
+
+    expect(getProjectObjectNodeDoubleSide(tile)).toEqual({ enabled: true });
+    expect(getProjectObjectNodeShape(tile)).toMatchObject({ variant: "rectangle" });
+    expect(getProjectObjectNodeRectTransform(tile)).toMatchObject({
+      height: 140,
+      scaleX: 2,
+      scaleY: 3,
+      width: 180
+    });
+  });
+
+  it("creates stack defaults as a free-sized token tile and meeple container", () => {
+    const objectTree = [objectNode("stack-1", "Stack", "stack")];
+    const resizedTree = setProjectObjectNodeRectTransform(objectTree, "stack-1", {
+      height: 160,
+      pivotX: 0.5,
+      pivotY: 0.5,
+      rotation: 0,
+      scaleX: 2,
+      scaleY: 3,
+      width: 140,
+      x: 10,
+      y: 20
+    });
+    const stack = findProjectObjectNode(resizedTree, "stack-1")!;
+
+    expect(getProjectObjectNodeContainer(stack)).toEqual({ entries: [] });
+    expect(getProjectObjectNodeStackDisplay(stack)).toMatchObject({
+      showCount: true,
+      visibleItemCount: 4
+    });
+    expect(getProjectObjectContainerAcceptedObjectKinds("stack")).toEqual([
+      "token",
+      "tile",
+      "meeple"
+    ]);
+    expect(getProjectObjectNodeRectTransform(stack)).toMatchObject({
+      height: 160,
+      scaleX: 2,
+      scaleY: 3,
+      width: 140
+    });
+    expect(stack.components).not.toHaveProperty("deck");
+  });
+
+  it("creates and updates score track defaults", () => {
+    const scoreTrack: ProjectObjectScoreTrack = {
+      markers: [
+        { color: "#16a34a", id: "green", label: "Green", value: 4 },
+        { color: "#ca8a04", id: "yellow", label: "Yellow", value: 7 }
+      ],
+      maxValue: 20,
+      minValue: 0,
+      orientation: "vertical",
+      showLabels: false,
+      step: 2
+    };
+    const objectTree = [objectNode("score-1", "Score", "scoreTrack")];
+    const updatedTree = setProjectObjectNodeScoreTrack(objectTree, "score-1", scoreTrack);
+    const defaultScoreTrack = getProjectObjectNodeScoreTrack(objectTree[0]!);
+
+    expect(defaultScoreTrack).toMatchObject({
+      maxValue: 10,
+      minValue: 0,
+      orientation: "horizontal",
+      showLabels: true,
+      step: 1
+    });
+    expect(defaultScoreTrack.markers).toHaveLength(2);
+    expect(getProjectObjectNodeScoreTrack(findProjectObjectNode(updatedTree, "score-1")!)).toEqual(
+      scoreTrack
+    );
+  });
+
   it("keeps card children on the active card side", () => {
     const objectTree = [objectNode("card-1", "Card", "card")];
     const frontChild = objectNode("front-label", "Front label", "label");
@@ -498,6 +586,23 @@ describe("project object tree helpers", () => {
     expect(findProjectObjectNode(movedOutTree, "back-label")?.parentSide).toBeUndefined();
   });
 
+  it("keeps tile children on the active tile side", () => {
+    const objectTree = [objectNode("tile-1", "Tile", "tile")];
+    const frontChild = objectNode("front-image", "Front image", "image");
+    const backChild = objectNode("back-label", "Back label", "label");
+    const frontTree = appendProjectObjectNode(objectTree, "tile-1", frontChild);
+    const backTileTree = objectTreeWithActiveSide(frontTree, "tile-1", "back");
+    const backTree = appendProjectObjectNode(backTileTree, "tile-1", backChild);
+    const tile = findProjectObjectNode(backTree, "tile-1")!;
+
+    expect(getProjectObjectNodeActiveSide(tile)).toBe("back");
+    expect(findProjectObjectNode(backTree, "front-image")?.parentSide).toBe("front");
+    expect(findProjectObjectNode(backTree, "back-label")?.parentSide).toBe("back");
+    expect(getProjectObjectNodeVisibleChildren(tile).map((child) => child.id)).toEqual([
+      "back-label"
+    ]);
+  });
+
   it("can preview another active side without mutating the object", () => {
     const objectTree = [objectNode("card-1", "Card", "card")];
     const frontChild = objectNode("front-label", "Front label", "label");
@@ -530,7 +635,10 @@ describe("project object tree helpers", () => {
     expect(doesProjectObjectClipChildren("meeple")).toBe(true);
     expect(doesProjectObjectClipChildren("counter")).toBe(true);
     expect(doesProjectObjectClipChildren("die")).toBe(true);
+    expect(doesProjectObjectClipChildren("scoreTrack")).toBe(true);
     expect(doesProjectObjectClipChildren("shape")).toBe(true);
+    expect(doesProjectObjectClipChildren("stack")).toBe(true);
+    expect(doesProjectObjectClipChildren("tile")).toBe(true);
     expect(doesProjectObjectClipChildren("group")).toBe(false);
     expect(doesProjectObjectClipChildren("icon")).toBe(false);
     expect(doesProjectObjectClipChildren("label")).toBe(false);
@@ -710,9 +818,6 @@ describe("project object tree helpers", () => {
     const doubleSide = {
       enabled: true
     };
-    const deck: ProjectObjectDeck = {
-      sizePreset: "custom"
-    };
     const bag: ProjectObjectBag = {
       appearanceVariant: "box"
     };
@@ -730,6 +835,14 @@ describe("project object tree helpers", () => {
       stackOffsetX: 4,
       stackOffsetY: -3,
       visibleItemCount: 6
+    };
+    const scoreTrack: ProjectObjectScoreTrack = {
+      markers: [{ color: "#16a34a", id: "green", label: "Green", value: 4 }],
+      maxValue: 12,
+      minValue: 0,
+      orientation: "vertical",
+      showLabels: false,
+      step: 2
     };
     const zone: ProjectObjectZone = {
       capacity: 5,
@@ -753,8 +866,7 @@ describe("project object tree helpers", () => {
       doubleSide
     );
     const deckObjectTree = [objectNode("deck-1", "Deck", "deck")];
-    const deckTree = setProjectObjectNodeDeck(deckObjectTree, "deck-1", deck);
-    const containerTree = setProjectObjectNodeContainer(deckTree, "deck-1", container);
+    const containerTree = setProjectObjectNodeContainer(deckObjectTree, "deck-1", container);
     const stackDisplayTree = setProjectObjectNodeStackDisplay(
       containerTree,
       "deck-1",
@@ -770,6 +882,11 @@ describe("project object tree helpers", () => {
       [objectNode("zone-1", "Zone", "zone")],
       "zone-1",
       zone
+    );
+    const scoreTrackTree = setProjectObjectNodeScoreTrack(
+      [objectNode("score-1", "Score", "scoreTrack")],
+      "score-1",
+      scoreTrack
     );
 
     expect(
@@ -788,9 +905,6 @@ describe("project object tree helpers", () => {
     expect(getProjectObjectNodeDoubleSide(findProjectObjectNode(tokenTree, "token-1")!)).toEqual(
       doubleSide
     );
-    expect(getProjectObjectNodeDeck(findProjectObjectNode(stackDisplayTree, "deck-1")!)).toEqual(
-      deck
-    );
     expect(
       getProjectObjectNodeContainer(findProjectObjectNode(stackDisplayTree, "deck-1")!)
     ).toEqual(container);
@@ -801,6 +915,9 @@ describe("project object tree helpers", () => {
     expect(getProjectObjectNodeMeeple(findProjectObjectNode(meepleTree, "meeple-1")!)).toEqual(
       meeple
     );
+    expect(
+      getProjectObjectNodeScoreTrack(findProjectObjectNode(scoreTrackTree, "score-1")!)
+    ).toEqual(scoreTrack);
     expect(getProjectObjectNodeZone(findProjectObjectNode(zoneTree, "zone-1")!)).toEqual(zone);
     expect(getProjectObjectNodeLayout(findProjectObjectNode(zoneTree, "zone-1")!)).toMatchObject({
       mode: "grid"
@@ -810,11 +927,13 @@ describe("project object tree helpers", () => {
     expect(setProjectObjectNodeContainer(objectTree, "missing-object", container)).toBe(objectTree);
     expect(setProjectObjectNodeBag(objectTree, "missing-object", bag)).toBe(objectTree);
     expect(setProjectObjectNodeMeeple(objectTree, "missing-object", meeple)).toBe(objectTree);
-    expect(setProjectObjectNodeDeck(objectTree, "missing-object", deck)).toBe(objectTree);
     expect(setProjectObjectNodeImage(objectTree, "missing-object", image)).toBe(objectTree);
     expect(setProjectObjectNodeDie(objectTree, "missing-object", die)).toBe(objectTree);
     expect(setProjectObjectNodeLayout(objectTree, "missing-object", layout)).toBe(objectTree);
     expect(setProjectObjectNodeStackDisplay(objectTree, "missing-object", stackDisplay)).toBe(
+      objectTree
+    );
+    expect(setProjectObjectNodeScoreTrack(objectTree, "missing-object", scoreTrack)).toBe(
       objectTree
     );
     expect(setProjectObjectNodeZone(objectTree, "missing-object", zone)).toBe(objectTree);

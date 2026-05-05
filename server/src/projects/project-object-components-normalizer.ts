@@ -11,7 +11,6 @@ import type {
   ProjectObjectCounter,
   ProjectObjectCounterBoundsMode,
   ProjectObjectCounterDisplayMode,
-  ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectDieFace,
   ProjectObjectDieFaceMode,
@@ -29,6 +28,9 @@ import type {
   ProjectObjectMeeple,
   ProjectObjectMeepleVisualVariant,
   ProjectObjectRectTransform,
+  ProjectObjectScoreTrack,
+  ProjectObjectScoreTrackMarker,
+  ProjectObjectScoreTrackOrientation,
   ProjectObjectShape,
   ProjectObjectShapePoint,
   ProjectObjectShapeVariant,
@@ -47,7 +49,6 @@ import {
   getDefaultProjectObjectBag,
   getDefaultProjectObjectCard,
   getDefaultProjectObjectCounter,
-  getDefaultProjectObjectDeck,
   getDefaultProjectObjectDie,
   getDefaultProjectObjectDieFace,
   getDefaultProjectObjectDoubleSide,
@@ -56,6 +57,7 @@ import {
   getDefaultProjectObjectLayout,
   getDefaultProjectObjectMeeple,
   getDefaultProjectObjectRectTransform,
+  getDefaultProjectObjectScoreTrack,
   getDefaultProjectObjectShape,
   getDefaultProjectObjectShapePolygonPoints,
   getDefaultProjectObjectStackDisplay,
@@ -76,6 +78,11 @@ import {
   projectObjectIconStyles,
   projectObjectIconSymbols,
   projectObjectMeepleVisualVariants,
+  projectObjectScoreTrackMarkerCountLimits,
+  projectObjectScoreTrackMarkerLabelMaxLength,
+  projectObjectScoreTrackOrientations,
+  projectObjectScoreTrackStepLimits,
+  projectObjectScoreTrackValueLimits,
   projectObjectShapePolygonCoordinateLimits,
   projectObjectShapePolygonPointCountLimits,
   projectObjectSides,
@@ -124,6 +131,9 @@ const projectObjectBagAppearanceVariantSet = new Set<ProjectObjectBagAppearanceV
 );
 const projectObjectMeepleVisualVariantSet = new Set<ProjectObjectMeepleVisualVariant>(
   projectObjectMeepleVisualVariants
+);
+const projectObjectScoreTrackOrientationSet = new Set<ProjectObjectScoreTrackOrientation>(
+  projectObjectScoreTrackOrientations
 );
 const projectObjectImageFits = new Set<ProjectObjectImageFit>([
   "contain",
@@ -192,7 +202,12 @@ export function normalizeProjectObjectComponents(
     rectTransform
   };
 
-  if (kind === "card" || kind === "token" || hasOwnRecordKey(record, "doubleSide")) {
+  if (
+    kind === "card" ||
+    kind === "token" ||
+    kind === "tile" ||
+    hasOwnRecordKey(record, "doubleSide")
+  ) {
     components.doubleSide = normalizeProjectObjectDoubleSide(record.doubleSide, kind, name);
   }
 
@@ -215,13 +230,17 @@ export function normalizeProjectObjectComponents(
   }
 
   if (kind === "deck") {
-    const deck = normalizeProjectObjectDeck(record.deck);
-
     return {
       ...components,
       container: normalizeProjectObjectContainer(record.container, kind),
-      deck,
-      rectTransform: getProjectObjectRectTransformWithCardSizePreset(rectTransform, deck),
+      stackDisplay: normalizeProjectObjectStackDisplay(record.stackDisplay)
+    };
+  }
+
+  if (kind === "stack") {
+    return {
+      ...components,
+      container: normalizeProjectObjectContainer(record.container, kind),
       stackDisplay: normalizeProjectObjectStackDisplay(record.stackDisplay)
     };
   }
@@ -241,6 +260,13 @@ export function normalizeProjectObjectComponents(
     };
   }
 
+  if (kind === "scoreTrack") {
+    return {
+      ...components,
+      scoreTrack: normalizeProjectObjectScoreTrack(record.scoreTrack)
+    };
+  }
+
   if (kind === "die") {
     return {
       ...components,
@@ -255,7 +281,7 @@ export function normalizeProjectObjectComponents(
     };
   }
 
-  if (kind === "token") {
+  if (kind === "token" || kind === "tile") {
     return {
       ...components,
       shape: normalizeProjectObjectShape(record.shape, kind)
@@ -424,21 +450,6 @@ function normalizeProjectObjectCard(value: unknown): ProjectObjectCard {
   };
 }
 
-function normalizeProjectObjectDeck(value: unknown): ProjectObjectDeck {
-  const defaultDeck = getDefaultProjectObjectDeck();
-  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-  const sizePreset =
-    typeof record.sizePreset === "string" &&
-    (record.sizePreset === projectObjectCardCustomSizePresetId ||
-      getProjectObjectCardSizePreset(record.sizePreset))
-      ? (record.sizePreset as ProjectObjectCardSizePresetValue)
-      : defaultDeck.sizePreset;
-
-  return {
-    sizePreset
-  };
-}
-
 function normalizeProjectObjectContainer(
   value: unknown,
   kind: ProjectObjectKind
@@ -589,6 +600,92 @@ function normalizeProjectObjectCounter(value: unknown): ProjectObjectCounter {
 
 function normalizeProjectObjectCounterAffix(value: unknown) {
   return typeof value === "string" ? value.slice(0, projectObjectCounterAffixMaxLength) : "";
+}
+
+function normalizeProjectObjectScoreTrack(value: unknown): ProjectObjectScoreTrack {
+  const defaultScoreTrack = getDefaultProjectObjectScoreTrack();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const minValue = normalizeIntegerNumber(
+    record.minValue,
+    defaultScoreTrack.minValue,
+    projectObjectScoreTrackValueLimits
+  );
+  const step = normalizeIntegerNumber(
+    record.step,
+    defaultScoreTrack.step,
+    projectObjectScoreTrackStepLimits
+  );
+  const maxValue = Math.max(
+    minValue + step,
+    normalizeIntegerNumber(
+      record.maxValue,
+      defaultScoreTrack.maxValue,
+      projectObjectScoreTrackValueLimits
+    )
+  );
+
+  return {
+    markers: normalizeProjectObjectScoreTrackMarkers(
+      record.markers,
+      defaultScoreTrack.markers,
+      minValue,
+      maxValue
+    ),
+    maxValue,
+    minValue,
+    orientation: projectObjectScoreTrackOrientationSet.has(
+      record.orientation as ProjectObjectScoreTrackOrientation
+    )
+      ? (record.orientation as ProjectObjectScoreTrackOrientation)
+      : defaultScoreTrack.orientation,
+    showLabels:
+      typeof record.showLabels === "boolean" ? record.showLabels : defaultScoreTrack.showLabels,
+    step
+  };
+}
+
+function normalizeProjectObjectScoreTrackMarkers(
+  value: unknown,
+  fallbackMarkers: ProjectObjectScoreTrackMarker[],
+  minValue: number,
+  maxValue: number
+): ProjectObjectScoreTrackMarker[] {
+  const markers = Array.isArray(value) ? value : fallbackMarkers;
+
+  return markers
+    .slice(0, projectObjectScoreTrackMarkerCountLimits.max)
+    .map((marker, index) =>
+      normalizeProjectObjectScoreTrackMarker(
+        marker,
+        fallbackMarkers[index] ?? fallbackMarkers[0]!,
+        minValue,
+        maxValue
+      )
+    )
+    .filter((marker): marker is ProjectObjectScoreTrackMarker => Boolean(marker.id));
+}
+
+function normalizeProjectObjectScoreTrackMarker(
+  value: unknown,
+  fallback: ProjectObjectScoreTrackMarker,
+  minValue: number,
+  maxValue: number
+): ProjectObjectScoreTrackMarker {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const id = typeof record.id === "string" ? record.id.trim() : fallback.id;
+  const label = typeof record.label === "string" ? record.label : fallback.label;
+  const valueNumber = normalizeIntegerNumber(
+    record.value,
+    fallback.value,
+    projectObjectScoreTrackValueLimits
+  );
+
+  return {
+    color: normalizeHexColor(record.color, fallback.color),
+    id,
+    label: label.slice(0, projectObjectScoreTrackMarkerLabelMaxLength),
+    value: Math.min(maxValue, Math.max(minValue, valueNumber))
+  };
 }
 
 function normalizeProjectObjectDoubleSide(

@@ -11,7 +11,10 @@ const projectObjectKindIconClassNames: Record<ProjectObjectKind, string> = {
   image: "text-sky-600",
   label: "text-slate-600",
   meeple: "text-red-600",
+  scoreTrack: "text-slate-700",
   shape: "text-emerald-600",
+  stack: "text-slate-700",
+  tile: "text-yellow-700",
   token: "text-orange-600",
   zone: "text-cyan-600"
 };
@@ -27,7 +30,10 @@ const projectObjectKindLabels: Record<ProjectObjectKind, string> = {
   image: "Image",
   label: "Label",
   meeple: "Meeple",
+  scoreTrack: "Score Track",
   shape: "Shape",
+  stack: "Stack",
+  tile: "Tile",
   token: "Token",
   zone: "Zone"
 };

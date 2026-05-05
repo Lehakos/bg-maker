@@ -7,6 +7,7 @@ import type {
 } from "@bg-maker/shared";
 import {
   doesProjectObjectClipChildren,
+  hasProjectObjectSides,
   hasProjectObjectLayout,
   isProjectObjectCardSizePresetLocked
 } from "@bg-maker/shared";
@@ -143,13 +144,12 @@ export function SceneObjectFrame({
   const appearance = getProjectObjectNodeAppearance(viewObject);
   const card = viewObject.kind === "card" ? getProjectObjectNodeCard(viewObject) : null;
   const die = viewObject.kind === "die" ? getProjectObjectNodeDie(viewObject) : null;
-  const token = viewObject.kind === "token";
-  const doubleSide =
-    viewObject.kind === "card" || viewObject.kind === "token"
-      ? getProjectObjectNodeDoubleSide(viewObject)
-      : null;
+  const tokenLike = viewObject.kind === "token" || viewObject.kind === "tile";
+  const doubleSide = hasProjectObjectSides(viewObject.kind)
+    ? getProjectObjectNodeDoubleSide(viewObject)
+    : null;
   const hasTopObjectControls = Boolean(
-    (card && doubleSide?.enabled) || die || (token && doubleSide?.enabled)
+    (card && doubleSide?.enabled) || die || (tokenLike && doubleSide?.enabled)
   );
   const clipsChildren = doesProjectObjectClipChildren(viewObject.kind);
   const sizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
@@ -484,11 +484,11 @@ export function SceneObjectFrame({
           onFaceChange={(activeFace) => onDieFaceChange(viewObject.id, die, activeFace)}
         />
       ) : null}
-      {selected && token && doubleSide?.enabled ? (
+      {selected && tokenLike && doubleSide?.enabled ? (
         <ObjectSideSwitcher
           activeSide={getProjectObjectNodeActiveSide(viewObject)}
           canvasScale={canvasScale}
-          label="Token side"
+          label={viewObject.kind === "tile" ? "Tile side" : "Token side"}
           onSideChange={(activeSide) => onObjectSideChange(viewObject.id, activeSide)}
         />
       ) : null}

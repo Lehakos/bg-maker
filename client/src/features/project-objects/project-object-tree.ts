@@ -8,7 +8,6 @@ import type {
   ProjectObjectCard,
   ProjectObjectContainer,
   ProjectObjectCounter,
-  ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectDoubleSide,
   ProjectObjectIcon,
@@ -17,6 +16,7 @@ import type {
   ProjectObjectMeeple,
   ProjectObjectNode,
   ProjectObjectRectTransform,
+  ProjectObjectScoreTrack,
   ProjectObjectShape,
   ProjectObjectSide,
   ProjectObjectStackDisplay,
@@ -303,10 +303,6 @@ export function getProjectObjectNodeContainer(object: ProjectObjectNode): Projec
   return projectObjectComponentEngine.getContainer(object);
 }
 
-export function getProjectObjectNodeDeck(object: ProjectObjectNode): ProjectObjectDeck {
-  return projectObjectComponentEngine.getDeck(object);
-}
-
 export function getProjectObjectNodeDie(object: ProjectObjectNode): ProjectObjectDie {
   return projectObjectComponentEngine.getDie(object);
 }
@@ -337,6 +333,10 @@ export function getProjectObjectNodeMeeple(object: ProjectObjectNode): ProjectOb
 
 export function getProjectObjectNodeShape(object: ProjectObjectNode): ProjectObjectShape {
   return projectObjectComponentEngine.getShape(object);
+}
+
+export function getProjectObjectNodeScoreTrack(object: ProjectObjectNode): ProjectObjectScoreTrack {
+  return projectObjectComponentEngine.getScoreTrack(object);
 }
 
 export function getProjectObjectNodeStackDisplay(
@@ -428,18 +428,6 @@ export function setProjectObjectNodeContainer(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withContainer(node, container)
-  );
-
-  return result.changed ? result.nodes : objectTree;
-}
-
-export function setProjectObjectNodeDeck(
-  objectTree: ProjectObjectNode[],
-  nodeId: string,
-  deck: ProjectObjectDeck
-): ProjectObjectNode[] {
-  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
-    projectObjectComponentEngine.withDeck(node, deck)
   );
 
   return result.changed ? result.nodes : objectTree;
@@ -569,6 +557,18 @@ export function setProjectObjectNodeShape(
 ): ProjectObjectNode[] {
   const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
     projectObjectComponentEngine.withShape(node, shape)
+  );
+
+  return result.changed ? result.nodes : objectTree;
+}
+
+export function setProjectObjectNodeScoreTrack(
+  objectTree: ProjectObjectNode[],
+  nodeId: string,
+  scoreTrack: ProjectObjectScoreTrack
+): ProjectObjectNode[] {
+  const result = updateProjectObjectNodeInChildren(objectTree, nodeId, (node) =>
+    projectObjectComponentEngine.withScoreTrack(node, scoreTrack)
   );
 
   return result.changed ? result.nodes : objectTree;

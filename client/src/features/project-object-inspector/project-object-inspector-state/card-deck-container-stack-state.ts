@@ -5,7 +5,6 @@ import type {
   ProjectObjectBagAppearanceVariant,
   ProjectObjectContainer,
   ProjectObjectContainerEntry,
-  ProjectObjectDeck,
   ProjectObjectMeeple,
   ProjectObjectMeepleVisualVariant,
   ProjectObjectStackDisplay
@@ -26,11 +25,6 @@ import { clamp, parseRectTransformDraftValue, roundTo } from "./inspector-state-
 
 export type CardFieldKey = keyof ProjectObjectCard;
 export type CardDraft = {
-  sizePreset: ProjectObjectCardSizePresetValue;
-};
-
-export type DeckFieldKey = keyof ProjectObjectDeck;
-export type DeckDraft = {
   sizePreset: ProjectObjectCardSizePresetValue;
 };
 
@@ -97,12 +91,6 @@ export function createCardDraft(card: ProjectObjectCard): CardDraft {
   };
 }
 
-export function createDeckDraft(deck: ProjectObjectDeck): DeckDraft {
-  return {
-    sizePreset: deck.sizePreset
-  };
-}
-
 export function createBagDraft(bag: ProjectObjectBag): BagDraft {
   return {
     appearanceVariant: bag.appearanceVariant
@@ -141,20 +129,6 @@ export function getCardWithDraftField(
   }
 
   return areCardsEqual(card, nextCard) ? null : nextCard;
-}
-
-export function getDeckWithDraftField(
-  deck: ProjectObjectDeck,
-  fieldKey: DeckFieldKey,
-  value: string | boolean
-) {
-  const nextDeck = createNextDeck(deck, fieldKey, value);
-
-  if (!nextDeck) {
-    return null;
-  }
-
-  return areDecksEqual(deck, nextDeck) ? null : nextDeck;
 }
 
 export function getBagWithDraftField(bag: ProjectObjectBag, fieldKey: BagFieldKey, value: string) {
@@ -399,21 +373,6 @@ function createNextCard(
   return null;
 }
 
-function createNextDeck(
-  deck: ProjectObjectDeck,
-  fieldKey: DeckFieldKey,
-  value: string | boolean
-): ProjectObjectDeck | null {
-  if (fieldKey === "sizePreset") {
-    return typeof value === "string" &&
-      cardSizePresetValues.has(value as ProjectObjectCardSizePresetValue)
-      ? { ...deck, sizePreset: value as ProjectObjectCardSizePresetValue }
-      : null;
-  }
-
-  return null;
-}
-
 function createNextBag(
   bag: ProjectObjectBag,
   fieldKey: BagFieldKey,
@@ -535,10 +494,6 @@ function normalizeContainerEntries(entries: ProjectObjectContainer["entries"]) {
 }
 
 function areCardsEqual(left: ProjectObjectCard, right: ProjectObjectCard) {
-  return left.sizePreset === right.sizePreset;
-}
-
-function areDecksEqual(left: ProjectObjectDeck, right: ProjectObjectDeck) {
   return left.sizePreset === right.sizePreset;
 }
 

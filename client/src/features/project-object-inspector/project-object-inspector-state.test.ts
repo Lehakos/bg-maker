@@ -4,13 +4,13 @@ import type {
   ProjectObjectCard,
   ProjectObjectContainer,
   ProjectObjectCounter,
-  ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectIcon,
   ProjectObjectImage,
   ProjectObjectLayout,
   ProjectObjectMeeple,
   ProjectObjectRectTransform,
+  ProjectObjectScoreTrack,
   ProjectObjectShape,
   ProjectObjectStackDisplay,
   ProjectObjectText,
@@ -26,7 +26,6 @@ import {
 import {
   createBagDraft,
   createCardDraft,
-  createDeckDraft,
   createMeepleDraft,
   createStackDisplayDraft,
   getCardWithDraftField,
@@ -37,7 +36,6 @@ import {
   getContainerWithRemovedEntry,
   getContainerEntryReferenceValue,
   getBagWithDraftField,
-  getDeckWithDraftField,
   getMeepleWithDraftField,
   getStackDisplayWithDraftField,
   normalizeContainerEntryQuantityValue,
@@ -66,6 +64,15 @@ import {
   getLayoutWithDraftField,
   normalizeLayoutNumberValue
 } from "./project-object-inspector-state/layout-state";
+import {
+  createScoreTrackDraft,
+  getScoreTrackWithAddedMarker,
+  getScoreTrackWithDraftField,
+  getScoreTrackWithMarkerField,
+  getScoreTrackWithRemovedMarker,
+  normalizeScoreTrackMarkerValue,
+  normalizeScoreTrackNumberValue
+} from "./project-object-inspector-state/score-track-state";
 import {
   createRectTransformDraft,
   getRectTransformWithDraftField,
@@ -135,10 +142,6 @@ const counter: ProjectObjectCounter = {
   suffix: " HP"
 };
 
-const deck: ProjectObjectDeck = {
-  sizePreset: "poker"
-};
-
 const bag: ProjectObjectBag = {
   appearanceVariant: "bag"
 };
@@ -159,6 +162,18 @@ const stackDisplay: ProjectObjectStackDisplay = {
   stackOffsetX: 2,
   stackOffsetY: -2,
   visibleItemCount: 4
+};
+
+const scoreTrack: ProjectObjectScoreTrack = {
+  markers: [
+    { color: "#dc2626", id: "player-1", label: "Player 1", value: 0 },
+    { color: "#2563eb", id: "player-2", label: "Player 2", value: 5 }
+  ],
+  maxValue: 10,
+  minValue: 0,
+  orientation: "horizontal",
+  showLabels: true,
+  step: 1
 };
 
 const zone: ProjectObjectZone = {
@@ -329,13 +344,59 @@ describe("project object inspector state", () => {
     expect(getCounterWithDraftField(counter, "step", "nope")).toBeNull();
   });
 
-  it("creates and updates deck container and stack display drafts", () => {
-    expect(createDeckDraft(deck)).toEqual({
-      sizePreset: "poker"
+  it("creates and updates score track drafts", () => {
+    expect(createScoreTrackDraft(scoreTrack)).toEqual({
+      markers: [
+        { color: "#dc2626", id: "player-1", label: "Player 1", value: "0" },
+        { color: "#2563eb", id: "player-2", label: "Player 2", value: "5" }
+      ],
+      maxValue: "10",
+      minValue: "0",
+      orientation: "horizontal",
+      showLabels: true,
+      step: "1"
     });
-    expect(getDeckWithDraftField(deck, "sizePreset", "bridge")).toMatchObject({
-      sizePreset: "bridge"
+    expect(normalizeScoreTrackNumberValue("minValue", -1000000)).toBe(-999999);
+    expect(normalizeScoreTrackNumberValue("step", 0)).toBe(1);
+    expect(normalizeScoreTrackMarkerValue(1000000)).toBe(999999);
+    expect(getScoreTrackWithDraftField(scoreTrack, "orientation", "vertical")).toMatchObject({
+      orientation: "vertical"
     });
+    expect(getScoreTrackWithDraftField(scoreTrack, "showLabels", false)).toMatchObject({
+      showLabels: false
+    });
+    expect(getScoreTrackWithDraftField(scoreTrack, "minValue", "6")).toMatchObject({
+      maxValue: 10,
+      markers: [
+        { id: "player-1", value: 6 },
+        { id: "player-2", value: 6 }
+      ],
+      minValue: 6
+    });
+    expect(getScoreTrackWithMarkerField(scoreTrack, "player-2", "value", "50")).toMatchObject({
+      markers: [
+        { id: "player-1", value: 0 },
+        { id: "player-2", value: 10 }
+      ]
+    });
+    expect(
+      getScoreTrackWithMarkerField(scoreTrack, "player-1", "label", "Red")?.markers[0]
+    ).toMatchObject({ id: "player-1", label: "Red" });
+    expect(getScoreTrackWithAddedMarker(scoreTrack, "player-3")).toMatchObject({
+      markers: [
+        { id: "player-1" },
+        { id: "player-2" },
+        { id: "player-3", label: "Player 3", value: 0 }
+      ]
+    });
+    expect(getScoreTrackWithRemovedMarker(scoreTrack, "player-1")).toMatchObject({
+      markers: [{ id: "player-2" }]
+    });
+    expect(getScoreTrackWithDraftField(scoreTrack, "orientation", "diagonal")).toBeNull();
+    expect(getScoreTrackWithMarkerField(scoreTrack, "player-2", "value", "nope")).toBeNull();
+  });
+
+  it("creates and updates container and stack display drafts", () => {
     expect(createStackDisplayDraft(stackDisplay)).toEqual({
       showCount: true,
       stackOffsetX: "2",

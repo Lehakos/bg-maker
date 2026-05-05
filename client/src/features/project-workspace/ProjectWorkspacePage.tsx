@@ -1617,7 +1617,7 @@ function collectPrintableObjectFileNodes(
 }
 
 function isPrintableObjectKind(kind: ProjectObjectKind) {
-  return kind === "card" || kind === "shape" || kind === "token";
+  return kind === "card" || kind === "shape" || kind === "tile" || kind === "token";
 }
 
 function escapeHtml(value: string) {

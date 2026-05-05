@@ -5,6 +5,7 @@ import {
   projectObjectContainerEntryQuantityLimits,
   projectObjectCounterAffixMaxLength,
   projectObjectDieFaceLabelMaxLength,
+  projectObjectScoreTrackMarkerLabelMaxLength,
   projectObjectStackDisplayVisibleItemCountLimits,
   type Project
 } from "@bg-maker/shared";
@@ -815,7 +816,7 @@ describe("ProjectService", () => {
     ]);
   });
 
-  it("normalizes deck components as a card-only container stack", async () => {
+  it("normalizes deck components as a free-sized card-only container stack", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 
     const updatedProject = await projectService.updateProjectFileTree("project-1", [
@@ -877,14 +878,11 @@ describe("ProjectService", () => {
               }
             ]
           },
-          deck: {
-            sizePreset: "bridge"
-          },
           rectTransform: {
-            height: 89,
-            scaleX: 1,
-            scaleY: 1,
-            width: 57
+            height: 200,
+            scaleX: 2,
+            scaleY: 3,
+            width: 200
           },
           stackDisplay: {
             showCount: false,
@@ -895,9 +893,90 @@ describe("ProjectService", () => {
         }
       }
     ]);
+    expect(updatedProject?.fileTree[0]?.objectTree?.[0]?.components).not.toHaveProperty("deck");
   });
 
-  it("normalizes bag components as a free-sized token container", async () => {
+  it("normalizes stack components as a free-sized token tile and meeple stack", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "object-file",
+        kind: "object",
+        name: "Object file",
+        objectTree: [
+          {
+            id: "stack-1",
+            kind: "stack",
+            name: "Stack 1",
+            components: {
+              container: {
+                entries: [
+                  { objectFileNodeId: " tile-file-1 ", quantity: 2 },
+                  { objectFileNodeId: "tile-file-1", quantity: 9999 },
+                  { objectFileNodeId: "meeple-file-1", quantity: 3 },
+                  { objectFileNodeId: "", quantity: 4 }
+                ]
+              },
+              deck: {
+                sizePreset: "bridge"
+              },
+              rectTransform: {
+                height: 200,
+                scaleX: 2,
+                scaleY: 3,
+                width: 180
+              },
+              stackDisplay: {
+                showCount: false,
+                stackOffsetX: 99,
+                stackOffsetY: -99,
+                visibleItemCount: 99
+              }
+            },
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ]);
+
+    expect(updatedProject?.fileTree[0]?.objectTree).toMatchObject([
+      {
+        id: "stack-1",
+        kind: "stack",
+        components: {
+          container: {
+            entries: [
+              {
+                objectFileNodeId: "tile-file-1",
+                quantity: projectObjectContainerEntryQuantityLimits.max
+              },
+              {
+                objectFileNodeId: "meeple-file-1",
+                quantity: 3
+              }
+            ]
+          },
+          rectTransform: {
+            height: 200,
+            scaleX: 2,
+            scaleY: 3,
+            width: 180
+          },
+          stackDisplay: {
+            showCount: false,
+            stackOffsetX: 24,
+            stackOffsetY: -24,
+            visibleItemCount: projectObjectStackDisplayVisibleItemCountLimits.max
+          }
+        }
+      }
+    ]);
+    expect(updatedProject?.fileTree[0]?.objectTree?.[0]?.components).not.toHaveProperty("deck");
+  });
+
+  it("normalizes bag components as a free-sized token tile and meeple container", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 
     const updatedProject = await projectService.updateProjectFileTree("project-1", [
@@ -1178,6 +1257,75 @@ describe("ProjectService", () => {
     });
   });
 
+  it("normalizes score track components with clamped marker values", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "object-file",
+        kind: "object",
+        name: "Object file",
+        objectTree: [
+          {
+            id: "score-1",
+            kind: "scoreTrack",
+            name: "Score Track",
+            components: {
+              counter: {
+                defaultValue: 10
+              },
+              scoreTrack: {
+                markers: [
+                  {
+                    color: "red",
+                    id: " green ",
+                    label: "G".repeat(projectObjectScoreTrackMarkerLabelMaxLength + 10),
+                    value: 999999
+                  },
+                  {
+                    color: "#ABCDEF",
+                    id: "",
+                    label: "Blank",
+                    value: -999999
+                  }
+                ],
+                maxValue: 4,
+                minValue: 5,
+                orientation: "diagonal",
+                showLabels: "yes",
+                step: 0
+              }
+            },
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ]);
+
+    const normalizedScoreTrack =
+      updatedProject?.fileTree[0]?.objectTree?.[0]?.components?.scoreTrack;
+
+    expect(normalizedScoreTrack).toMatchObject({
+      markers: [
+        {
+          color: "#dc2626",
+          id: "green",
+          value: 6
+        }
+      ],
+      maxValue: 6,
+      minValue: 5,
+      orientation: "horizontal",
+      showLabels: true,
+      step: 1
+    });
+    expect(normalizedScoreTrack?.markers[0]?.label).toHaveLength(
+      projectObjectScoreTrackMarkerLabelMaxLength
+    );
+    expect(updatedProject?.fileTree[0]?.objectTree?.[0]?.components).not.toHaveProperty("counter");
+  });
+
   it("normalizes token components as a two-sided shape container", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 
@@ -1251,6 +1399,64 @@ describe("ProjectService", () => {
         },
         id: "token-2",
         kind: "token"
+      }
+    ]);
+    expect(
+      updatedProject?.fileTree[0]?.objectTree?.[0]?.components?.doubleSide?.sideComponents
+    ).toBeUndefined();
+  });
+
+  it("normalizes tile components as a two-sided free-sized shape piece", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "object-file",
+        kind: "object",
+        name: "Object file",
+        objectTree: [
+          {
+            components: {
+              doubleSide: {
+                activeSide: "sideways",
+                sideComponents: {
+                  front: {
+                    shape: { variant: "diamond" }
+                  }
+                }
+              },
+              rectTransform: {
+                height: 160,
+                scaleX: 2,
+                scaleY: 3,
+                width: 180
+              },
+              shape: { variant: "hexagon" }
+            },
+            id: "tile-1",
+            kind: "tile",
+            name: "Tile",
+            visible: true
+          }
+        ],
+        type: "file"
+      }
+    ]);
+
+    expect(updatedProject?.fileTree[0]?.objectTree).toMatchObject([
+      {
+        components: {
+          doubleSide: { enabled: true },
+          rectTransform: {
+            height: 160,
+            scaleX: 2,
+            scaleY: 3,
+            width: 180
+          },
+          shape: { variant: "hexagon" }
+        },
+        id: "tile-1",
+        kind: "tile"
       }
     ]);
     expect(

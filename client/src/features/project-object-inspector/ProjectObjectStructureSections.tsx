@@ -14,7 +14,6 @@ import {
   ConePieceIcon,
   CubePieceIcon,
   CylinderPieceIcon,
-  DeckIcon,
   MeepleIcon,
   PawnIcon,
   StandeeIcon
@@ -35,7 +34,6 @@ import {
   zoneNumberFieldSettings,
   type BagDraft,
   type CardDraft,
-  type DeckDraft,
   type MeepleDraft,
   type StackDisplayDraft,
   type StackDisplayFieldKey,
@@ -96,29 +94,6 @@ export function ProjectObjectCardSection({
 }: ProjectObjectCardSectionProps) {
   return (
     <InspectorSection icon={<CardIcon size={15} />} title="Card">
-      <InspectorSelectField
-        label="Size preset"
-        value={draft.sizePreset}
-        options={sizePresetOptions}
-        onChange={onSizePresetChange}
-      />
-    </InspectorSection>
-  );
-}
-
-type ProjectObjectDeckSectionProps = {
-  draft: DeckDraft;
-  sizePresetOptions: readonly SizePresetOption[];
-  onSizePresetChange: (value: ProjectObjectCardSizePresetValue) => void;
-};
-
-export function ProjectObjectDeckSection({
-  draft,
-  sizePresetOptions,
-  onSizePresetChange
-}: ProjectObjectDeckSectionProps) {
-  return (
-    <InspectorSection icon={<DeckIcon size={15} />} title="Deck">
       <InspectorSelectField
         label="Size preset"
         value={draft.sizePreset}

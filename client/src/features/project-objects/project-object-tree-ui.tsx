@@ -1,10 +1,12 @@
 import type { ProjectFileNode, ProjectObjectKind, ProjectObjectNode } from "@bg-maker/shared";
 import {
   Boxes,
+  ChartNoAxesGantt,
   Circle,
   Component,
   Dices,
   Hash,
+  Hexagon,
   Image,
   Rows3,
   Scan,
@@ -36,12 +38,24 @@ export function ProjectObjectKindIcon({ kind, ...iconProps }: ProjectObjectKindI
     return <Circle {...iconProps} />;
   }
 
+  if (kind === "tile") {
+    return <Hexagon {...iconProps} />;
+  }
+
   if (kind === "counter") {
     return <Hash {...iconProps} />;
   }
 
+  if (kind === "scoreTrack") {
+    return <ChartNoAxesGantt {...iconProps} />;
+  }
+
   if (kind === "deck") {
     return <DeckIcon {...iconProps} />;
+  }
+
+  if (kind === "stack") {
+    return <Rows3 {...iconProps} />;
   }
 
   if (kind === "bag") {

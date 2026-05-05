@@ -20,11 +20,14 @@ export const projectObjectKinds = [
   "group",
   "card",
   "deck",
+  "stack",
   "bag",
   "zone",
   "meeple",
   "token",
+  "tile",
   "counter",
+  "scoreTrack",
   "die",
   "label",
   "image",
@@ -235,10 +238,6 @@ export type ProjectObjectStackDisplay = {
   visibleItemCount: number;
 };
 
-export type ProjectObjectDeck = {
-  sizePreset: ProjectObjectCardSizePresetValue;
-};
-
 export const projectObjectBagAppearanceVariants = ["bag", "box"] as const;
 
 export type ProjectObjectBagAppearanceVariant = (typeof projectObjectBagAppearanceVariants)[number];
@@ -301,6 +300,44 @@ export type ProjectObjectCounter = {
   prefix: string;
   step: number;
   suffix: string;
+};
+
+export const projectObjectScoreTrackOrientations = ["horizontal", "vertical"] as const;
+
+export type ProjectObjectScoreTrackOrientation =
+  (typeof projectObjectScoreTrackOrientations)[number];
+
+export const projectObjectScoreTrackValueLimits = {
+  max: 999999,
+  min: -999999
+} as const;
+
+export const projectObjectScoreTrackStepLimits = {
+  max: 999999,
+  min: 1
+} as const;
+
+export const projectObjectScoreTrackMarkerLabelMaxLength = 32;
+
+export const projectObjectScoreTrackMarkerCountLimits = {
+  max: 12,
+  min: 0
+} as const;
+
+export type ProjectObjectScoreTrackMarker = {
+  color: string;
+  id: string;
+  label: string;
+  value: number;
+};
+
+export type ProjectObjectScoreTrack = {
+  markers: ProjectObjectScoreTrackMarker[];
+  maxValue: number;
+  minValue: number;
+  orientation: ProjectObjectScoreTrackOrientation;
+  showLabels: boolean;
+  step: number;
 };
 
 export const projectObjectDieDefaultFaceCount = 6;
@@ -401,7 +438,6 @@ export type ProjectObjectComponents = {
   composition?: ProjectCompositionSettings;
   container?: ProjectObjectContainer;
   counter?: ProjectObjectCounter;
-  deck?: ProjectObjectDeck;
   die?: ProjectObjectDie;
   doubleSide?: ProjectObjectDoubleSide;
   icon?: ProjectObjectIcon;
@@ -409,6 +445,7 @@ export type ProjectObjectComponents = {
   layout?: ProjectObjectLayout;
   meeple?: ProjectObjectMeeple;
   rectTransform?: ProjectObjectRectTransform;
+  scoreTrack?: ProjectObjectScoreTrack;
   shape?: ProjectObjectShape;
   stackDisplay?: ProjectObjectStackDisplay;
   text?: ProjectObjectText;
@@ -572,7 +609,10 @@ const defaultProjectObjectSizes: Record<ProjectObjectKind, { height: number; wid
   image: { height: 180, width: 240 },
   label: { height: 32, width: 160 },
   meeple: { height: 80, width: 80 },
+  scoreTrack: { height: 96, width: 360 },
   shape: { height: 120, width: 120 },
+  stack: { height: 96, width: 96 },
+  tile: { height: 80, width: 80 },
   token: { height: 80, width: 80 },
   zone: { height: 120, width: 180 }
 };
@@ -588,7 +628,10 @@ const defaultProjectObjectNames: Record<ProjectObjectKind, string> = {
   image: "New image",
   label: "New label",
   meeple: "New meeple",
+  scoreTrack: "New score track",
   shape: "New shape",
+  stack: "New stack",
+  tile: "New tile",
   token: "New token",
   zone: "New zone"
 };
@@ -623,6 +666,16 @@ const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAp
     borderWidth: 2,
     opacity: 1,
     padding: 8
+  },
+  scoreTrack: {
+    backgroundColor: "#f8fafc",
+    backgroundOpacity: 1,
+    borderColor: "#64748b",
+    borderRadius: 8,
+    borderStyle: "solid",
+    borderWidth: 1,
+    opacity: 1,
+    padding: 10
   },
   deck: {
     backgroundColor: "#e0f2fe",
@@ -704,6 +757,16 @@ const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAp
     opacity: 1,
     padding: 8
   },
+  stack: {
+    backgroundColor: "#f1f5f9",
+    backgroundOpacity: 1,
+    borderColor: "#475569",
+    borderRadius: 8,
+    borderStyle: "solid",
+    borderWidth: 2,
+    opacity: 1,
+    padding: 8
+  },
   token: {
     backgroundColor: "#fef3c7",
     backgroundOpacity: 1,
@@ -713,6 +776,16 @@ const defaultProjectObjectAppearances: Record<ProjectObjectKind, ProjectObjectAp
     borderWidth: 2,
     opacity: 1,
     padding: 6
+  },
+  tile: {
+    backgroundColor: "#fefce8",
+    backgroundOpacity: 1,
+    borderColor: "#ca8a04",
+    borderRadius: 4,
+    borderStyle: "solid",
+    borderWidth: 2,
+    opacity: 1,
+    padding: 4
   },
   zone: {
     backgroundColor: "#ecfeff",
@@ -824,7 +897,11 @@ export function getProjectObjectContainerAcceptedObjectKinds(
   }
 
   if (kind === "bag") {
-    return ["token", "meeple"];
+    return ["token", "tile", "meeple"];
+  }
+
+  if (kind === "stack") {
+    return ["token", "tile", "meeple"];
   }
 
   return [];
@@ -869,15 +946,23 @@ export function getDefaultProjectObjectStackDisplay(): ProjectObjectStackDisplay
   };
 }
 
-export function getDefaultProjectObjectDeck(): ProjectObjectDeck {
-  return {
-    sizePreset: "poker"
-  };
-}
-
 export function getDefaultProjectObjectBag(): ProjectObjectBag {
   return {
     appearanceVariant: "bag"
+  };
+}
+
+export function getDefaultProjectObjectScoreTrack(): ProjectObjectScoreTrack {
+  return {
+    markers: [
+      { color: "#dc2626", id: "player-1", label: "Player 1", value: 0 },
+      { color: "#2563eb", id: "player-2", label: "Player 2", value: 0 }
+    ],
+    maxValue: 10,
+    minValue: 0,
+    orientation: "horizontal",
+    showLabels: true,
+    step: 1
   };
 }
 
@@ -1042,7 +1127,7 @@ export function hasProjectObjectLayout(kind: ProjectObjectKind) {
 }
 
 export function hasProjectObjectSides(kind: ProjectObjectKind) {
-  return kind === "card" || kind === "token";
+  return kind === "card" || kind === "token" || kind === "tile";
 }
 
 export function doesProjectObjectClipChildren(kind: ProjectObjectKind) {
@@ -1053,7 +1138,10 @@ export function doesProjectObjectClipChildren(kind: ProjectObjectKind) {
     kind === "deck" ||
     kind === "die" ||
     kind === "meeple" ||
+    kind === "scoreTrack" ||
     kind === "shape" ||
+    kind === "stack" ||
+    kind === "tile" ||
     kind === "token"
   );
 }
@@ -1106,7 +1194,11 @@ export function createDefaultProjectObjectComponents(
 
   if (kind === "deck") {
     components.container = getDefaultProjectObjectContainer(kind);
-    components.deck = getDefaultProjectObjectDeck();
+    components.stackDisplay = getDefaultProjectObjectStackDisplay();
+  }
+
+  if (kind === "stack") {
+    components.container = getDefaultProjectObjectContainer(kind);
     components.stackDisplay = getDefaultProjectObjectStackDisplay();
   }
 
@@ -1124,6 +1216,10 @@ export function createDefaultProjectObjectComponents(
     components.counter = getDefaultProjectObjectCounter();
   }
 
+  if (kind === "scoreTrack") {
+    components.scoreTrack = getDefaultProjectObjectScoreTrack();
+  }
+
   if (kind === "die") {
     components.die = getDefaultProjectObjectDie();
   }
@@ -1132,7 +1228,7 @@ export function createDefaultProjectObjectComponents(
     components.meeple = getDefaultProjectObjectMeeple();
   }
 
-  if (kind === "token") {
+  if (kind === "token" || kind === "tile") {
     components.doubleSide = getDefaultProjectObjectDoubleSide(kind);
     components.shape = getDefaultProjectObjectShape(kind);
   }

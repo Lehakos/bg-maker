@@ -5,6 +5,7 @@ import {
   FileText,
   Folder,
   FolderOpen,
+  Link2,
   Rows3,
   type LucideProps
 } from "lucide-react";
@@ -27,6 +28,10 @@ export function ProjectFileNodeIcon({ node, ...iconProps }: ProjectFileNodeIconP
   }
 
   if (node.kind === "object") {
+    if (node.sourceRef) {
+      return <Link2 {...iconProps} />;
+    }
+
     return <Boxes {...iconProps} />;
   }
 

@@ -5,7 +5,6 @@ import type {
   ProjectCompositionSettings,
   ProjectObjectContainer,
   ProjectObjectCounter,
-  ProjectObjectDeck,
   ProjectObjectDie,
   ProjectObjectDoubleSide,
   ProjectObjectIcon,
@@ -15,6 +14,7 @@ import type {
   ProjectObjectMeeple,
   ProjectObjectNode,
   ProjectObjectRectTransform,
+  ProjectObjectScoreTrack,
   ProjectObjectShape,
   ProjectObjectStackDisplay,
   ProjectObjectText,
@@ -39,7 +39,6 @@ import {
   getProjectObjectContainerComponent,
   withProjectObjectContainerComponent
 } from "./container-component";
-import { getProjectObjectDeckComponent, withProjectObjectDeckComponent } from "./deck-component";
 import { getProjectObjectDieComponent, withProjectObjectDieComponent } from "./die-component";
 import {
   getProjectObjectDoubleSideComponent,
@@ -59,6 +58,10 @@ import {
   getProjectObjectRectTransformComponent,
   withProjectObjectRectTransformComponent
 } from "./rect-transform-component";
+import {
+  getProjectObjectScoreTrackComponent,
+  withProjectObjectScoreTrackComponent
+} from "./score-track-component";
 import { getProjectObjectShapeComponent, withProjectObjectShapeComponent } from "./shape-component";
 import {
   getProjectObjectStackDisplayComponent,
@@ -103,10 +106,6 @@ export class ProjectObjectComponentEngine {
     return getProjectObjectContainerComponent(object);
   }
 
-  getDeck(object: ProjectObjectNode): ProjectObjectDeck {
-    return getProjectObjectDeckComponent(object);
-  }
-
   getDie(object: ProjectObjectNode): ProjectObjectDie {
     return getProjectObjectDieComponent(object);
   }
@@ -137,6 +136,10 @@ export class ProjectObjectComponentEngine {
 
   getShape(object: ProjectObjectNode): ProjectObjectShape {
     return getProjectObjectShapeComponent(object);
+  }
+
+  getScoreTrack(object: ProjectObjectNode): ProjectObjectScoreTrack {
+    return getProjectObjectScoreTrackComponent(object);
   }
 
   getStackDisplay(object: ProjectObjectNode): ProjectObjectStackDisplay {
@@ -184,10 +187,6 @@ export class ProjectObjectComponentEngine {
     return withProjectObjectContainerComponent(object, container);
   }
 
-  withDeck(object: ProjectObjectNode, deck: ProjectObjectDeck): ProjectObjectNode {
-    return withProjectObjectDeckComponent(object, deck);
-  }
-
   withDie(object: ProjectObjectNode, die: ProjectObjectDie): ProjectObjectNode {
     return withProjectObjectDieComponent(object, die);
   }
@@ -221,6 +220,13 @@ export class ProjectObjectComponentEngine {
 
   withShape(object: ProjectObjectNode, shape: ProjectObjectShape): ProjectObjectNode {
     return withProjectObjectShapeComponent(object, shape);
+  }
+
+  withScoreTrack(
+    object: ProjectObjectNode,
+    scoreTrack: ProjectObjectScoreTrack
+  ): ProjectObjectNode {
+    return withProjectObjectScoreTrackComponent(object, scoreTrack);
   }
 
   withStackDisplay(

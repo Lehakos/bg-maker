@@ -1379,6 +1379,10 @@ function getProjectFileNodeIconClassName(node: ProjectFileNode) {
   }
 
   if (node.kind === "object") {
+    if (node.sourceRef) {
+      return "text-sky-700";
+    }
+
     return "text-emerald-600";
   }
 
