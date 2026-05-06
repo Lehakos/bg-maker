@@ -167,7 +167,16 @@ describe("project variant helpers", () => {
     };
     const tableSetup = {
       ...getDefaultProjectTableSetup(),
-      items: [{ object: localObject, type: "localObject" as const }]
+      items: [
+        {
+          behavior: {
+            movement: { movableInPlaytest: false },
+            visibility: { initialHidden: true }
+          },
+          object: localObject,
+          type: "localObject" as const
+        }
+      ]
     };
     const fileTree = [
       folder("setups", "Setups", [
@@ -192,6 +201,10 @@ describe("project variant helpers", () => {
 
     expect(item).toMatchObject({
       id: "local-card",
+      behavior: {
+        movement: { movableInPlaytest: false },
+        visibility: { initialHidden: true }
+      },
       locked: true,
       name: "Local Card",
       transform: { rotation: 15, scaleX: 1.25, scaleY: 0.75, x: 120, y: 240 },
@@ -277,6 +290,10 @@ describe("project variant helpers", () => {
       ...getDefaultProjectTableSetup(),
       items: [
         {
+          behavior: {
+            interaction: { interactableInPlaytest: false },
+            side: { initialSide: "back" as const }
+          },
           id: "linked-card",
           name: "Elite",
           sourceObjectFileNodeId: "source-file",
@@ -306,6 +323,10 @@ describe("project variant helpers", () => {
     const detachedItem = tableFile?.tableSetup?.items[0];
 
     expect(detachedItem).toMatchObject({
+      behavior: {
+        interaction: { interactableInPlaytest: false },
+        side: { initialSide: "back" }
+      },
       object: {
         id: "linked-card",
         name: "Elite",

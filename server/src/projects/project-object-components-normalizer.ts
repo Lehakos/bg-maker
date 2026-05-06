@@ -42,7 +42,9 @@ import type {
   ProjectObjectTextEffectMode,
   ProjectObjectTextFontFamily,
   ProjectObjectTextFontStyle,
-  ProjectObjectTextVerticalAlign
+  ProjectObjectTextVerticalAlign,
+  ProjectObjectZone,
+  ProjectObjectZoneMode
 } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectAppearance,
@@ -62,8 +64,10 @@ import {
   getDefaultProjectObjectShapePolygonPoints,
   getDefaultProjectObjectStackDisplay,
   getDefaultProjectObjectText,
+  getDefaultProjectObjectZone,
   getProjectObjectCardSizePreset,
   getProjectObjectRectTransformWithCardSizePreset,
+  normalizeProjectObjectZoneSlots,
   projectObjectBagAppearanceVariants,
   projectObjectCardCustomSizePresetId,
   projectObjectContainerEntryQuantityLimits,
@@ -89,7 +93,8 @@ import {
   projectObjectStackDisplayOffsetLimits,
   projectObjectStackDisplayVisibleItemCountLimits,
   projectObjectTextEffectModes,
-  projectObjectTextFontFamilies
+  projectObjectTextFontFamilies,
+  projectObjectZoneModes
 } from "@bg-maker/shared";
 import { isSafeProjectImageAssetId } from "./project-image-assets.js";
 import { normalizeProjectCompositionSettings } from "./project-composition-normalizer.js";
@@ -182,6 +187,7 @@ const projectObjectTextEffectModeSet = new Set<ProjectObjectTextEffectMode>(
 const projectObjectTextFontFamilySet = new Set<ProjectObjectTextFontFamily>(
   projectObjectTextFontFamilies
 );
+const projectObjectZoneModeSet = new Set<ProjectObjectZoneMode>(projectObjectZoneModes);
 const projectObjectTextFontStyles = new Set<ProjectObjectTextFontStyle>(["italic", "normal"]);
 const projectObjectTextVerticalAligns = new Set<ProjectObjectTextVerticalAlign>([
   "bottom",
@@ -278,6 +284,14 @@ export function normalizeProjectObjectComponents(
     return {
       ...components,
       meeple: normalizeProjectObjectMeeple(record.meeple)
+    };
+  }
+
+  if (kind === "zone") {
+    return {
+      ...components,
+      layout: normalizeProjectObjectLayout(record.layout, kind),
+      zone: normalizeProjectObjectZone(record.zone)
     };
   }
 
@@ -408,8 +422,11 @@ export function normalizeProjectObjectAppearance(
   };
 }
 
-function normalizeProjectObjectLayout(value: unknown): ProjectObjectLayout {
-  const defaultLayout = getDefaultProjectObjectLayout();
+function normalizeProjectObjectLayout(
+  value: unknown,
+  kind: ProjectObjectKind = "group"
+): ProjectObjectLayout {
+  const defaultLayout = getDefaultProjectObjectLayout(kind);
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 
   return {
@@ -432,6 +449,22 @@ function normalizeProjectObjectLayout(value: unknown): ProjectObjectLayout {
     mode: projectObjectLayoutModes.has(record.mode as ProjectObjectLayoutMode)
       ? (record.mode as ProjectObjectLayoutMode)
       : defaultLayout.mode
+  };
+}
+
+function normalizeProjectObjectZone(value: unknown): ProjectObjectZone {
+  const defaultZone = getDefaultProjectObjectZone();
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+  return {
+    mode: projectObjectZoneModeSet.has(record.mode as ProjectObjectZoneMode)
+      ? (record.mode as ProjectObjectZoneMode)
+      : defaultZone.mode,
+    sizeReferenceObjectFileId:
+      typeof record.sizeReferenceObjectFileId === "string"
+        ? record.sizeReferenceObjectFileId.trim()
+        : defaultZone.sizeReferenceObjectFileId,
+    slots: normalizeProjectObjectZoneSlots(record.slots as number, defaultZone.slots)
   };
 }
 

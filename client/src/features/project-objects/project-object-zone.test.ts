@@ -6,10 +6,12 @@ import type {
   ProjectObjectRectTransform,
   ProjectObjectZone
 } from "@bg-maker/shared";
+import { getDefaultProjectObjectZone } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
   getEffectiveProjectObjectRectTransform,
   getProjectObjectZoneSize,
+  getProjectObjectZoneSlotRects,
   getProjectObjectZoneSlotRectsForSize,
   resolveProjectObjectZoneReference
 } from "./project-object-zone";
@@ -46,8 +48,9 @@ const baseAppearance: ProjectObjectAppearance = {
 };
 
 const baseZone: ProjectObjectZone = {
-  capacity: 4,
-  referenceObjectFileId: "reference-card"
+  mode: "slots",
+  sizeReferenceObjectFileId: "reference-card",
+  slots: 4
 };
 
 function objectNode(
@@ -91,6 +94,33 @@ function zoneObject(zone: ProjectObjectZone, rectTransform = baseRectTransform):
 }
 
 describe("project object zone sizing", () => {
+  it("defaults to free mode and uses the stored rect without slot previews", () => {
+    const zone = zoneObject(getDefaultProjectObjectZone(), {
+      ...baseRectTransform,
+      height: 72,
+      width: 128
+    });
+
+    expect(getDefaultProjectObjectZone()).toEqual({
+      mode: "free",
+      sizeReferenceObjectFileId: "",
+      slots: 1
+    });
+    expect(getEffectiveProjectObjectRectTransform(zone, [])).toMatchObject({
+      height: 72,
+      width: 128
+    });
+    expect(getProjectObjectZoneSlotRects([], zone)).toEqual([]);
+    expect(
+      getProjectObjectZoneSlotRectsForSize(
+        { height: 20, width: 10 },
+        getDefaultProjectObjectZone(),
+        baseLayout,
+        2
+      )
+    ).toEqual([]);
+  });
+
   it("computes horizontal, vertical, and grid zone sizes from slot size", () => {
     expect(
       getProjectObjectZoneSize(
@@ -111,7 +141,7 @@ describe("project object zone sizing", () => {
     expect(
       getProjectObjectZoneSize(
         { height: 20, width: 10 },
-        { ...baseZone, capacity: 5 },
+        { ...baseZone, slots: 5 },
         { ...baseLayout, columns: 3, gap: 4, mode: "grid" },
         2
       )
@@ -122,8 +152,9 @@ describe("project object zone sizing", () => {
     const referenceObject = objectNode("shape-root", "shape", { height: 60, width: 40 });
     const largerReferenceObject = objectNode("shape-root", "shape", { height: 70, width: 50 });
     const zone = zoneObject({
-      capacity: 3,
-      referenceObjectFileId: "reference-card"
+      mode: "slots",
+      sizeReferenceObjectFileId: "reference-card",
+      slots: 3
     });
     const fileTree = [objectFile("reference-card", referenceObject)];
     const largerFileTree = [objectFile("reference-card", largerReferenceObject)];
@@ -143,8 +174,9 @@ describe("project object zone sizing", () => {
     const fallbackRectTransform = { ...baseRectTransform, height: 42, width: 99 };
     const zone = zoneObject(
       {
-        capacity: 3,
-        referenceObjectFileId: "missing-reference"
+        mode: "slots",
+        sizeReferenceObjectFileId: "missing-reference",
+        slots: 3
       },
       fallbackRectTransform
     );
@@ -160,8 +192,9 @@ describe("project object zone sizing", () => {
     });
     expect(
       resolveProjectObjectZoneReference([zoneReferenceRoot], {
-        capacity: 1,
-        referenceObjectFileId: "missing-reference"
+        mode: "slots",
+        sizeReferenceObjectFileId: "missing-reference",
+        slots: 1
       })
     ).toBeNull();
   });
@@ -170,7 +203,7 @@ describe("project object zone sizing", () => {
     expect(
       getProjectObjectZoneSlotRectsForSize(
         { height: 20, width: 10 },
-        { ...baseZone, capacity: 5 },
+        { ...baseZone, slots: 5 },
         { ...baseLayout, columns: 3, gap: 4 },
         2
       )

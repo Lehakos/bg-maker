@@ -3,6 +3,7 @@ import type {
   ProjectObjectKind,
   ProjectObjectNode,
   ProjectObjectRectTransform,
+  ProjectTableSetupItemBehavior,
   ProjectObjectVariableValue,
   ProjectTableSetup,
   ProjectTableSetupItem,
@@ -25,6 +26,7 @@ import {
   getProjectObjectNodeRectTransform,
   setProjectObjectNodeRectTransform
 } from "../project-objects/project-object-tree";
+import { cloneProjectTableSetupItemBehavior } from "./project-table-setup-behavior";
 
 export type ProjectTableSetupObjectFileOption = {
   id: string;
@@ -126,6 +128,7 @@ export function cloneProjectTableSetupItem(
   if (item.type === "linkedObject") {
     return {
       ...item,
+      behavior: cloneProjectTableSetupItemBehavior(item.behavior),
       id: crypto.randomUUID(),
       name,
       transform: {
@@ -138,6 +141,7 @@ export function cloneProjectTableSetupItem(
 
   return {
     ...item,
+    behavior: cloneProjectTableSetupItemBehavior(item.behavior),
     object: cloneProjectObjectNode(item.object, { name, offset })
   };
 }
@@ -312,6 +316,17 @@ export function getProjectTableSetupWithItemLocked(
       ? { ...item, locked }
       : { ...item, object: { ...item.object, locked } }
   );
+}
+
+export function getProjectTableSetupWithItemBehavior(
+  tableSetup: ProjectTableSetup,
+  itemId: string,
+  behavior: ProjectTableSetupItemBehavior
+): ProjectTableSetup {
+  return updateProjectTableSetupItem(tableSetup, itemId, (item) => ({
+    ...item,
+    behavior
+  }));
 }
 
 export function getProjectTableSetupWithItemTransform(

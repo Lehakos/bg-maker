@@ -80,12 +80,15 @@ export function ProjectPlaytestWorkspace({
     () => resolveProjectObjectFileObjectTree(fileTree, contentFileNode),
     [contentFileNode, fileTree]
   );
-  const selectedItem = getPlaytestSelectedItem(session);
+  const selectedItem =
+    session.selectedItemIds.length === 1 ? getPlaytestSelectedItem(session) : null;
   const panInteractionActive = spacePanPressed || Boolean(panState);
-  const noopExecuteCommand = useCallback((_command: ProjectEditorCommand) => {
+  const noopExecuteCommand = useCallback((command: ProjectEditorCommand) => {
+    void command;
     // Playtest runtime actions are client-local and never write editor commands.
   }, []);
-  const handleCompositionSurfaceChange = useCallback((_surface: CompositionSurfaceTarget | null) => {
+  const handleCompositionSurfaceChange = useCallback((surface: CompositionSurfaceTarget | null) => {
+    void surface;
     // The playtest workspace deliberately omits editor composition controls.
   }, []);
   const updateActionToolbarPosition = useCallback(() => {
@@ -116,10 +119,7 @@ export function ProjectPlaytestWorkspace({
     const nextPosition = {
       left: clampedLeft,
       placement,
-      top:
-        placement === "top"
-          ? topCandidate
-          : selectedRect.bottom - workspaceRect.top + 12
+      top: placement === "top" ? topCandidate : selectedRect.bottom - workspaceRect.top + 12
     } satisfies { left: number; placement: "bottom" | "top"; top: number };
 
     setActionToolbarPosition((currentPosition) =>

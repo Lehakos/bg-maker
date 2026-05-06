@@ -16,6 +16,7 @@ import {
   projectAssetsFolderName
 } from "@bg-maker/shared";
 import { createProjectObjectNode } from "../project-objects/project-object-tree";
+import { cloneProjectTableSetupItemBehavior } from "../project-table-setup/project-table-setup-behavior";
 
 export type ProjectFileTreeParentId = string | null;
 
@@ -384,12 +385,14 @@ function cloneProjectTableSetupItem(item: ProjectTableSetupItem): ProjectTableSe
   if (item.type === "linkedObject") {
     return {
       ...item,
+      behavior: cloneProjectTableSetupItemBehavior(item.behavior),
       id: crypto.randomUUID()
     };
   }
 
   return {
     ...item,
+    behavior: cloneProjectTableSetupItemBehavior(item.behavior),
     object: cloneProjectObjectNode(item.object)
   };
 }
@@ -401,7 +404,9 @@ function remapProjectFileNodeReferences(
   if (node.type === "folder") {
     return {
       ...node,
-      children: (node.children ?? []).map((child) => remapProjectFileNodeReferences(child, fileIdMap))
+      children: (node.children ?? []).map((child) =>
+        remapProjectFileNodeReferences(child, fileIdMap)
+      )
     };
   }
 
@@ -418,9 +423,15 @@ function remapProjectFileNodeReferences(
         }
       : {}),
     ...(node.objectTree
-      ? { objectTree: node.objectTree.map((object) => remapProjectObjectReferences(object, fileIdMap)) }
+      ? {
+          objectTree: node.objectTree.map((object) =>
+            remapProjectObjectReferences(object, fileIdMap)
+          )
+        }
       : {}),
-    ...(node.tableSetup ? { tableSetup: remapProjectTableSetupReferences(node.tableSetup, fileIdMap) } : {})
+    ...(node.tableSetup
+      ? { tableSetup: remapProjectTableSetupReferences(node.tableSetup, fileIdMap) }
+      : {})
   };
 }
 
@@ -448,8 +459,8 @@ function remapProjectObjectReferences(
           ? {
               zone: {
                 ...zone,
-                referenceObjectFileId:
-                  fileIdMap.get(zone.referenceObjectFileId) ?? zone.referenceObjectFileId
+                sizeReferenceObjectFileId:
+                  fileIdMap.get(zone.sizeReferenceObjectFileId) ?? zone.sizeReferenceObjectFileId
               }
             }
           : {})
@@ -473,6 +484,7 @@ function remapProjectTableSetupReferences(
       if (item.type === "linkedObject") {
         return {
           ...item,
+          behavior: remapProjectTableSetupItemBehaviorReferences(item.behavior, fileIdMap),
           sourceObjectFileNodeId:
             fileIdMap.get(item.sourceObjectFileNodeId) ?? item.sourceObjectFileNodeId
         };
@@ -480,9 +492,31 @@ function remapProjectTableSetupReferences(
 
       return {
         ...item,
+        behavior: remapProjectTableSetupItemBehaviorReferences(item.behavior, fileIdMap),
         object: remapProjectObjectReferences(item.object, fileIdMap)
       };
     })
+  };
+}
+
+function remapProjectTableSetupItemBehaviorReferences(
+  behavior: ProjectTableSetupItem["behavior"],
+  fileIdMap: ReadonlyMap<string, string>
+): ProjectTableSetupItem["behavior"] {
+  const clonedBehavior = cloneProjectTableSetupItemBehavior(behavior);
+
+  if (!clonedBehavior?.zone) {
+    return clonedBehavior;
+  }
+
+  return {
+    ...clonedBehavior,
+    zone: {
+      ...clonedBehavior.zone,
+      acceptedObjectFileNodeIds: clonedBehavior.zone.acceptedObjectFileNodeIds.map(
+        (fileNodeId) => fileIdMap.get(fileNodeId) ?? fileNodeId
+      )
+    }
   };
 }
 

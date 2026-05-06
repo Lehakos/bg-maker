@@ -1,7 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { ProjectFileNode, ProjectTableSetupItem } from "@bg-maker/shared";
 import {
   createProjectWithFileTree,
+  dragBy,
   findFileNode,
   getProject,
   objectFile,
@@ -24,7 +25,11 @@ test("runs a manual playtest without changing the source table setup", async ({ 
         })
       ),
       objectFile("die-file", "Playtest Die", objectNode("die-root", "Die", "die")),
-      objectFile("counter-file", "Playtest Counter", objectNode("counter-root", "Counter", "counter"))
+      objectFile(
+        "counter-file",
+        "Playtest Counter",
+        objectNode("counter-root", "Counter", "counter")
+      )
     ]),
     tableSetupFolder([
       tableSetupFile(tableName, [
@@ -81,6 +86,87 @@ test("runs a manual playtest without changing the source table setup", async ({ 
   await expect.poll(async () => getTableSetupItemCount(page, project.id, tableName)).toBe(3);
 });
 
+test("keeps zone contents above and moves them with the zone in playtest", async ({ page }) => {
+  const tableName = `Zone Playtest Table ${Date.now()}`;
+  const project = await createProjectWithFileTree(page, `Zone Playtest ${Date.now()}`, [
+    objectsFolder([
+      objectFile(
+        "card-file",
+        "Hero",
+        objectNode("card-root", "Hero", "card", {
+          rectTransform: rectTransform({ height: 156, width: 112 })
+        })
+      ),
+      objectFile(
+        "zone-file",
+        "Zone",
+        objectNode("zone-root", "Zone", "zone", {
+          rectTransform: rectTransform({ height: 300, width: 520 }),
+          zone: { mode: "free", sizeReferenceObjectFileId: "", slots: 1 }
+        })
+      )
+    ]),
+    tableSetupFolder([
+      tableSetupFile(tableName, [
+        linkedItem("card-item", "Hero", "card-file", -300, 0),
+        {
+          behavior: {
+            zone: {
+              acceptedKinds: [],
+              allowRemove: true,
+              sideOnEnter: "preserve",
+              slotOccupancy: "single"
+            }
+          },
+          id: "zone-item",
+          name: "Zone",
+          sourceObjectFileNodeId: "zone-file",
+          transform: { rotation: 0, scaleX: 1, scaleY: 1, x: 0, y: 0 },
+          type: "linkedObject",
+          values: {},
+          visible: true
+        }
+      ])
+    ])
+  ]);
+
+  await openProject(page, project);
+  await openFileNode(page, tableName);
+  await page.getByRole("button", { name: "Start playtest" }).click();
+
+  const playtestCanvas = page.getByRole("region", { name: "Playtest canvas" });
+  const card = playtestCanvas.getByRole("button", { name: "Hero", exact: true });
+  const zone = playtestCanvas.getByRole("button", { name: "Zone", exact: true });
+  await expect(card).toBeVisible();
+  await expect(zone).toBeVisible();
+
+  await dragBy(card, 300, 0);
+  await expect.poll(async () => getTopPlaytestItemNameAtCenter(page, card)).toBe("Hero");
+
+  const cardBoxBeforeZoneMove = await card.boundingBox();
+  expect(cardBoxBeforeZoneMove).toBeTruthy();
+
+  await dragBy(zone, 40, 30);
+  await expect
+    .poll(async () => {
+      const cardBoxAfterZoneMove = await card.boundingBox();
+
+      return cardBoxAfterZoneMove && cardBoxBeforeZoneMove
+        ? Math.round(cardBoxAfterZoneMove.x - cardBoxBeforeZoneMove.x)
+        : 0;
+    })
+    .toBe(40);
+  await expect
+    .poll(async () => {
+      const cardBoxAfterZoneMove = await card.boundingBox();
+
+      return cardBoxAfterZoneMove && cardBoxBeforeZoneMove
+        ? Math.round(cardBoxAfterZoneMove.y - cardBoxBeforeZoneMove.y)
+        : 0;
+    })
+    .toBe(30);
+});
+
 function tableSetupFolder(children: ProjectFileNode[] = []): ProjectFileNode {
   return {
     id: "table-setups",
@@ -122,6 +208,43 @@ function linkedItem(
     values: {},
     visible: true
   };
+}
+
+function rectTransform({ height, width }: { height: number; width: number }) {
+  return {
+    height,
+    pivotX: 0.5,
+    pivotY: 0.5,
+    rotation: 0,
+    scaleX: 1,
+    scaleY: 1,
+    width,
+    x: 0,
+    y: 0
+  };
+}
+
+async function getTopPlaytestItemNameAtCenter(page: Page, locator: Locator) {
+  const box = await locator.boundingBox();
+
+  if (!box) {
+    return null;
+  }
+
+  return page.evaluate(
+    ({ x, y }) => {
+      const frame = document
+        .elementsFromPoint(x, y)
+        .map((element) => element.closest("[data-playtest-item-id]"))
+        .find(Boolean);
+
+      return frame?.getAttribute("aria-label") ?? null;
+    },
+    {
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2
+    }
+  );
 }
 
 async function getTableSetupItemCount(page: Page, projectId: string, tableName: string) {

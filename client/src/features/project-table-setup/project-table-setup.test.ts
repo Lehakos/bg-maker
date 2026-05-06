@@ -8,6 +8,7 @@ import {
   createProjectTableSetupLocalObjectItem,
   getProjectTableSetupWithDuplicatedItems,
   getProjectTableSetupWithAddedItem,
+  getProjectTableSetupWithItemBehavior,
   getProjectTableSetupWithItemLocked,
   getProjectTableSetupWithLocalObjectTree,
   getProjectTableSetupWithItemTransform,
@@ -128,7 +129,12 @@ describe("project table setup helpers", () => {
   });
 
   it("duplicates, locks, and z-orders table setup items", () => {
-    const firstItem = createProjectTableSetupLocalObjectItem("label");
+    const firstItem = {
+      ...createProjectTableSetupLocalObjectItem("label"),
+      behavior: {
+        movement: { movableInPlaytest: false }
+      }
+    };
     const secondItem = createProjectTableSetupLocalObjectItem("zone");
     const firstItemId = firstItem.type === "localObject" ? firstItem.object.id : firstItem.id;
     const secondItemId = secondItem.type === "localObject" ? secondItem.object.id : secondItem.id;
@@ -146,10 +152,40 @@ describe("project table setup helpers", () => {
       duplicateId,
       secondItemId
     ]);
+    expect(duplicated.tableSetup.items[1]).toMatchObject({
+      behavior: { movement: { movableInPlaytest: false } }
+    });
     expect(duplicateId).not.toBe(firstItemId);
     expect(getItemId(locked.items[1]!)).toBe(duplicateId);
     expect(locked.items[1]).toMatchObject({ object: { locked: true } });
     expect(reordered.items.map(getItemId)).toEqual([secondItemId, firstItemId]);
+  });
+
+  it("updates table setup item behavior without writing to object components", () => {
+    const item = createProjectTableSetupLocalObjectItem("card");
+    const itemId = getItemId(item);
+    const tableSetup = {
+      ...getDefaultProjectTableSetup(),
+      items: [item]
+    };
+    const updated = getProjectTableSetupWithItemBehavior(tableSetup, itemId, {
+      interaction: { interactableInPlaytest: false },
+      side: { initialSide: "back" }
+    });
+
+    expect(updated.items[0]).toMatchObject({
+      behavior: {
+        interaction: { interactableInPlaytest: false },
+        side: { initialSide: "back" }
+      }
+    });
+    expect(updated.items[0]).toMatchObject({
+      object: {
+        components: expect.not.objectContaining({
+          behavior: expect.anything()
+        })
+      }
+    });
   });
 
   it("updates only the selected local table setup object tree", () => {

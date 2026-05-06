@@ -896,6 +896,89 @@ describe("ProjectService", () => {
     expect(updatedProject?.fileTree[0]?.objectTree?.[0]?.components).not.toHaveProperty("deck");
   });
 
+  it("preserves table setup local zone components and playtest behavior", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "setup-file",
+        kind: "tableSetup",
+        name: "Setup",
+        tableSetup: {
+          backgroundColor: "#6f8b70",
+          composition: { guides: [], snapToGuides: true, snapToObjects: true },
+          grid: { size: 32, snap: true, visible: true },
+          height: 720,
+          items: [
+            {
+              behavior: {
+                movement: { movableInPlaytest: false },
+                zone: {
+                  acceptedObjectFileNodeIds: [" card-file ", "card-file", ""],
+                  acceptedKinds: ["card", "zone", "card", "token"],
+                  allowRemove: false,
+                  sideOnEnter: "back",
+                  slotOccupancy: "stack"
+                }
+              },
+              object: {
+                components: {
+                  layout: {
+                    gap: 12,
+                    mode: "horizontal"
+                  },
+                  zone: {
+                    mode: "slots",
+                    sizeReferenceObjectFileId: " card-file ",
+                    slots: 4
+                  }
+                },
+                id: "zone-item",
+                kind: "zone",
+                name: "Zone",
+                visible: true
+              },
+              type: "localObject"
+            }
+          ],
+          width: 960
+        },
+        type: "file"
+      }
+    ]);
+
+    const tableSetup = updatedProject?.fileTree[0]?.tableSetup;
+    const item = tableSetup?.items[0];
+
+    expect(item).toMatchObject({
+      behavior: {
+        movement: { movableInPlaytest: false },
+        zone: {
+          acceptedObjectFileNodeIds: ["card-file"],
+          acceptedKinds: ["card", "token"],
+          allowRemove: false,
+          sideOnEnter: "back",
+          slotOccupancy: "stack"
+        }
+      },
+      object: {
+        components: {
+          layout: {
+            gap: 12,
+            mode: "horizontal"
+          },
+          zone: {
+            mode: "slots",
+            sizeReferenceObjectFileId: "card-file",
+            slots: 4
+          }
+        },
+        kind: "zone"
+      },
+      type: "localObject"
+    });
+  });
+
   it("normalizes stack components as a free-sized token tile and meeple stack", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 

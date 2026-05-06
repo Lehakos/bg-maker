@@ -845,8 +845,9 @@ describe("project object tree helpers", () => {
       step: 2
     };
     const zone: ProjectObjectZone = {
-      capacity: 5,
-      referenceObjectFileId: "card-file-1"
+      mode: "slots",
+      sizeReferenceObjectFileId: "card-file-1",
+      slots: 5
     };
 
     const appearanceTree = setProjectObjectNodeAppearance(objectTree, "shape-1", appearance);

@@ -2,6 +2,7 @@ import type {
   Project,
   ProjectFileKind,
   ProjectFileNode,
+  ProjectObjectKind,
   ProjectObjectSourceRef,
   ProjectObjectTemplate,
   ProjectObjectVariableDefinition,
@@ -9,6 +10,8 @@ import type {
   ProjectObjectVariableValue,
   ProjectTableSetup,
   ProjectTableSetupItem,
+  ProjectTableSetupItemBehavior,
+  ProjectTableSetupItemContainerDrawOrder,
   ProjectTableSetupItemTransform
 } from "@bg-maker/shared";
 import {
@@ -18,6 +21,7 @@ import {
   getDefaultProjectObjectVariableValue,
   projectAssetsFolderId,
   projectAssetsFolderName,
+  projectObjectKinds,
   projectObjectVariableTypes,
   projectTableSetupGridSizeLimits,
   projectTableSetupSizeLimits
@@ -29,6 +33,7 @@ import {
 } from "./project-object-tree-normalizer.js";
 import { ProjectValidationError } from "./project-validation-error.js";
 import {
+  hasOwnRecordKey,
   normalizeFiniteNumber,
   normalizeHexColor,
   normalizeIntegerNumber
@@ -43,7 +48,12 @@ const maxProjectObjectVariableNameLength = 80;
 const maxProjectObjectVariableTextValueLength = 2000;
 const maxProjectTableSetupItemCount = 1000;
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
+const projectObjectKindSet = new Set<ProjectObjectKind>(projectObjectKinds);
 const projectObjectVariableTypeSet = new Set<ProjectObjectVariableType>(projectObjectVariableTypes);
+const projectTableSetupContainerDrawOrderSet = new Set<ProjectTableSetupItemContainerDrawOrder>([
+  "random",
+  "top"
+]);
 
 export function normalizeStoredProject(value: unknown): Project | null {
   if (!value || typeof value !== "object") {
@@ -356,7 +366,10 @@ function normalizeProjectTableSetupItem(value: unknown): ProjectTableSetupItem |
       return null;
     }
 
+    const behavior = normalizeProjectTableSetupItemBehavior(record.behavior);
+
     return {
+      ...(behavior ? { behavior } : {}),
       id,
       name: name || "Linked object",
       sourceObjectFileNodeId,
@@ -372,14 +385,136 @@ function normalizeProjectTableSetupItem(value: unknown): ProjectTableSetupItem |
     try {
       const objectTree = normalizeProjectObjectTree([record.object]);
       const object = objectTree[0];
+      const behavior = normalizeProjectTableSetupItemBehavior(record.behavior);
 
-      return object ? { object, type: "localObject" } : null;
+      return object ? { ...(behavior ? { behavior } : {}), object, type: "localObject" } : null;
     } catch {
       return null;
     }
   }
 
   return null;
+}
+
+function normalizeProjectTableSetupItemBehavior(
+  value: unknown
+): ProjectTableSetupItemBehavior | undefined {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const behavior: ProjectTableSetupItemBehavior = {};
+
+  if (hasOwnRecordKey(record, "movement")) {
+    const movement = getRecord(record.movement);
+
+    behavior.movement = {
+      movableInPlaytest:
+        typeof movement.movableInPlaytest === "boolean" ? movement.movableInPlaytest : true
+    };
+  }
+
+  if (hasOwnRecordKey(record, "interaction")) {
+    const interaction = getRecord(record.interaction);
+
+    behavior.interaction = {
+      interactableInPlaytest:
+        typeof interaction.interactableInPlaytest === "boolean"
+          ? interaction.interactableInPlaytest
+          : true
+    };
+  }
+
+  if (hasOwnRecordKey(record, "visibility")) {
+    const visibility = getRecord(record.visibility);
+
+    behavior.visibility = {
+      initialHidden:
+        typeof visibility.initialHidden === "boolean" ? visibility.initialHidden : false
+    };
+  }
+
+  if (hasOwnRecordKey(record, "side")) {
+    const side = getRecord(record.side);
+
+    behavior.side = {
+      initialSide: side.initialSide === "back" ? "back" : "front"
+    };
+  }
+
+  if (hasOwnRecordKey(record, "container")) {
+    const container = getRecord(record.container);
+
+    behavior.container = {
+      drawOrder: projectTableSetupContainerDrawOrderSet.has(
+        container.drawOrder as ProjectTableSetupItemContainerDrawOrder
+      )
+        ? (container.drawOrder as ProjectTableSetupItemContainerDrawOrder)
+        : "top",
+      drawnItemSide: container.drawnItemSide === "back" ? "back" : "front",
+      shuffleOnStart:
+        typeof container.shuffleOnStart === "boolean" ? container.shuffleOnStart : false
+    };
+  }
+
+  if (hasOwnRecordKey(record, "zone")) {
+    const zone = getRecord(record.zone);
+
+    behavior.zone = {
+      acceptedObjectFileNodeIds: normalizeProjectTableSetupZoneAcceptedObjectFileNodeIds(
+        zone.acceptedObjectFileNodeIds
+      ),
+      acceptedKinds: normalizeProjectTableSetupZoneAcceptedKinds(zone.acceptedKinds),
+      allowRemove: typeof zone.allowRemove === "boolean" ? zone.allowRemove : true,
+      sideOnEnter:
+        zone.sideOnEnter === "back" || zone.sideOnEnter === "front" ? zone.sideOnEnter : "preserve",
+      slotOccupancy: zone.slotOccupancy === "stack" ? "stack" : "single"
+    };
+  }
+
+  return Object.keys(behavior).length ? behavior : undefined;
+}
+
+function normalizeProjectTableSetupZoneAcceptedKinds(value: unknown): ProjectObjectKind[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const acceptedKinds: ProjectObjectKind[] = [];
+
+  for (const kind of value) {
+    if (
+      typeof kind === "string" &&
+      kind !== "zone" &&
+      projectObjectKindSet.has(kind as ProjectObjectKind) &&
+      !acceptedKinds.includes(kind as ProjectObjectKind)
+    ) {
+      acceptedKinds.push(kind as ProjectObjectKind);
+    }
+  }
+
+  return acceptedKinds;
+}
+
+function normalizeProjectTableSetupZoneAcceptedObjectFileNodeIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const acceptedObjectFileNodeIds: string[] = [];
+
+  for (const fileNodeId of value) {
+    if (
+      typeof fileNodeId === "string" &&
+      fileNodeId.trim() &&
+      !acceptedObjectFileNodeIds.includes(fileNodeId.trim())
+    ) {
+      acceptedObjectFileNodeIds.push(fileNodeId.trim());
+    }
+  }
+
+  return acceptedObjectFileNodeIds;
+}
+
+function getRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
 function normalizeProjectTableSetupItemTransform(value: unknown): ProjectTableSetupItemTransform {

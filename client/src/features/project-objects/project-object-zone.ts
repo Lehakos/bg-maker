@@ -6,7 +6,7 @@ import type {
   ProjectObjectZone
 } from "@bg-maker/shared";
 import {
-  normalizeProjectObjectZoneCapacity,
+  normalizeProjectObjectZoneSlots,
   resolveProjectObjectFileObjectTree
 } from "@bg-maker/shared";
 import {
@@ -36,14 +36,14 @@ export function resolveProjectObjectZoneReference(
   fileTree: readonly ProjectFileNode[],
   zone: ProjectObjectZone
 ): ProjectObjectZoneReference | null {
-  if (!zone.referenceObjectFileId) {
+  if (zone.mode !== "slots" || !zone.sizeReferenceObjectFileId) {
     return null;
   }
 
   for (const node of fileTree) {
     const reference = resolveProjectObjectZoneReferenceInNode(
       node,
-      zone.referenceObjectFileId,
+      zone.sizeReferenceObjectFileId,
       fileTree
     );
 
@@ -75,6 +75,11 @@ export function getEffectiveProjectObjectRectTransform(
   }
 
   const zone = getProjectObjectNodeZone(object);
+
+  if (zone.mode !== "slots") {
+    return rectTransform;
+  }
+
   const referenceRectTransform = getProjectObjectZoneReferenceRectTransform(fileTree, zone);
 
   if (!referenceRectTransform) {
@@ -101,6 +106,11 @@ export function getProjectObjectZoneSlotRects(
   }
 
   const zone = getProjectObjectNodeZone(object);
+
+  if (zone.mode !== "slots") {
+    return [];
+  }
+
   const referenceRectTransform = getProjectObjectZoneReferenceRectTransform(fileTree, zone);
 
   if (!referenceRectTransform) {
@@ -124,7 +134,7 @@ export function getProjectObjectZoneSize(
   layout: ProjectObjectLayout,
   padding: number
 ) {
-  const capacity = normalizeProjectObjectZoneCapacity(zone.capacity);
+  const slots = normalizeProjectObjectZoneSlots(zone.slots);
   const gap = normalizeGap(layout.gap);
   const normalizedPadding = normalizePadding(padding);
   const layoutMode = getZoneLayoutMode(layout.mode);
@@ -132,19 +142,19 @@ export function getProjectObjectZoneSize(
   if (layoutMode === "horizontal") {
     return {
       height: normalizedPadding * 2 + slotSize.height,
-      width: normalizedPadding * 2 + slotSize.width * capacity + gap * Math.max(0, capacity - 1)
+      width: normalizedPadding * 2 + slotSize.width * slots + gap * Math.max(0, slots - 1)
     };
   }
 
   if (layoutMode === "vertical") {
     return {
-      height: normalizedPadding * 2 + slotSize.height * capacity + gap * Math.max(0, capacity - 1),
+      height: normalizedPadding * 2 + slotSize.height * slots + gap * Math.max(0, slots - 1),
       width: normalizedPadding * 2 + slotSize.width
     };
   }
 
-  const columns = getZoneGridColumns(layout.columns, capacity);
-  const rows = Math.ceil(capacity / columns);
+  const columns = getZoneGridColumns(layout.columns, slots);
+  const rows = Math.ceil(slots / columns);
 
   return {
     height: normalizedPadding * 2 + slotSize.height * rows + gap * Math.max(0, rows - 1),
@@ -158,18 +168,22 @@ export function getProjectObjectZoneSlotRectsForSize(
   layout: ProjectObjectLayout,
   padding: number
 ): ProjectObjectZoneSlotRect[] {
-  const capacity = normalizeProjectObjectZoneCapacity(zone.capacity);
+  if (zone.mode !== "slots") {
+    return [];
+  }
+
+  const slots = normalizeProjectObjectZoneSlots(zone.slots);
   const gap = normalizeGap(layout.gap);
   const normalizedPadding = normalizePadding(padding);
   const layoutMode = getZoneLayoutMode(layout.mode);
   const columns =
     layoutMode === "horizontal"
-      ? capacity
+      ? slots
       : layoutMode === "vertical"
         ? 1
-        : getZoneGridColumns(layout.columns, capacity);
+        : getZoneGridColumns(layout.columns, slots);
 
-  return Array.from({ length: capacity }, (_, index) => {
+  return Array.from({ length: slots }, (_, index) => {
     const columnIndex = index % columns;
     const rowIndex = Math.floor(index / columns);
 
@@ -184,14 +198,14 @@ export function getProjectObjectZoneSlotRectsForSize(
 
 function resolveProjectObjectZoneReferenceInNode(
   node: ProjectFileNode,
-  referenceObjectFileId: string,
+  sizeReferenceObjectFileId: string,
   fileTree: readonly ProjectFileNode[]
 ): ProjectObjectZoneReference | null {
   if (node.type === "folder") {
     for (const child of node.children ?? []) {
       const reference = resolveProjectObjectZoneReferenceInNode(
         child,
-        referenceObjectFileId,
+        sizeReferenceObjectFileId,
         fileTree
       );
 
@@ -203,7 +217,7 @@ function resolveProjectObjectZoneReferenceInNode(
     return null;
   }
 
-  if (node.id !== referenceObjectFileId || node.kind !== "object") {
+  if (node.id !== sizeReferenceObjectFileId || node.kind !== "object") {
     return null;
   }
 
@@ -223,10 +237,10 @@ function getZoneLayoutMode(mode: ProjectObjectLayout["mode"]) {
   return mode === "free" ? "grid" : mode;
 }
 
-function getZoneGridColumns(columns: number, capacity: number) {
+function getZoneGridColumns(columns: number, slots: number) {
   const normalizedColumns = Number.isFinite(columns) ? Math.round(columns) : 1;
 
-  return Math.min(capacity, Math.max(1, normalizedColumns));
+  return Math.min(slots, Math.max(1, normalizedColumns));
 }
 
 function normalizeGap(gap: number) {

@@ -261,14 +261,19 @@ export type ProjectObjectMeeple = {
   visualVariant: ProjectObjectMeepleVisualVariant;
 };
 
-export const projectObjectZoneCapacityLimits = {
+export const projectObjectZoneModes = ["free", "slots"] as const;
+
+export type ProjectObjectZoneMode = (typeof projectObjectZoneModes)[number];
+
+export const projectObjectZoneSlotLimits = {
   max: 999,
   min: 1
 } as const;
 
 export type ProjectObjectZone = {
-  capacity: number;
-  referenceObjectFileId: string;
+  mode: ProjectObjectZoneMode;
+  sizeReferenceObjectFileId: string;
+  slots: number;
 };
 
 export const projectObjectCounterBoundsModes = ["clamp", "none", "wrap"] as const;
@@ -518,7 +523,53 @@ export type ProjectTableSetupItemTransform = {
   y: number;
 };
 
+export type ProjectTableSetupItemMovementBehavior = {
+  movableInPlaytest: boolean;
+};
+
+export type ProjectTableSetupItemInteractionBehavior = {
+  interactableInPlaytest: boolean;
+};
+
+export type ProjectTableSetupItemVisibilityBehavior = {
+  initialHidden: boolean;
+};
+
+export type ProjectTableSetupItemSideBehavior = {
+  initialSide: ProjectObjectSide;
+};
+
+export type ProjectTableSetupItemContainerDrawOrder = "random" | "top";
+
+export type ProjectTableSetupItemContainerBehavior = {
+  drawOrder: ProjectTableSetupItemContainerDrawOrder;
+  drawnItemSide: ProjectObjectSide;
+  shuffleOnStart: boolean;
+};
+
+export type ProjectTableSetupItemZoneSideOnEnter = "back" | "front" | "preserve";
+
+export type ProjectTableSetupItemZoneSlotOccupancy = "single" | "stack";
+
+export type ProjectTableSetupItemZoneBehavior = {
+  acceptedObjectFileNodeIds: string[];
+  acceptedKinds: ProjectObjectKind[];
+  allowRemove: boolean;
+  sideOnEnter: ProjectTableSetupItemZoneSideOnEnter;
+  slotOccupancy: ProjectTableSetupItemZoneSlotOccupancy;
+};
+
+export type ProjectTableSetupItemBehavior = {
+  container?: ProjectTableSetupItemContainerBehavior;
+  interaction?: ProjectTableSetupItemInteractionBehavior;
+  movement?: ProjectTableSetupItemMovementBehavior;
+  side?: ProjectTableSetupItemSideBehavior;
+  visibility?: ProjectTableSetupItemVisibilityBehavior;
+  zone?: ProjectTableSetupItemZoneBehavior;
+};
+
 export type ProjectTableSetupLinkedObjectItem = {
+  behavior?: ProjectTableSetupItemBehavior;
   id: string;
   name: string;
   sourceObjectFileNodeId: string;
@@ -530,6 +581,7 @@ export type ProjectTableSetupLinkedObjectItem = {
 };
 
 export type ProjectTableSetupLocalObjectItem = {
+  behavior?: ProjectTableSetupItemBehavior;
   object: ProjectObjectNode;
   type: "localObject";
 };
@@ -974,8 +1026,9 @@ export function getDefaultProjectObjectMeeple(): ProjectObjectMeeple {
 
 export function getDefaultProjectObjectZone(): ProjectObjectZone {
   return {
-    capacity: 1,
-    referenceObjectFileId: ""
+    mode: "free",
+    sizeReferenceObjectFileId: "",
+    slots: 1
   };
 }
 
@@ -1110,15 +1163,15 @@ export function normalizeProjectObjectDieActiveFace(
   return Math.min(normalizedFaceCount, Math.max(1, activeFace));
 }
 
-export function normalizeProjectObjectZoneCapacity(
+export function normalizeProjectObjectZoneSlots(
   value: number,
-  fallback = getDefaultProjectObjectZone().capacity
+  fallback = getDefaultProjectObjectZone().slots
 ) {
-  const capacity = Number.isFinite(value) ? Math.round(value) : fallback;
+  const slots = Number.isFinite(value) ? Math.round(value) : fallback;
 
   return Math.min(
-    projectObjectZoneCapacityLimits.max,
-    Math.max(projectObjectZoneCapacityLimits.min, capacity)
+    projectObjectZoneSlotLimits.max,
+    Math.max(projectObjectZoneSlotLimits.min, slots)
   );
 }
 

@@ -28,6 +28,7 @@ import {
   getProjectObjectNodeRectTransform
 } from "../project-objects/project-object-tree";
 import { getProjectFileNodeTableSetup } from "../project-table-setup/project-table-setup";
+import { cloneProjectTableSetupItemBehavior } from "../project-table-setup/project-table-setup-behavior";
 
 export type ProjectVariantFileTreeResult = {
   fileTree: ProjectFileNode[];
@@ -163,6 +164,7 @@ export function saveTableLocalObjectAsReusable({
   });
   const itemTransform = getProjectObjectNodeRectTransform(item.object);
   const linkedItem: ProjectTableSetupLinkedObjectItem = {
+    behavior: cloneProjectTableSetupItemBehavior(item.behavior),
     id: item.object.id,
     locked: item.object.locked === true,
     name: item.object.name,
@@ -266,6 +268,7 @@ export function detachLinkedTableItem({
     id: item.id
   };
   const nextTableSetup = replaceTableSetupItem(tableSetup, item.id, {
+    behavior: cloneProjectTableSetupItemBehavior(item.behavior),
     object: detachedObject,
     type: "localObject"
   });

@@ -3,7 +3,8 @@ import type {
   ProjectObjectCardSizePresetValue,
   ProjectObjectContainer,
   ProjectObjectKind,
-  ProjectObjectMeepleVisualVariant
+  ProjectObjectMeepleVisualVariant,
+  ProjectObjectZoneMode
 } from "@bg-maker/shared";
 import { ArrowDown, ArrowUp, Boxes, Plus, Rows3, Scan, Trash2 } from "lucide-react";
 import type { KeyboardEvent } from "react";
@@ -62,10 +63,15 @@ const stackDisplayOffsetFields: readonly StackDisplayNumberFieldDefinition[] = [
   { key: "stackOffsetY", label: "Offset Y" }
 ];
 
-const zoneCapacityField = {
-  key: "capacity",
-  label: "Capacity"
+const zoneSlotsField = {
+  key: "slots",
+  label: "Slots"
 } as const satisfies InspectorFieldDefinition<ZoneNumberFieldKey>;
+
+const zoneModeOptions = [
+  { label: "Free", value: "free" },
+  { label: "Slots", value: "slots" }
+] as const satisfies readonly { label: string; value: ProjectObjectZoneMode }[];
 
 const bagAppearanceVariantOptions = [
   { icon: BagIcon, label: "Bag", value: "bag" },
@@ -295,8 +301,8 @@ type ProjectObjectZoneSectionProps = {
   draft: ZoneDraft;
   referenceMissing: boolean;
   referenceOptions: readonly SelectOption[];
-  zoneReferenceObjectFileId: string;
-  onCommitCapacity: (fieldKey: ZoneNumberFieldKey, value: string) => void;
+  sizeReferenceObjectFileId: string;
+  onCommitSlots: (fieldKey: ZoneNumberFieldKey, value: string) => void;
   onDraftChange: (fieldKey: ZoneFieldKey, value: string) => void;
   onReset: (fieldKey: ZoneFieldKey) => void;
 };
@@ -305,32 +311,42 @@ export function ProjectObjectZoneSection({
   draft,
   referenceMissing,
   referenceOptions,
-  zoneReferenceObjectFileId,
-  onCommitCapacity,
+  sizeReferenceObjectFileId,
+  onCommitSlots,
   onDraftChange,
   onReset
 }: ProjectObjectZoneSectionProps) {
   return (
     <InspectorSection icon={<Scan size={15} />} title="Zone">
       <InspectorSelectField
-        label="Reference"
-        value={draft.referenceObjectFileId}
-        options={referenceOptions}
-        onChange={(value) => onDraftChange("referenceObjectFileId", value)}
+        label="Mode"
+        value={draft.mode}
+        options={zoneModeOptions}
+        onChange={(value) => onDraftChange("mode", value)}
       />
-      {zoneReferenceObjectFileId && referenceMissing ? (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
-          Selected object file is missing or uses an unsupported zone root.
-        </p>
+      {draft.mode === "slots" ? (
+        <>
+          <InspectorSelectField
+            label="Size reference"
+            value={draft.sizeReferenceObjectFileId}
+            options={referenceOptions}
+            onChange={(value) => onDraftChange("sizeReferenceObjectFileId", value)}
+          />
+          {sizeReferenceObjectFileId && referenceMissing ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+              Selected object file is missing or uses an unsupported zone root.
+            </p>
+          ) : null}
+          <InspectorBehaviorNumberField
+            field={zoneSlotsField}
+            settings={zoneNumberFieldSettings.slots}
+            value={draft.slots}
+            onCommit={onCommitSlots}
+            onDraftChange={onDraftChange}
+            onReset={onReset}
+          />
+        </>
       ) : null}
-      <InspectorBehaviorNumberField
-        field={zoneCapacityField}
-        settings={zoneNumberFieldSettings.capacity}
-        value={draft.capacity}
-        onCommit={onCommitCapacity}
-        onDraftChange={onDraftChange}
-        onReset={onReset}
-      />
     </InspectorSection>
   );
 }

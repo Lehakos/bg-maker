@@ -1,4 +1,5 @@
 import type { ProjectFileKind, ProjectFileNode } from "@bg-maker/shared";
+import { getDefaultProjectTableSetup } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
   appendProjectFileNode,
@@ -89,7 +90,37 @@ describe("project file tree helpers", () => {
       },
       type: "file"
     };
-    const fileTree = [folder("bundle", "Bundle", [sourceObject, derivedObject])];
+    const tableSetup: ProjectFileNode = {
+      id: "setup-file",
+      kind: "tableSetup",
+      name: "Setup",
+      tableSetup: {
+        ...getDefaultProjectTableSetup(),
+        items: [
+          {
+            behavior: {
+              movement: { movableInPlaytest: false },
+              zone: {
+                acceptedKinds: [],
+                acceptedObjectFileNodeIds: ["source-object", "external-object"],
+                allowRemove: true,
+                sideOnEnter: "preserve",
+                slotOccupancy: "single"
+              }
+            },
+            id: "source-item",
+            name: "Source",
+            sourceObjectFileNodeId: "source-object",
+            transform: { rotation: 0, scaleX: 1, scaleY: 1, x: 0, y: 0 },
+            type: "linkedObject",
+            values: {},
+            visible: true
+          }
+        ]
+      },
+      type: "file"
+    };
+    const fileTree = [folder("bundle", "Bundle", [sourceObject, derivedObject, tableSetup])];
     const result = duplicateProjectFileNode(fileTree, "bundle");
 
     expect(result).not.toBeNull();
@@ -102,11 +133,22 @@ describe("project file tree helpers", () => {
     const duplicatedChildren = result?.node.type === "folder" ? (result.node.children ?? []) : [];
     const duplicatedSource = duplicatedChildren.find((node) => node.name === "Source");
     const duplicatedDerived = duplicatedChildren.find((node) => node.name === "Derived");
+    const duplicatedSetup = duplicatedChildren.find((node) => node.name === "Setup");
+    const duplicatedSetupItem = duplicatedSetup?.tableSetup?.items[0];
 
     expect(duplicatedSource?.id).toBeTruthy();
     expect(duplicatedSource?.id).not.toBe("source-object");
     expect(duplicatedDerived?.id).not.toBe("derived-object");
     expect(duplicatedDerived?.sourceRef?.sourceObjectFileNodeId).toBe(duplicatedSource?.id);
+    expect(duplicatedSetupItem).toMatchObject({
+      behavior: {
+        movement: { movableInPlaytest: false },
+        zone: {
+          acceptedObjectFileNodeIds: [duplicatedSource?.id, "external-object"]
+        }
+      },
+      sourceObjectFileNodeId: duplicatedSource?.id
+    });
     expect(findProjectFileNode(fileTree, result!.node.id)).toBeUndefined();
   });
 

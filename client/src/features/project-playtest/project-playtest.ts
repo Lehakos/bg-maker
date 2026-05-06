@@ -3,9 +3,11 @@ import type {
   ProjectObjectCounter,
   ProjectObjectNode,
   ProjectObjectRectTransform,
+  ProjectObjectScoreTrackMarker,
   ProjectObjectSide,
   ProjectTableSetup,
-  ProjectTableSetupItem
+  ProjectTableSetupItem,
+  ProjectTableSetupItemBehavior
 } from "@bg-maker/shared";
 import {
   getProjectObjectContainerTotalCount,
@@ -18,22 +20,32 @@ import {
   getProjectObjectNodeDie,
   getProjectObjectNodeDoubleSide,
   getProjectObjectNodeRectTransform,
+  getProjectObjectNodeScoreTrack,
+  getProjectObjectNodeZone,
   getProjectObjectNodeWithActiveSide,
   setProjectObjectNodeContainer,
   setProjectObjectNodeCounter,
   setProjectObjectNodeDie,
-  setProjectObjectNodeRectTransform
+  setProjectObjectNodeRectTransform,
+  setProjectObjectNodeScoreTrack
 } from "../project-objects/project-object-tree";
+import {
+  getEffectiveProjectObjectRectTransform,
+  getProjectObjectZoneSlotRects,
+  type ProjectObjectZoneSlotRect
+} from "../project-objects/project-object-zone";
 import {
   getProjectFileNodeTableSetup,
   getProjectTableSetupResolvedItemObject
 } from "../project-table-setup/project-table-setup";
+import { getProjectTableSetupItemBehavior } from "../project-table-setup/project-table-setup-behavior";
 
 export type ProjectWorkspaceMode = "edit" | "playtest";
 
 export type PlaytestItem = {
   activeSide: ProjectObjectSide;
   baseObject: ProjectObjectNode;
+  behavior: ProjectTableSetupItemBehavior;
   contents: string[];
   counterValue?: number;
   dieFace?: number;
@@ -42,8 +54,16 @@ export type PlaytestItem = {
   name: string;
   rectTransform: ProjectObjectRectTransform;
   revealed: boolean;
+  scoreTrackMarkers?: ProjectObjectScoreTrackMarker[];
   sourceObjectFileNodeId?: string;
   visible: boolean;
+  zonePlacement?: PlaytestZonePlacement;
+  zoneSlotRects?: ProjectObjectZoneSlotRect[];
+};
+
+export type PlaytestZonePlacement = {
+  slotIndex?: number;
+  zoneItemId: string;
 };
 
 export type PlaytestRuntimeState = {
@@ -83,6 +103,7 @@ export type PlaytestCreateOptions = {
   createId?: () => string;
   now?: () => string;
   projectId: string;
+  random?: () => number;
   tableSetupFileNode: ProjectFileNode;
   fileTree: readonly ProjectFileNode[];
 };
@@ -91,6 +112,11 @@ export type PlaytestAction =
   | {
       itemId: string;
       type: "decrementCounter" | "incrementCounter";
+    }
+  | {
+      itemId: string;
+      markerId: string;
+      type: "decrementScoreTrackMarker" | "incrementScoreTrackMarker";
     }
   | {
       itemId: string;
@@ -125,11 +151,21 @@ type PlaytestActionContext = {
 
 const defaultDrawOffset = 32;
 
+export type PlaytestItemMovePreview =
+  | {
+      accepted: false;
+    }
+  | {
+      accepted: true;
+      item: PlaytestItem;
+    };
+
 export function createPlaytestSession({
   createId = createPlaytestId,
   fileTree,
   now = createPlaytestTimestamp,
   projectId,
+  random = Math.random,
   tableSetupFileNode
 }: PlaytestCreateOptions): PlaytestSession | null {
   if (tableSetupFileNode.type !== "file" || tableSetupFileNode.kind !== "tableSetup") {
@@ -167,6 +203,15 @@ export function createPlaytestSession({
   }
 
   const createdAt = now();
+  const startupResult = getRuntimeWithStartupContainerShuffles(
+    {
+      itemsById,
+      selectedItemId: null,
+      selectedItemIds: [],
+      tableItemIds
+    },
+    random
+  );
 
   return {
     actionLog: [
@@ -174,16 +219,18 @@ export function createPlaytestSession({
         createdAt,
         id: createId(),
         label: `Started playtest from ${tableSetupFileNode.name}`
-      }
+      },
+      ...startupResult.labels.map((label) => ({
+        createdAt,
+        id: createId(),
+        label
+      }))
     ],
     createdAt,
     id: createId(),
-    itemsById,
+    ...startupResult.runtime,
     projectId,
     redoStack: [],
-    selectedItemId: null,
-    selectedItemIds: [],
-    tableItemIds,
     tableSetupFileNodeId: tableSetupFileNode.id,
     tableSetupName: tableSetupFileNode.name,
     tableSetupSnapshot: cloneTableSetup(tableSetup),
@@ -344,6 +391,7 @@ export function getPlaytestRenderedObject(
   object = {
     ...object,
     id: item.id,
+    locked: item.behavior.movement?.movableInPlaytest === false,
     name: item.name,
     visible: item.visible
   };
@@ -357,35 +405,49 @@ export function getPlaytestRenderedObject(
 
   if (object.kind === "counter" && typeof item.counterValue === "number") {
     const counter = getProjectObjectNodeCounter(object);
-    object = setProjectObjectNodeCounter([object], object.id, {
-      ...counter,
-      defaultValue: item.counterValue
-    })[0] ?? object;
+    object =
+      setProjectObjectNodeCounter([object], object.id, {
+        ...counter,
+        defaultValue: item.counterValue
+      })[0] ?? object;
   }
 
   if (object.kind === "die" && typeof item.dieFace === "number") {
     const die = getProjectObjectNodeDie(object);
-    object = setProjectObjectNodeDie([object], object.id, {
-      ...die,
-      activeFace: normalizeProjectObjectDieActiveFace(item.dieFace, die.faceCount)
-    })[0] ?? object;
+    object =
+      setProjectObjectNodeDie([object], object.id, {
+        ...die,
+        activeFace: normalizeProjectObjectDieActiveFace(item.dieFace, die.faceCount)
+      })[0] ?? object;
   }
 
-  if ((object.kind === "deck" || object.kind === "stack") && item.contents) {
-    object = setProjectObjectNodeContainer([object], object.id, {
-      entries: item.contents
-        .map((contentItemId) => {
-          const contentItem = itemsById[contentItemId];
+  if (object.kind === "scoreTrack" && item.scoreTrackMarkers) {
+    const scoreTrack = getProjectObjectNodeScoreTrack(object);
+    object =
+      setProjectObjectNodeScoreTrack([object], object.id, {
+        ...scoreTrack,
+        markers: item.scoreTrackMarkers
+      })[0] ?? object;
+  }
 
-          return contentItem?.sourceObjectFileNodeId
-            ? {
-                objectFileNodeId: contentItem.sourceObjectFileNodeId,
-                quantity: 1
-              }
-            : null;
-        })
-        .filter((entry): entry is { objectFileNodeId: string; quantity: number } => Boolean(entry))
-    })[0] ?? object;
+  if (isRuntimeContainer(item)) {
+    object =
+      setProjectObjectNodeContainer([object], object.id, {
+        entries: item.contents
+          .map((contentItemId) => {
+            const contentItem = itemsById[contentItemId];
+
+            return contentItem?.sourceObjectFileNodeId
+              ? {
+                  objectFileNodeId: contentItem.sourceObjectFileNodeId,
+                  quantity: 1
+                }
+              : null;
+          })
+          .filter((entry): entry is { objectFileNodeId: string; quantity: number } =>
+            Boolean(entry)
+          )
+      })[0] ?? object;
   }
 
   return object;
@@ -432,6 +494,16 @@ export function getCounterValueWithStep(
   return Math.min(counter.maxValue, Math.max(counter.minValue, nextValue));
 }
 
+export function getScoreTrackMarkerValueWithStep(
+  scoreTrack: { maxValue: number; minValue: number; step: number },
+  currentValue: number,
+  direction: -1 | 1
+) {
+  const nextValue = currentValue + scoreTrack.step * direction;
+
+  return Math.min(scoreTrack.maxValue, Math.max(scoreTrack.minValue, nextValue));
+}
+
 function reducePlaytestAction(
   runtime: PlaytestRuntimeState,
   action: Exclude<PlaytestAction, { type: "selectItem" | "selectItems" }>,
@@ -444,6 +516,10 @@ function reducePlaytestAction(
   const item = runtime.itemsById[action.itemId];
 
   if (!item) {
+    return runtime;
+  }
+
+  if (item.behavior.interaction?.interactableInPlaytest === false) {
     return runtime;
   }
 
@@ -487,7 +563,7 @@ function reducePlaytestAction(
   }
 
   if (action.type === "drawFromContainer") {
-    return getRuntimeWithDrawnContainerItem(runtime, item.id);
+    return getRuntimeWithDrawnContainerItem(runtime, item.id, context.random);
   }
 
   if (action.type === "rollDie") {
@@ -519,6 +595,27 @@ function reducePlaytestAction(
     }));
   }
 
+  if (action.type === "incrementScoreTrackMarker" || action.type === "decrementScoreTrackMarker") {
+    if (item.baseObject.kind !== "scoreTrack") {
+      return runtime;
+    }
+
+    const scoreTrack = getProjectObjectNodeScoreTrack(item.baseObject);
+    const direction = action.type === "incrementScoreTrackMarker" ? 1 : -1;
+
+    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
+      ...currentItem,
+      scoreTrackMarkers: (currentItem.scoreTrackMarkers ?? scoreTrack.markers).map((marker) =>
+        marker.id === action.markerId
+          ? {
+              ...marker,
+              value: getScoreTrackMarkerValueWithStep(scoreTrack, marker.value, direction)
+            }
+          : marker
+      )
+    }));
+  }
+
   return runtime;
 }
 
@@ -538,50 +635,66 @@ function createPlaytestItemFromTableSetupItem({
   }
 
   return createPlaytestItemFromObject({
+    behavior: getProjectTableSetupItemBehavior({
+      behavior: item.behavior,
+      object
+    }),
     createId,
+    fileTree,
     id: item.type === "linkedObject" ? item.id : object.id,
     name: item.type === "linkedObject" ? item.name : object.name,
     object,
-    sourceObjectFileNodeId: item.type === "linkedObject" ? item.sourceObjectFileNodeId : undefined,
-    visible: item.type === "linkedObject" ? item.visible : object.visible
+    sourceObjectFileNodeId: item.type === "linkedObject" ? item.sourceObjectFileNodeId : undefined
   });
 }
 
 function createPlaytestItemFromObject({
   createId,
+  fileTree,
   id,
   name,
   object,
-  sourceObjectFileNodeId,
-  visible
+  behavior,
+  sourceObjectFileNodeId
 }: {
+  behavior?: ProjectTableSetupItemBehavior;
   createId: () => string;
+  fileTree: readonly ProjectFileNode[];
   id?: string;
   name?: string;
   object: ProjectObjectNode;
   sourceObjectFileNodeId?: string;
-  visible?: boolean;
 }): PlaytestItem {
   const runtimeId = id ?? createId();
   const die = object.kind === "die" ? getProjectObjectNodeDie(object) : null;
   const counter = object.kind === "counter" ? getProjectObjectNodeCounter(object) : null;
+  const scoreTrack = object.kind === "scoreTrack" ? getProjectObjectNodeScoreTrack(object) : null;
+  const runtimeBehavior = behavior ?? getProjectTableSetupItemBehavior({ object });
+  const initialHidden = runtimeBehavior.visibility?.initialHidden ?? false;
   return {
-    activeSide: getInitialActiveSide(object),
+    activeSide: getInitialActiveSide(object, runtimeBehavior),
     baseObject: cloneProjectObjectNode({
       ...object,
       id: runtimeId,
       name: name ?? object.name
     }),
+    behavior: runtimeBehavior,
     contents: [],
     counterValue: counter?.defaultValue,
     dieFace: die?.activeFace,
-    hidden: false,
+    hidden: initialHidden,
     id: runtimeId,
     name: name ?? object.name,
-    rectTransform: getProjectObjectNodeRectTransform(object),
-    revealed: true,
+    rectTransform:
+      object.kind === "zone"
+        ? getEffectiveProjectObjectRectTransform(object, fileTree)
+        : getProjectObjectNodeRectTransform(object),
+    revealed: !initialHidden,
+    scoreTrackMarkers: scoreTrack?.markers.map((marker) => ({ ...marker })),
     sourceObjectFileNodeId,
-    visible: visible ?? object.visible
+    visible: true,
+    zoneSlotRects:
+      object.kind === "zone" ? getProjectObjectZoneSlotRects(fileTree, object) : undefined
   };
 }
 
@@ -617,15 +730,111 @@ function addContainerContents({
 
       const contentItem = createPlaytestItemFromObject({
         createId,
+        fileTree,
         object,
-        sourceObjectFileNodeId: entry.objectFileNodeId,
-        visible: true
+        sourceObjectFileNodeId: entry.objectFileNodeId
       });
 
       itemsById[contentItem.id] = contentItem;
       containerItem.contents.push(contentItem.id);
     }
   }
+}
+
+export function getPlaytestItemMovePreview(
+  runtime: PlaytestRuntimeState,
+  itemId: string,
+  rectTransform: ProjectObjectRectTransform
+): PlaytestItemMovePreview {
+  const item = runtime.itemsById[itemId];
+
+  if (!item || item.behavior.movement?.movableInPlaytest === false) {
+    return { accepted: false };
+  }
+
+  return getPlaytestItemMoveResult(runtime, item, rectTransform);
+}
+
+export function getPlaytestZoneContentMovePreviewTransforms(
+  runtime: PlaytestRuntimeState,
+  zoneItemId: string,
+  rectTransform: ProjectObjectRectTransform
+): Record<string, ProjectObjectRectTransform> {
+  const zoneItem = runtime.itemsById[zoneItemId];
+
+  if (!zoneItem || zoneItem.baseObject.kind !== "zone") {
+    return {};
+  }
+
+  return getMovedZoneContentTransforms(runtime, zoneItemId, {
+    x: rectTransform.x - zoneItem.rectTransform.x,
+    y: rectTransform.y - zoneItem.rectTransform.y
+  });
+}
+
+export function getPlaytestItemGroupMoveTransforms(
+  runtime: PlaytestRuntimeState,
+  itemIds: readonly string[],
+  sourceItemId: string,
+  before: ProjectObjectRectTransform,
+  after: ProjectObjectRectTransform
+): Record<string, ProjectObjectRectTransform> {
+  const sourceItem = runtime.itemsById[sourceItemId];
+
+  if (!sourceItem) {
+    return {};
+  }
+
+  const selectedIds = new Set(itemIds);
+  const groupIds = selectedIds.has(sourceItemId) ? selectedIds : new Set([sourceItemId]);
+  const deltaX = after.x - before.x;
+  const deltaY = after.y - before.y;
+  const transforms: Record<string, ProjectObjectRectTransform> = {};
+
+  for (const itemId of runtime.tableItemIds) {
+    if (!groupIds.has(itemId)) {
+      continue;
+    }
+
+    const item = runtime.itemsById[itemId];
+
+    if (!item || item.behavior.movement?.movableInPlaytest === false) {
+      continue;
+    }
+
+    transforms[itemId] =
+      itemId === sourceItemId
+        ? after
+        : {
+            ...item.rectTransform,
+            x: item.rectTransform.x + deltaX,
+            y: item.rectTransform.y + deltaY
+          };
+  }
+
+  return transforms;
+}
+
+export function getPlaytestMovePreviewTransforms(
+  runtime: PlaytestRuntimeState,
+  itemTransforms: Record<string, ProjectObjectRectTransform>
+): Record<string, ProjectObjectRectTransform> {
+  const previewTransforms: Record<string, ProjectObjectRectTransform> = { ...itemTransforms };
+
+  for (const [itemId, rectTransform] of Object.entries(itemTransforms)) {
+    const item = runtime.itemsById[itemId];
+
+    if (item?.baseObject.kind !== "zone") {
+      continue;
+    }
+
+    Object.assign(
+      previewTransforms,
+      getPlaytestZoneContentMovePreviewTransforms(runtime, itemId, rectTransform)
+    );
+  }
+
+  return previewTransforms;
 }
 
 function getRuntimeWithMovedItems(
@@ -635,22 +844,412 @@ function getRuntimeWithMovedItems(
   let nextRuntime = runtime;
 
   for (const [itemId, rectTransform] of Object.entries(itemTransforms)) {
-    if (!nextRuntime.itemsById[itemId]) {
+    const item = nextRuntime.itemsById[itemId];
+
+    if (!item || item.behavior.movement?.movableInPlaytest === false) {
       continue;
     }
 
-    nextRuntime = getRuntimeWithUpdatedItem(nextRuntime, itemId, (item) => ({
-      ...item,
-      rectTransform
-    }));
+    const moveResult = getPlaytestItemMoveResult(nextRuntime, item, rectTransform);
+
+    if (!moveResult.accepted) {
+      continue;
+    }
+
+    nextRuntime = getRuntimeWithUpdatedItem(nextRuntime, itemId, () => moveResult.item);
+
+    if (item.baseObject.kind === "zone") {
+      nextRuntime = getRuntimeWithMovedZoneContents(nextRuntime, item.id, {
+        x: moveResult.item.rectTransform.x - item.rectTransform.x,
+        y: moveResult.item.rectTransform.y - item.rectTransform.y
+      });
+      continue;
+    }
+
+    if (moveResult.item.zonePlacement) {
+      nextRuntime = getRuntimeWithItemPlacedAboveZone(
+        nextRuntime,
+        item.id,
+        moveResult.item.zonePlacement.zoneItemId
+      );
+    }
   }
 
   return nextRuntime;
 }
 
+function getRuntimeWithMovedZoneContents(
+  runtime: PlaytestRuntimeState,
+  zoneItemId: string,
+  delta: { x: number; y: number }
+): PlaytestRuntimeState {
+  const transforms = getMovedZoneContentTransforms(runtime, zoneItemId, delta);
+
+  if (!Object.keys(transforms).length) {
+    return runtime;
+  }
+
+  const itemsById = { ...runtime.itemsById };
+
+  for (const [itemId, rectTransform] of Object.entries(transforms)) {
+    const item = itemsById[itemId];
+
+    if (item) {
+      itemsById[itemId] = { ...item, rectTransform };
+    }
+  }
+
+  return { ...runtime, itemsById };
+}
+
+function getMovedZoneContentTransforms(
+  runtime: PlaytestRuntimeState,
+  zoneItemId: string,
+  delta: { x: number; y: number }
+): Record<string, ProjectObjectRectTransform> {
+  if (delta.x === 0 && delta.y === 0) {
+    return {};
+  }
+
+  const transforms: Record<string, ProjectObjectRectTransform> = {};
+
+  for (const item of Object.values(runtime.itemsById)) {
+    if (item.zonePlacement?.zoneItemId !== zoneItemId) {
+      continue;
+    }
+
+    transforms[item.id] = {
+      ...item.rectTransform,
+      x: item.rectTransform.x + delta.x,
+      y: item.rectTransform.y + delta.y
+    };
+  }
+
+  return transforms;
+}
+
+function getRuntimeWithItemPlacedAboveZone(
+  runtime: PlaytestRuntimeState,
+  itemId: string,
+  zoneItemId: string
+): PlaytestRuntimeState {
+  const itemIndex = runtime.tableItemIds.indexOf(itemId);
+  const zoneIndex = runtime.tableItemIds.indexOf(zoneItemId);
+
+  if (itemIndex < 0 || zoneIndex < 0) {
+    return runtime;
+  }
+
+  const tableItemIds = runtime.tableItemIds.filter((candidateItemId) => candidateItemId !== itemId);
+  const lastZoneContentIndex = tableItemIds.reduce((lastIndex, candidateItemId, index) => {
+    const candidate = runtime.itemsById[candidateItemId];
+
+    return candidateItemId === zoneItemId || candidate?.zonePlacement?.zoneItemId === zoneItemId
+      ? index
+      : lastIndex;
+  }, -1);
+
+  if (lastZoneContentIndex < 0) {
+    return runtime;
+  }
+
+  tableItemIds.splice(lastZoneContentIndex + 1, 0, itemId);
+
+  return areStringArraysEqual(tableItemIds, runtime.tableItemIds)
+    ? runtime
+    : { ...runtime, tableItemIds };
+}
+
+type PlaytestItemMoveResult =
+  | {
+      accepted: false;
+    }
+  | {
+      accepted: true;
+      item: PlaytestItem;
+    };
+
+function getPlaytestItemMoveResult(
+  runtime: PlaytestRuntimeState,
+  item: PlaytestItem,
+  rectTransform: ProjectObjectRectTransform
+): PlaytestItemMoveResult {
+  if (item.baseObject.kind === "zone") {
+    return {
+      accepted: true,
+      item: {
+        ...item,
+        rectTransform,
+        zonePlacement: undefined
+      }
+    };
+  }
+
+  const zoneItem = getCandidateZoneItem(runtime, item.id, rectTransform);
+
+  if (!zoneItem) {
+    if (!canMoveItemOutOfCurrentZone(runtime, item, null)) {
+      return { accepted: false };
+    }
+
+    return {
+      accepted: true,
+      item: {
+        ...item,
+        rectTransform,
+        zonePlacement: undefined
+      }
+    };
+  }
+
+  if (
+    !canMoveItemOutOfCurrentZone(runtime, item, zoneItem.id) ||
+    !doesZoneAcceptItem(zoneItem, item)
+  ) {
+    return { accepted: false };
+  }
+
+  const zone = getProjectObjectNodeZone(zoneItem.baseObject);
+
+  if (zone.mode === "slots") {
+    const slotMove = getNearestZoneSlotMove(zoneItem, rectTransform);
+
+    if (!slotMove) {
+      return { accepted: false };
+    }
+
+    if (
+      zoneItem.behavior.zone?.slotOccupancy !== "stack" &&
+      isZoneSlotOccupied(runtime, zoneItem.id, slotMove.slotIndex, item.id)
+    ) {
+      return { accepted: false };
+    }
+
+    return {
+      accepted: true,
+      item: getItemWithZonePlacement(item, zoneItem, slotMove.rectTransform, {
+        slotIndex: slotMove.slotIndex,
+        zoneItemId: zoneItem.id
+      })
+    };
+  }
+
+  return {
+    accepted: true,
+    item: getItemWithZonePlacement(item, zoneItem, rectTransform, {
+      zoneItemId: zoneItem.id
+    })
+  };
+}
+
+function getCandidateZoneItem(
+  runtime: PlaytestRuntimeState,
+  movedItemId: string,
+  rectTransform: ProjectObjectRectTransform
+): PlaytestItem | null {
+  const center = getTableItemCenter(rectTransform);
+
+  for (const itemId of [...runtime.tableItemIds].reverse()) {
+    if (itemId === movedItemId) {
+      continue;
+    }
+
+    const item = runtime.itemsById[itemId];
+
+    if (
+      !item ||
+      !item.visible ||
+      item.baseObject.kind !== "zone" ||
+      !isPointInsideRect(center, item.rectTransform)
+    ) {
+      continue;
+    }
+
+    return item;
+  }
+
+  return null;
+}
+
+function doesZoneAcceptItem(zoneItem: PlaytestItem, item: PlaytestItem) {
+  if (item.baseObject.kind === "zone") {
+    return false;
+  }
+
+  const acceptedKinds = zoneItem.behavior.zone?.acceptedKinds ?? [];
+  const acceptedObjectFileNodeIds = zoneItem.behavior.zone?.acceptedObjectFileNodeIds ?? [];
+
+  return (
+    (acceptedKinds.length === 0 && acceptedObjectFileNodeIds.length === 0) ||
+    acceptedKinds.includes(item.baseObject.kind) ||
+    (item.sourceObjectFileNodeId
+      ? acceptedObjectFileNodeIds.includes(item.sourceObjectFileNodeId)
+      : false)
+  );
+}
+
+function canMoveItemOutOfCurrentZone(
+  runtime: PlaytestRuntimeState,
+  item: PlaytestItem,
+  nextZoneItemId: string | null
+) {
+  const currentZoneItemId = item.zonePlacement?.zoneItemId;
+
+  if (!currentZoneItemId || currentZoneItemId === nextZoneItemId) {
+    return true;
+  }
+
+  const currentZoneItem = runtime.itemsById[currentZoneItemId];
+
+  return currentZoneItem?.behavior.zone?.allowRemove !== false;
+}
+
+function getNearestZoneSlotMove(
+  zoneItem: PlaytestItem,
+  rectTransform: ProjectObjectRectTransform
+): { rectTransform: ProjectObjectRectTransform; slotIndex: number } | null {
+  const slotRects = zoneItem.zoneSlotRects ?? [];
+
+  if (!slotRects.length) {
+    return null;
+  }
+
+  const zoneBounds = getTableItemBounds(zoneItem.rectTransform);
+  const itemCenter = getTableItemCenter(rectTransform);
+  const itemCenterInZone = {
+    x: (itemCenter.x - zoneBounds.left) / getRectScale(zoneItem.rectTransform.scaleX),
+    y: (itemCenter.y - zoneBounds.top) / getRectScale(zoneItem.rectTransform.scaleY)
+  };
+  let nearestSlotIndex = 0;
+  let nearestSlotDistance = Number.POSITIVE_INFINITY;
+
+  for (const [index, slotRect] of slotRects.entries()) {
+    const slotCenter = getRectCenter(slotRect);
+    const distance = getSquaredDistance(itemCenterInZone, slotCenter);
+
+    if (distance < nearestSlotDistance) {
+      nearestSlotDistance = distance;
+      nearestSlotIndex = index;
+    }
+  }
+
+  const slotRect = slotRects[nearestSlotIndex];
+
+  if (!slotRect) {
+    return null;
+  }
+
+  return {
+    rectTransform: {
+      ...rectTransform,
+      x:
+        zoneBounds.left +
+        (slotRect.x + slotRect.width / 2) * getRectScale(zoneItem.rectTransform.scaleX),
+      y:
+        zoneBounds.top +
+        (slotRect.y + slotRect.height / 2) * getRectScale(zoneItem.rectTransform.scaleY)
+    },
+    slotIndex: nearestSlotIndex
+  };
+}
+
+function isZoneSlotOccupied(
+  runtime: PlaytestRuntimeState,
+  zoneItemId: string,
+  slotIndex: number,
+  movedItemId: string
+) {
+  return Object.values(runtime.itemsById).some(
+    (item) =>
+      item.id !== movedItemId &&
+      item.zonePlacement?.zoneItemId === zoneItemId &&
+      item.zonePlacement.slotIndex === slotIndex
+  );
+}
+
+function getItemWithZonePlacement(
+  item: PlaytestItem,
+  zoneItem: PlaytestItem,
+  rectTransform: ProjectObjectRectTransform,
+  zonePlacement: PlaytestZonePlacement
+): PlaytestItem {
+  const enteredZone = item.zonePlacement?.zoneItemId !== zoneItem.id;
+  const sideOnEnter = zoneItem.behavior.zone?.sideOnEnter ?? "preserve";
+  const placedItem: PlaytestItem = {
+    ...item,
+    rectTransform,
+    zonePlacement
+  };
+
+  if (!enteredZone || sideOnEnter === "preserve" || !hasProjectObjectSides(item.baseObject.kind)) {
+    return placedItem;
+  }
+
+  return {
+    ...placedItem,
+    activeSide: sideOnEnter,
+    hidden: false,
+    revealed: true
+  };
+}
+
+function getRectCenter(rect: Pick<ProjectObjectRectTransform, "height" | "width" | "x" | "y">) {
+  return {
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2
+  };
+}
+
+function getTableItemCenter(rect: Pick<ProjectObjectRectTransform, "x" | "y">) {
+  return {
+    x: rect.x,
+    y: rect.y
+  };
+}
+
+function isPointInsideRect(
+  point: { x: number; y: number },
+  rect: Pick<ProjectObjectRectTransform, "height" | "scaleX" | "scaleY" | "width" | "x" | "y">
+) {
+  const bounds = getTableItemBounds(rect);
+
+  return (
+    point.x >= bounds.left &&
+    point.x <= bounds.right &&
+    point.y >= bounds.top &&
+    point.y <= bounds.bottom
+  );
+}
+
+function getTableItemBounds(
+  rect: Pick<ProjectObjectRectTransform, "height" | "scaleX" | "scaleY" | "width" | "x" | "y">
+) {
+  const width = rect.width * getRectScale(rect.scaleX);
+  const height = rect.height * getRectScale(rect.scaleY);
+
+  return {
+    bottom: rect.y + height / 2,
+    left: rect.x - width / 2,
+    right: rect.x + width / 2,
+    top: rect.y - height / 2
+  };
+}
+
+function getRectScale(scale: number) {
+  return Number.isFinite(scale) && scale !== 0 ? Math.abs(scale) : 1;
+}
+
+function getSquaredDistance(left: { x: number; y: number }, right: { x: number; y: number }) {
+  const distanceX = left.x - right.x;
+  const distanceY = left.y - right.y;
+
+  return distanceX * distanceX + distanceY * distanceY;
+}
+
 function getRuntimeWithDrawnContainerItem(
   runtime: PlaytestRuntimeState,
-  containerItemId: string
+  containerItemId: string,
+  random: () => number
 ): PlaytestRuntimeState {
   const containerItem = runtime.itemsById[containerItemId];
 
@@ -658,16 +1257,25 @@ function getRuntimeWithDrawnContainerItem(
     return runtime;
   }
 
-  const [drawnItemId, ...nextContents] = containerItem.contents;
+  const drawIndex =
+    containerItem.behavior.container?.drawOrder === "random"
+      ? Math.floor(random() * containerItem.contents.length)
+      : 0;
+  const drawnItemId = containerItem.contents[drawIndex];
+  const nextContents = containerItem.contents.filter((_, index) => index !== drawIndex);
   const drawnItem = drawnItemId ? runtime.itemsById[drawnItemId] : undefined;
 
   if (!drawnItemId || !drawnItem) {
     return runtime;
   }
 
-  const drawIndex = runtime.tableItemIds.indexOf(containerItemId);
+  const insertIndex = runtime.tableItemIds.indexOf(containerItemId);
   const nextTableItemIds = [...runtime.tableItemIds];
-  nextTableItemIds.splice(drawIndex >= 0 ? drawIndex + 1 : nextTableItemIds.length, 0, drawnItemId);
+  nextTableItemIds.splice(
+    insertIndex >= 0 ? insertIndex + 1 : nextTableItemIds.length,
+    0,
+    drawnItemId
+  );
 
   const drawnRectTransform = {
     ...drawnItem.rectTransform,
@@ -682,9 +1290,11 @@ function getRuntimeWithDrawnContainerItem(
     },
     [drawnItemId]: {
       ...drawnItem,
-      hidden: false,
+      ...getDrawnItemVisibilityState(
+        drawnItem,
+        containerItem.behavior.container?.drawnItemSide ?? "front"
+      ),
       rectTransform: drawnRectTransform,
-      revealed: true,
       visible: true
     }
   };
@@ -781,23 +1391,90 @@ function getPlaytestActionLabel(
     return `Increase ${itemName}`;
   }
 
+  if (action.type === "incrementScoreTrackMarker" || action.type === "decrementScoreTrackMarker") {
+    const marker = afterItem?.scoreTrackMarkers?.find(
+      (candidate) => candidate.id === action.markerId
+    );
+    const direction = action.type === "incrementScoreTrackMarker" ? "Increase" : "Decrease";
+
+    return marker
+      ? `${direction} ${marker.label || action.markerId} on ${itemName}`
+      : `${direction} score on ${itemName}`;
+  }
+
   return `Decrease ${itemName}`;
 }
 
-function isRuntimeContainer(item: PlaytestItem) {
-  return item.baseObject.kind === "deck" || item.baseObject.kind === "stack";
+function getRuntimeWithStartupContainerShuffles(
+  runtime: PlaytestRuntimeState,
+  random: () => number
+): { labels: string[]; runtime: PlaytestRuntimeState } {
+  let nextRuntime = runtime;
+  const labels: string[] = [];
+
+  for (const itemId of runtime.tableItemIds) {
+    const item = nextRuntime.itemsById[itemId];
+
+    if (
+      !item ||
+      !isRuntimeContainer(item) ||
+      !item.behavior.container?.shuffleOnStart ||
+      item.contents.length < 2
+    ) {
+      continue;
+    }
+
+    nextRuntime = getRuntimeWithUpdatedItem(nextRuntime, item.id, (currentItem) => ({
+      ...currentItem,
+      contents: shuffleItems(currentItem.contents, random)
+    }));
+    labels.push(`Shuffle ${item.name}`);
+  }
+
+  return { labels, runtime: nextRuntime };
 }
 
-function getInitialActiveSide(object: ProjectObjectNode): ProjectObjectSide {
+function isRuntimeContainer(item: PlaytestItem) {
+  return Boolean(item.baseObject.components?.container);
+}
+
+function getInitialActiveSide(
+  object: ProjectObjectNode,
+  behavior: ProjectTableSetupItemBehavior
+): ProjectObjectSide {
   if (!hasProjectObjectSides(object.kind)) {
     return "front";
   }
 
-  return getProjectObjectNodeDoubleSide(object).enabled ? "front" : "front";
+  return getProjectObjectNodeDoubleSide(object).enabled
+    ? (behavior.side?.initialSide ?? "front")
+    : "front";
+}
+
+function getDrawnItemVisibilityState(
+  item: PlaytestItem,
+  drawnItemSide: ProjectObjectSide
+): Pick<PlaytestItem, "activeSide" | "hidden" | "revealed"> {
+  if (hasProjectObjectSides(item.baseObject.kind)) {
+    return {
+      activeSide: drawnItemSide,
+      hidden: false,
+      revealed: true
+    };
+  }
+
+  return {
+    activeSide: "front",
+    hidden: drawnItemSide === "back",
+    revealed: drawnItemSide === "front"
+  };
 }
 
 function getEntryQuantity(quantity: number) {
-  return Math.max(0, getProjectObjectContainerTotalCount({ entries: [{ objectFileNodeId: "x", quantity }] }));
+  return Math.max(
+    0,
+    getProjectObjectContainerTotalCount({ entries: [{ objectFileNodeId: "x", quantity }] })
+  );
 }
 
 function shuffleItems<T>(items: readonly T[], random: () => number): T[] {

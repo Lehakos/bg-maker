@@ -12,6 +12,9 @@ import {
   type ProjectTableSetup
 } from "@bg-maker/shared";
 import {
+  getPlaytestItemGroupMoveTransforms,
+  getPlaytestItemMovePreview,
+  getPlaytestMovePreviewTransforms,
   getPlaytestRenderedObject,
   type PlaytestAction,
   type PlaytestSession
@@ -311,7 +314,11 @@ export function TableLayoutWorkspace({
   }
 
   function handleTableDragOver(event: DragEvent<HTMLElement>) {
-    if (readOnly || playtestActive || !event.dataTransfer.types.includes(projectObjectFileDragMimeType)) {
+    if (
+      readOnly ||
+      playtestActive ||
+      !event.dataTransfer.types.includes(projectObjectFileDragMimeType)
+    ) {
       return;
     }
 
@@ -662,6 +669,12 @@ type TableSetupSceneProps = {
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
 
+type PlaytestZoneDropPreview = {
+  itemId: string;
+  rectTransform: ProjectObjectRectTransform;
+  zoneItemId: string;
+};
+
 function TableSetupScene({
   directObjectMove,
   fileTree,
@@ -692,6 +705,15 @@ function TableSetupScene({
   );
   const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
   const playtestActive = Boolean(playtestSession);
+  const [playtestDropPreview, setPlaytestDropPreview] = useState<PlaytestZoneDropPreview | null>(
+    null
+  );
+  const [playtestPreviewRectTransforms, setPlaytestPreviewRectTransforms] = useState<
+    Map<string, ProjectObjectRectTransform>
+  >(() => new Map());
+  const effectivePreviewRectTransforms = playtestActive
+    ? playtestPreviewRectTransforms
+    : previewRectTransforms;
   const snapSize = tableSetup.grid.snap ? tableSetup.grid.size : null;
   const snapTargets = useMemo(
     () =>
@@ -709,7 +731,8 @@ function TableSetupScene({
             return item
               ? [
                   {
-                    concealed: item.hidden && !item.revealed && !hasProjectObjectSides(item.baseObject.kind),
+                    concealed:
+                      item.hidden && !item.revealed && !hasProjectObjectSides(item.baseObject.kind),
                     id: item.id,
                     object: getPlaytestRenderedObject(item, playtestSession.itemsById),
                     resizeMode: "size" as const
@@ -732,13 +755,29 @@ function TableSetupScene({
                     concealed: false,
                     id: itemId,
                     object,
-                    resizeMode: item.type === "linkedObject" ? ("scale" as const) : ("size" as const)
+                    resizeMode:
+                      item.type === "linkedObject" ? ("scale" as const) : ("size" as const)
                   }
                 ]
               : [];
           }),
     [fileNodeId, fileTree, objectSideSelections, playtestSession, tableSetup.items]
   );
+
+  useEffect(() => {
+    if (playtestActive) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      setPlaytestDropPreview(null);
+      setPlaytestPreviewRectTransforms((currentTransforms) =>
+        currentTransforms.size > 0 ? new Map() : currentTransforms
+      );
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [playtestActive]);
 
   function handleDieFaceChange() {
     // Playtest dice are controlled through the action panel; linked table items follow their source object.
@@ -810,6 +849,63 @@ function TableSetupScene({
     onSelectObject(objectId);
   }
 
+  function handlePlaytestRectTransformPreviewChange(
+    objectId: string,
+    before: ProjectObjectRectTransform,
+    after: ProjectObjectRectTransform
+  ) {
+    if (!playtestSession) {
+      return;
+    }
+
+    const item = playtestSession.itemsById[objectId];
+
+    if (!item) {
+      return;
+    }
+
+    const itemTransforms = getPlaytestItemGroupMoveTransforms(
+      playtestSession,
+      selectedObjectIds,
+      objectId,
+      before,
+      after
+    );
+    const previewTransforms = getPlaytestMovePreviewTransforms(playtestSession, itemTransforms);
+
+    delete previewTransforms[objectId];
+
+    if (item.baseObject.kind === "zone") {
+      setPlaytestDropPreview(null);
+      setPlaytestPreviewRectTransforms(new Map(Object.entries(previewTransforms)));
+      return;
+    }
+
+    const movePreview = getPlaytestItemMovePreview(playtestSession, objectId, after);
+    const zoneItemId = movePreview.accepted
+      ? (movePreview.item.zonePlacement?.zoneItemId ?? null)
+      : null;
+
+    setPlaytestPreviewRectTransforms(new Map(Object.entries(previewTransforms)));
+    setPlaytestDropPreview(
+      movePreview.accepted && zoneItemId
+        ? {
+            itemId: objectId,
+            rectTransform: movePreview.item.rectTransform,
+            zoneItemId
+          }
+        : null
+    );
+  }
+
+  function handlePlaytestRectTransformPreviewEnd() {
+    setPlaytestDropPreview(null);
+    setPlaytestPreviewRectTransforms((currentTransforms) =>
+      currentTransforms.size > 0 ? new Map() : currentTransforms
+    );
+    onSnapIndicatorsChange([]);
+  }
+
   return (
     <div className="absolute inset-0 z-0 overflow-visible">
       {showEditorOverlays ? <WorkspaceAxes /> : null}
@@ -824,7 +920,7 @@ function TableSetupScene({
             imageAssetById={imageAssetById}
             multiSelectEnabled
             object={item.object}
-            previewRectTransform={previewRectTransforms.get(item.id)}
+            previewRectTransform={effectivePreviewRectTransforms.get(item.id)}
             readOnly={readOnly && !playtestActive}
             resizeMode={item.resizeMode}
             root
@@ -832,6 +928,7 @@ function TableSetupScene({
             selectedObjectId={selectedObjectId}
             selectedObjectIds={selectedObjectIds}
             showInlineControls={showInlineObjectControls}
+            showZoneLabel={!playtestActive}
             siblingIndex={index}
             snapSize={snapSize}
             snapTargets={snapTargets}
@@ -841,14 +938,37 @@ function TableSetupScene({
             onImageAssetDrop={playtestActive ? undefined : handleLocalImageAssetDrop}
             onObjectContextMenu={onObjectContextMenu}
             onObjectSideChange={handleObjectSideChange}
-            onRectTransformPreviewChange={playtestActive ? undefined : onRectTransformPreviewChange}
-            onRectTransformPreviewEnd={playtestActive ? undefined : onRectTransformPreviewEnd}
+            onRectTransformPreviewChange={
+              playtestActive
+                ? handlePlaytestRectTransformPreviewChange
+                : onRectTransformPreviewChange
+            }
+            onRectTransformPreviewEnd={
+              playtestActive ? handlePlaytestRectTransformPreviewEnd : onRectTransformPreviewEnd
+            }
             onSnapIndicatorsChange={onSnapIndicatorsChange}
             onRectTransformChange={(objectId, before, after, label) => {
               if (playtestActive) {
+                if (!playtestSession) {
+                  return;
+                }
+
+                const itemTransforms = getPlaytestItemGroupMoveTransforms(
+                  playtestSession,
+                  selectedObjectIds,
+                  objectId,
+                  before,
+                  after
+                );
+                const movedItemCount = Object.keys(itemTransforms).length;
+
+                if (movedItemCount === 0) {
+                  return;
+                }
+
                 onExecutePlaytestAction?.({
-                  itemTransforms: { [objectId]: after },
-                  label,
+                  itemTransforms,
+                  label: movedItemCount > 1 ? "Move items" : label,
                   type: "moveItems"
                 });
                 return;
@@ -861,8 +981,58 @@ function TableSetupScene({
           />
         );
       })}
+      {playtestDropPreview && playtestSession ? (
+        <PlaytestZoneDropPreviewOverlay
+          preview={playtestDropPreview}
+          zoneRectTransform={
+            playtestSession.itemsById[playtestDropPreview.zoneItemId]?.rectTransform
+          }
+        />
+      ) : null}
     </div>
   );
+}
+
+type PlaytestZoneDropPreviewOverlayProps = {
+  preview: PlaytestZoneDropPreview;
+  zoneRectTransform?: ProjectObjectRectTransform;
+};
+
+function PlaytestZoneDropPreviewOverlay({
+  preview,
+  zoneRectTransform
+}: PlaytestZoneDropPreviewOverlayProps) {
+  if (!zoneRectTransform) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-[1000]"
+      data-export-exclude="true"
+    >
+      <div
+        className="absolute rounded-lg border-2 border-emerald-300/80 bg-emerald-300/10 shadow-[0_0_0_3px_rgba(16,185,129,0.18),0_0_20px_rgba(16,185,129,0.18)]"
+        style={getRootRectTransformStyle(zoneRectTransform)}
+      />
+      <div
+        className="absolute rounded-md border-2 border-cyan-200 bg-cyan-200/20 shadow-[0_0_0_4px_rgba(103,232,249,0.2),0_0_18px_rgba(103,232,249,0.2)]"
+        style={getRootRectTransformStyle(preview.rectTransform)}
+      />
+    </div>
+  );
+}
+
+function getRootRectTransformStyle(rectTransform: ProjectObjectRectTransform): CSSProperties {
+  return {
+    height: `${rectTransform.height}px`,
+    left: `calc(50% + ${rectTransform.x}px)`,
+    top: `calc(50% + ${rectTransform.y}px)`,
+    transform: `translate(-50%, -50%) rotate(${rectTransform.rotation}deg) scale(${rectTransform.scaleX}, ${rectTransform.scaleY})`,
+    transformOrigin: `${rectTransform.pivotX * 100}% ${rectTransform.pivotY * 100}%`,
+    width: `${rectTransform.width}px`
+  };
 }
 
 function getTableSetupSnapTargets(

@@ -177,8 +177,9 @@ const scoreTrack: ProjectObjectScoreTrack = {
 };
 
 const zone: ProjectObjectZone = {
-  capacity: 4,
-  referenceObjectFileId: "card-file-1"
+  mode: "slots",
+  sizeReferenceObjectFileId: "card-file-1",
+  slots: 4
 };
 
 const die: ProjectObjectDie = {
@@ -441,23 +442,30 @@ describe("project object inspector state", () => {
 
   it("creates and updates zone drafts", () => {
     expect(createZoneDraft(zone)).toEqual({
-      capacity: "4",
-      referenceObjectFileId: "card-file-1"
+      mode: "slots",
+      sizeReferenceObjectFileId: "card-file-1",
+      slots: "4"
     });
-    expect(normalizeZoneNumberValue("capacity", 0)).toBe(1);
-    expect(normalizeZoneNumberValue("capacity", 1200)).toBe(999);
-    expect(getZoneWithDraftField(zone, "capacity", "8")).toMatchObject({
-      capacity: 8
+    expect(normalizeZoneNumberValue("slots", 0)).toBe(1);
+    expect(normalizeZoneNumberValue("slots", 1200)).toBe(999);
+    expect(getZoneWithDraftField(zone, "slots", "8")).toMatchObject({
+      slots: 8
     });
-    expect(getZoneWithDraftField(zone, "capacity", "0")).toMatchObject({
-      capacity: 1
+    expect(getZoneWithDraftField(zone, "slots", "0")).toMatchObject({
+      slots: 1
     });
-    expect(getZoneWithDraftField(zone, "referenceObjectFileId", " object-file-2 ")).toEqual({
-      capacity: 4,
-      referenceObjectFileId: "object-file-2"
+    expect(getZoneWithDraftField(zone, "sizeReferenceObjectFileId", " object-file-2 ")).toEqual({
+      mode: "slots",
+      sizeReferenceObjectFileId: "object-file-2",
+      slots: 4
     });
-    expect(getZoneWithDraftField(zone, "capacity", "nope")).toBeNull();
-    expect(getZoneWithDraftField(zone, "referenceObjectFileId", "card-file-1")).toBeNull();
+    expect(getZoneWithDraftField(zone, "mode", "free")).toEqual({
+      mode: "free",
+      sizeReferenceObjectFileId: "card-file-1",
+      slots: 4
+    });
+    expect(getZoneWithDraftField(zone, "slots", "nope")).toBeNull();
+    expect(getZoneWithDraftField(zone, "sizeReferenceObjectFileId", "card-file-1")).toBeNull();
   });
 
   it("updates generic container entries", () => {

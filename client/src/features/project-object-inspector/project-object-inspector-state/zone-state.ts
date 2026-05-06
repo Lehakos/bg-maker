@@ -1,23 +1,24 @@
 import type { ProjectObjectZone } from "@bg-maker/shared";
 import {
   getDefaultProjectObjectZone,
-  normalizeProjectObjectZoneCapacity,
-  projectObjectZoneCapacityLimits
+  normalizeProjectObjectZoneSlots,
+  projectObjectZoneSlotLimits
 } from "@bg-maker/shared";
 import { parseRectTransformDraftValue, roundTo } from "./inspector-state-utils";
 
 export type ZoneFieldKey = keyof ProjectObjectZone;
-export type ZoneNumberFieldKey = Extract<ZoneFieldKey, "capacity">;
+export type ZoneNumberFieldKey = Extract<ZoneFieldKey, "slots">;
 export type ZoneDraft = {
-  capacity: string;
-  referenceObjectFileId: string;
+  mode: ProjectObjectZone["mode"];
+  sizeReferenceObjectFileId: string;
+  slots: string;
 };
 
 export const zoneNumberFieldSettings = {
-  capacity: {
+  slots: {
     decimals: 0,
-    max: projectObjectZoneCapacityLimits.max,
-    min: projectObjectZoneCapacityLimits.min,
+    max: projectObjectZoneSlotLimits.max,
+    min: projectObjectZoneSlotLimits.min,
     step: 1
   }
 } as const satisfies Record<
@@ -27,8 +28,9 @@ export const zoneNumberFieldSettings = {
 
 export function createZoneDraft(zone: ProjectObjectZone): ZoneDraft {
   return {
-    capacity: formatZoneNumberValue(zone.capacity, "capacity"),
-    referenceObjectFileId: zone.referenceObjectFileId
+    mode: zone.mode,
+    sizeReferenceObjectFileId: zone.sizeReferenceObjectFileId,
+    slots: formatZoneNumberValue(zone.slots, "slots")
   };
 }
 
@@ -50,8 +52,8 @@ export function normalizeZoneNumberValue(
   fieldKey: keyof typeof zoneNumberFieldSettings,
   value: number
 ) {
-  if (fieldKey === "capacity") {
-    return normalizeProjectObjectZoneCapacity(value);
+  if (fieldKey === "slots") {
+    return normalizeProjectObjectZoneSlots(value);
   }
 
   return value;
@@ -71,10 +73,19 @@ function createNextZone(
   fieldKey: ZoneFieldKey,
   value: string
 ): ProjectObjectZone | null {
-  if (fieldKey === "referenceObjectFileId") {
+  if (fieldKey === "mode") {
+    return value === "free" || value === "slots"
+      ? {
+          ...zone,
+          mode: value
+        }
+      : null;
+  }
+
+  if (fieldKey === "sizeReferenceObjectFileId") {
     return {
       ...zone,
-      referenceObjectFileId: value.trim()
+      sizeReferenceObjectFileId: value.trim()
     };
   }
 
@@ -95,17 +106,19 @@ function normalizeZone(zone: ProjectObjectZone): ProjectObjectZone {
 
   return {
     ...zone,
-    capacity: normalizeProjectObjectZoneCapacity(zone.capacity),
-    referenceObjectFileId:
-      typeof zone.referenceObjectFileId === "string"
-        ? zone.referenceObjectFileId.trim()
-        : defaultZone.referenceObjectFileId
+    mode: zone.mode === "slots" ? "slots" : "free",
+    sizeReferenceObjectFileId:
+      typeof zone.sizeReferenceObjectFileId === "string"
+        ? zone.sizeReferenceObjectFileId.trim()
+        : defaultZone.sizeReferenceObjectFileId,
+    slots: normalizeProjectObjectZoneSlots(zone.slots)
   };
 }
 
 function areZonesEqual(left: ProjectObjectZone, right: ProjectObjectZone) {
   return (
-    left.capacity === right.capacity &&
-    left.referenceObjectFileId === right.referenceObjectFileId
+    left.mode === right.mode &&
+    left.sizeReferenceObjectFileId === right.sizeReferenceObjectFileId &&
+    left.slots === right.slots
   );
 }

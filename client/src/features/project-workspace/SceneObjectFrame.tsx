@@ -17,6 +17,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
+  useEffect,
   useRef,
   useState
 } from "react";
@@ -29,6 +30,7 @@ import {
   getProjectObjectNodeDoubleSide,
   getProjectObjectNodeLayout,
   getProjectObjectNodeRectTransform,
+  getProjectObjectNodeZone,
   getProjectObjectNodeVisibleChildren,
   getProjectObjectNodeActiveSide
 } from "../project-objects/project-object-tree";
@@ -71,6 +73,7 @@ type SceneObjectFrameProps = {
   selectedObjectId: string | null;
   selectedObjectIds: string[];
   showInlineControls?: boolean;
+  showZoneLabel?: boolean;
   siblingIndex: number;
   snapSize?: number | null;
   snapTargets?: CompositionSnapTarget[];
@@ -97,6 +100,19 @@ type SceneObjectFrameProps = {
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
 };
 
+type TransformDragPointer = {
+  clientX: number;
+  clientY: number;
+  pointerId: number;
+  shiftKey: boolean;
+};
+
+type TransformDragActions = {
+  cancelDragByPointerId: (pointerId: number) => void;
+  commitDragByPointerId: (pointerId: number) => void;
+  updateDragFromPointer: (pointer: TransformDragPointer) => boolean;
+};
+
 export function SceneObjectFrame({
   concealed = false,
   directMoveEnabled = false,
@@ -114,6 +130,7 @@ export function SceneObjectFrame({
   selectedObjectId,
   selectedObjectIds,
   showInlineControls = true,
+  showZoneLabel = true,
   siblingIndex,
   snapSize = null,
   snapTargets = [],
@@ -140,12 +157,15 @@ export function SceneObjectFrame({
     previewRectTransform ?? rectTransformOverride ?? effectiveObjectRectTransform;
   const [dragState, setDragState] = useState<TransformDragState | null>(null);
   const dragStateRef = useRef<TransformDragState | null>(null);
+  const dragElementRef = useRef<HTMLDivElement | null>(null);
+  const dragActionsRef = useRef<TransformDragActions | null>(null);
   const suppressNextClickRef = useRef(false);
   const visibleRectTransform = dragState?.current ?? baseVisibleRectTransform;
   const selectableObjectId = selectionObjectId ?? viewObject.id;
   const handlesOwnInteraction = selectableObjectId === viewObject.id;
   const selected = selectedObjectId === selectableObjectId && handlesOwnInteraction;
   const multiSelected = selectedObjectIds.includes(selectableObjectId) && handlesOwnInteraction;
+  const singleSelected = selected && selectedObjectIds.length <= 1;
   const layoutManaged = Boolean(rectTransformOverride);
   const appearance = getProjectObjectNodeAppearance(viewObject);
   const card = viewObject.kind === "card" ? getProjectObjectNodeCard(viewObject) : null;
@@ -159,7 +179,8 @@ export function SceneObjectFrame({
   );
   const clipsChildren = doesProjectObjectClipChildren(viewObject.kind);
   const sizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
-  const zoneSizeLocked = viewObject.kind === "zone";
+  const zoneSizeLocked =
+    viewObject.kind === "zone" && getProjectObjectNodeZone(viewObject).mode === "slots";
   const interactionTool = directMoveEnabled && activeTool !== "pan" ? "move" : activeTool;
   const resizeLocked = interactionTool === "resize" && (sizePresetLocked || zoneSizeLocked);
   const groupMoveInteractive = multiSelectEnabled && multiSelected && interactionTool === "move";
@@ -184,10 +205,6 @@ export function SceneObjectFrame({
         (child) => getEffectiveProjectObjectRectTransform(child, fileTree)
       )
     : new Map<string, ProjectObjectRectTransform>();
-
-  if (!viewObject.visible) {
-    return null;
-  }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
     if (!handlesOwnInteraction) {
@@ -221,6 +238,7 @@ export function SceneObjectFrame({
       onSelectObject(selectableObjectId);
     }
 
+    dragElementRef.current = event.currentTarget;
     event.currentTarget.setPointerCapture(event.pointerId);
     const rotateDragState =
       interactionTool === "rotate"
@@ -246,16 +264,39 @@ export function SceneObjectFrame({
     }
 
     event.preventDefault();
+    updateDragFromPointer(event);
+
+    if (event.pointerType === "mouse" && event.buttons === 0) {
+      commitDragByPointerId(event.pointerId);
+    }
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
+    updateDragFromPointer(event);
+    commitDragByPointerId(event.pointerId);
+  }
+
+  function handlePointerCancel(event: PointerEvent<HTMLDivElement>) {
+    cancelDragByPointerId(event.pointerId);
+  }
+
+  function updateDragFromPointer(pointer: TransformDragPointer) {
+    const activeDragState = dragStateRef.current;
+
+    if (!activeDragState || activeDragState.pointerId !== pointer.pointerId) {
+      return false;
+    }
 
     const nextDragState = getNextTransformDragState(
       activeDragState,
       interactionTool,
       canvasScale,
-      event.clientX,
-      event.clientY,
+      pointer.clientX,
+      pointer.clientY,
       {
         preserveAspectRatio:
-          interactionTool === "resize" && (resizeAspectLocked ? !event.shiftKey : event.shiftKey),
+          interactionTool === "resize" &&
+          (resizeAspectLocked ? !pointer.shiftKey : pointer.shiftKey),
         positionMode: root ? "center" : "topLeft",
         resizeHandle: activeDragState.resizeHandle,
         resizeMode,
@@ -272,27 +313,17 @@ export function SceneObjectFrame({
     setActiveDragState(nextDragState);
     onSnapIndicatorsChange?.(nextDragState.snapIndicators ?? []);
     onRectTransformPreviewChange?.(object.id, nextDragState.before, nextDragState.current);
+    return true;
   }
 
-  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
-    commitDrag(event);
-  }
-
-  function handlePointerCancel(event: PointerEvent<HTMLDivElement>) {
-    releasePointerCapture(event);
-    setActiveDragState(null);
-    onRectTransformPreviewEnd?.();
-    onSnapIndicatorsChange?.([]);
-  }
-
-  function commitDrag(event: PointerEvent<HTMLDivElement>) {
+  function commitDragByPointerId(pointerId: number) {
     const activeDragState = dragStateRef.current;
 
-    if (!activeDragState || activeDragState.pointerId !== event.pointerId) {
+    if (!activeDragState || activeDragState.pointerId !== pointerId) {
       return;
     }
 
-    releasePointerCapture(event);
+    const pointerCaptureElement = dragElementRef.current;
 
     if (
       fileNodeId &&
@@ -317,6 +348,24 @@ export function SceneObjectFrame({
       }
     }
 
+    clearActiveDragState();
+    releasePointerCapture(pointerCaptureElement, pointerId);
+  }
+
+  function cancelDragByPointerId(pointerId: number) {
+    const activeDragState = dragStateRef.current;
+
+    if (!activeDragState || activeDragState.pointerId !== pointerId) {
+      return;
+    }
+
+    const pointerCaptureElement = dragElementRef.current;
+    clearActiveDragState();
+    releasePointerCapture(pointerCaptureElement, pointerId);
+  }
+
+  function clearActiveDragState() {
+    dragElementRef.current = null;
     setActiveDragState(null);
     onRectTransformPreviewEnd?.();
     onSnapIndicatorsChange?.([]);
@@ -412,15 +461,92 @@ export function SceneObjectFrame({
     onImageAssetDrop(viewObject.id, payload.assetId);
   }
 
-  function releasePointerCapture(event: PointerEvent<HTMLDivElement>) {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+  function releasePointerCapture(element: HTMLDivElement | null, pointerId: number) {
+    if (!element) {
+      return;
+    }
+
+    try {
+      if (element.hasPointerCapture(pointerId)) {
+        element.releasePointerCapture(pointerId);
+      }
+    } catch {
+      // Pointer capture may already be gone after a window-level cancel/blur.
     }
   }
 
   function setActiveDragState(nextDragState: TransformDragState | null) {
     dragStateRef.current = nextDragState;
     setDragState(nextDragState);
+  }
+
+  useEffect(() => {
+    dragActionsRef.current = {
+      cancelDragByPointerId,
+      commitDragByPointerId,
+      updateDragFromPointer
+    };
+  });
+
+  useEffect(() => {
+    const activePointerId = dragState?.pointerId;
+
+    if (activePointerId === undefined) {
+      return;
+    }
+
+    const pointerId = activePointerId;
+
+    function handleWindowPointerUp(event: globalThis.PointerEvent) {
+      if (event.pointerId !== pointerId) {
+        return;
+      }
+
+      dragActionsRef.current?.updateDragFromPointer(event);
+      dragActionsRef.current?.commitDragByPointerId(event.pointerId);
+    }
+
+    function handleWindowPointerCancel(event: globalThis.PointerEvent) {
+      if (event.pointerId === pointerId) {
+        dragActionsRef.current?.cancelDragByPointerId(event.pointerId);
+      }
+    }
+
+    function handleWindowBlur() {
+      dragActionsRef.current?.cancelDragByPointerId(pointerId);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        dragActionsRef.current?.cancelDragByPointerId(pointerId);
+      }
+    }
+
+    window.addEventListener("pointerup", handleWindowPointerUp, true);
+    window.addEventListener("pointercancel", handleWindowPointerCancel, true);
+    window.addEventListener("blur", handleWindowBlur);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pointerup", handleWindowPointerUp, true);
+      window.removeEventListener("pointercancel", handleWindowPointerCancel, true);
+      window.removeEventListener("blur", handleWindowBlur);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [dragState?.pointerId]);
+
+  useEffect(() => {
+    return () => {
+      const activePointerId = dragStateRef.current?.pointerId;
+
+      if (activePointerId !== undefined) {
+        dragActionsRef.current?.cancelDragByPointerId(activePointerId);
+      }
+    };
+  }, []);
+
+  if (!viewObject.visible) {
+    return null;
   }
 
   return (
@@ -452,6 +578,7 @@ export function SceneObjectFrame({
         fileTree={fileTree}
         imageAssetById={imageAssetById}
         object={viewObject}
+        showZoneLabel={showZoneLabel}
       />
       {concealed ? (
         <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-[inherit] border border-slate-900/20 bg-slate-950/55 text-xs font-bold uppercase tracking-normal text-white/85 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]">
@@ -477,6 +604,7 @@ export function SceneObjectFrame({
             selectedObjectId={selectedObjectId}
             selectedObjectIds={selectedObjectIds}
             showInlineControls={showInlineControls}
+            showZoneLabel={showZoneLabel}
             siblingIndex={index}
             onDieFaceChange={onDieFaceChange}
             onExecuteCommand={onExecuteCommand}
@@ -492,7 +620,7 @@ export function SceneObjectFrame({
           />
         ))}
       </div>
-      {showInlineControls && selected && card && doubleSide?.enabled ? (
+      {showInlineControls && singleSelected && card && doubleSide?.enabled ? (
         <ObjectSideSwitcher
           activeSide={getProjectObjectNodeActiveSide(viewObject)}
           canvasScale={canvasScale}
@@ -500,7 +628,7 @@ export function SceneObjectFrame({
           onSideChange={(activeSide) => onObjectSideChange(viewObject.id, activeSide)}
         />
       ) : null}
-      {showInlineControls && selected && die ? (
+      {showInlineControls && singleSelected && die ? (
         <DieFaceSwitcher
           activeFace={die.activeFace}
           canvasScale={canvasScale}
@@ -508,7 +636,7 @@ export function SceneObjectFrame({
           onFaceChange={(activeFace) => onDieFaceChange(viewObject.id, die, activeFace)}
         />
       ) : null}
-      {showInlineControls && selected && tokenLike && doubleSide?.enabled ? (
+      {showInlineControls && singleSelected && tokenLike && doubleSide?.enabled ? (
         <ObjectSideSwitcher
           activeSide={getProjectObjectNodeActiveSide(viewObject)}
           canvasScale={canvasScale}
@@ -521,7 +649,7 @@ export function SceneObjectFrame({
           activeTool={directMoveEnabled || layoutManaged || resizeLocked ? "select" : activeTool}
           canvasScale={canvasScale}
           muted={!selected}
-          topControlsOffset={showInlineControls && hasTopObjectControls ? 44 : 0}
+          topControlsOffset={showInlineControls && singleSelected && hasTopObjectControls ? 44 : 0}
         />
       ) : null}
     </div>

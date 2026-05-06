@@ -56,13 +56,15 @@ type ProjectObjectSurfaceProps = {
   fileTree: ProjectFileNode[];
   imageAssetById: Map<string, ProjectImageAssetOption>;
   object: ProjectObjectNode;
+  showZoneLabel?: boolean;
 };
 
 export function ProjectObjectSurface({
   containerPreviewDepth = 0,
   fileTree,
   imageAssetById,
-  object
+  object,
+  showZoneLabel = true
 }: ProjectObjectSurfaceProps) {
   if (object.kind === "card") {
     return <CardVisual object={object} />;
@@ -99,7 +101,7 @@ export function ProjectObjectSurface({
   }
 
   if (object.kind === "zone") {
-    return <ZoneVisual fileTree={fileTree} object={object} />;
+    return <ZoneVisual fileTree={fileTree} object={object} showLabel={showZoneLabel} />;
   }
 
   if (object.kind === "die") {
@@ -147,6 +149,7 @@ type ObjectVisualProps = {
 
 type ZoneVisualProps = ObjectVisualProps & {
   fileTree: ProjectFileNode[];
+  showLabel: boolean;
 };
 
 type ContainerVisualProps = ObjectVisualProps & {
@@ -616,7 +619,7 @@ function getProjectObjectContainerTopObject(
   );
 }
 
-function ZoneVisual({ fileTree, object }: ZoneVisualProps) {
+function ZoneVisual({ fileTree, object, showLabel }: ZoneVisualProps) {
   const appearance = getProjectObjectNodeAppearance(object);
   const slotRects = getProjectObjectZoneSlotRects(fileTree, object);
 
@@ -638,10 +641,12 @@ function ZoneVisual({ fileTree, object }: ZoneVisualProps) {
           }}
         />
       ))}
-      <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md border border-cyan-500/30 bg-white/85 px-2 py-1 text-xs font-semibold text-cyan-800 shadow-sm">
-        <ProjectObjectKindIcon className="shrink-0" kind={object.kind} size={14} />
-        <span className="truncate">{object.name}</span>
-      </div>
+      {showLabel ? (
+        <div className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md border border-cyan-500/30 bg-white/85 px-2 py-1 text-xs font-semibold text-cyan-800 shadow-sm">
+          <ProjectObjectKindIcon className="shrink-0" kind={object.kind} size={14} />
+          <span className="truncate">{object.name}</span>
+        </div>
+      ) : null}
     </div>
   );
 }

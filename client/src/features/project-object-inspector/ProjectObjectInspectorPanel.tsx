@@ -16,6 +16,7 @@ import type {
   ProjectObjectScoreTrack,
   ProjectObjectShape,
   ProjectObjectShapePoint,
+  ProjectObjectSide,
   ProjectObjectTemplate,
   ProjectObjectStackDisplay,
   ProjectObjectText,
@@ -24,6 +25,10 @@ import type {
   ProjectObjectVariableType,
   ProjectObjectZone,
   ProjectTableSetup,
+  ProjectTableSetupItemBehavior,
+  ProjectTableSetupItemContainerDrawOrder,
+  ProjectTableSetupItemZoneSideOnEnter,
+  ProjectTableSetupItemZoneSlotOccupancy,
   ProjectTableSetupItem,
   ProjectTableSetupItemTransform
 } from "@bg-maker/shared";
@@ -40,6 +45,7 @@ import {
   getDefaultProjectObjectZone,
   getProjectObjectContainerAcceptedObjectKinds,
   getProjectObjectContainerTotalCount,
+  getProjectTableSetupItemId,
   getProjectObjectVariableDefaultValues,
   hasProjectObjectLayout,
   hasProjectObjectSides,
@@ -257,6 +263,7 @@ import {
   ProjectObjectLayoutSection,
   ProjectObjectTransformSections
 } from "./ProjectObjectStyleSections";
+import { ProjectTableSetupBehaviorSection } from "./ProjectTableSetupBehaviorSection";
 import {
   InspectorBehaviorNumberField,
   InspectorColorField,
@@ -264,9 +271,12 @@ import {
   InspectorSwitchField
 } from "./inspector-ui";
 import {
+  getProjectTableSetupResolvedItemObject,
+  getProjectTableSetupWithItemBehavior,
   getProjectTableSetupWithItemTransform,
   getProjectTableSetupWithLinkedItemValues
 } from "../project-table-setup/project-table-setup";
+import { getProjectTableSetupItemBehavior } from "../project-table-setup/project-table-setup-behavior";
 
 type ProjectObjectInspectorPanelProps = {
   className?: string;
@@ -436,6 +446,30 @@ export function ProjectObjectInspectorPanel({
           }
         : {},
     [linkedTableSourceTemplate, selectedLinkedTableSetupItem]
+  );
+  const selectedTableSetupItemObject = useMemo(
+    () =>
+      selectedTableSetupItem
+        ? getProjectTableSetupResolvedItemObject(fileTree, selectedTableSetupItem)
+        : null,
+    [fileTree, selectedTableSetupItem]
+  );
+  const selectedTableSetupItemBehavior = useMemo(
+    () =>
+      selectedTableSetupItem && selectedTableSetupItemObject
+        ? getProjectTableSetupItemBehavior({
+            behavior: selectedTableSetupItem.behavior,
+            object: selectedTableSetupItemObject
+          })
+        : null,
+    [selectedTableSetupItem, selectedTableSetupItemObject]
+  );
+  const selectedTableSetupItemZoneMode = useMemo(
+    () =>
+      selectedTableSetupItemObject?.kind === "zone"
+        ? getProjectObjectNodeZone(selectedTableSetupItemObject).mode
+        : undefined,
+    [selectedTableSetupItemObject]
   );
   const rectTransform = useMemo(
     () => (selectedObject ? getProjectObjectNodeRectTransform(selectedObject) : null),
@@ -1151,6 +1185,124 @@ export function ProjectObjectInspectorPanel({
     onTableSetupChange?.(nextTableSetup, "Update table item transform");
   }
 
+  function updateTableSetupItemBehavior(nextBehavior: ProjectTableSetupItemBehavior) {
+    if (!tableSetup || !selectedTableSetupItem) {
+      return;
+    }
+
+    const nextTableSetup = getProjectTableSetupWithItemBehavior(
+      tableSetup,
+      getProjectTableSetupItemId(selectedTableSetupItem),
+      nextBehavior
+    );
+
+    onTableSetupChange?.(nextTableSetup, "Update playtest behavior");
+  }
+
+  function updateTableSetupItemMovementBehavior(movableInPlaytest: boolean) {
+    if (!selectedTableSetupItemBehavior?.movement) {
+      return;
+    }
+
+    updateTableSetupItemBehavior({
+      ...selectedTableSetupItemBehavior,
+      movement: { movableInPlaytest }
+    });
+  }
+
+  function updateTableSetupItemInteractionBehavior(interactableInPlaytest: boolean) {
+    if (!selectedTableSetupItemBehavior?.interaction) {
+      return;
+    }
+
+    updateTableSetupItemBehavior({
+      ...selectedTableSetupItemBehavior,
+      interaction: { interactableInPlaytest }
+    });
+  }
+
+  function updateTableSetupItemVisibilityBehavior(initialHidden: boolean) {
+    if (!selectedTableSetupItemBehavior?.visibility) {
+      return;
+    }
+
+    updateTableSetupItemBehavior({
+      ...selectedTableSetupItemBehavior,
+      visibility: { initialHidden }
+    });
+  }
+
+  function updateTableSetupItemSideBehavior(initialSide: ProjectObjectSide) {
+    if (!selectedTableSetupItemBehavior?.side) {
+      return;
+    }
+
+    updateTableSetupItemBehavior({
+      ...selectedTableSetupItemBehavior,
+      side: { initialSide }
+    });
+  }
+
+  function updateTableSetupItemContainerBehavior(
+    fieldKey: keyof NonNullable<ProjectTableSetupItemBehavior["container"]>,
+    value: boolean | ProjectObjectSide | ProjectTableSetupItemContainerDrawOrder
+  ) {
+    if (!selectedTableSetupItemBehavior?.container) {
+      return;
+    }
+
+    updateTableSetupItemBehavior({
+      ...selectedTableSetupItemBehavior,
+      container: {
+        ...selectedTableSetupItemBehavior.container,
+        [fieldKey]: value
+      }
+    });
+  }
+
+  function updateTableSetupItemZoneBehavior(
+    fieldKey: keyof NonNullable<ProjectTableSetupItemBehavior["zone"]>,
+    value:
+      | boolean
+      | ProjectObjectKind[]
+      | string[]
+      | ProjectTableSetupItemZoneSideOnEnter
+      | ProjectTableSetupItemZoneSlotOccupancy
+  ) {
+    if (!selectedTableSetupItemBehavior?.zone) {
+      return;
+    }
+
+    updateTableSetupItemBehavior({
+      ...selectedTableSetupItemBehavior,
+      zone: {
+        ...selectedTableSetupItemBehavior.zone,
+        [fieldKey]: value
+      }
+    });
+  }
+
+  function updateTableSetupItemZoneAcceptedObjects({
+    acceptedKinds,
+    acceptedObjectFileNodeIds
+  }: {
+    acceptedKinds: ProjectObjectKind[];
+    acceptedObjectFileNodeIds: string[];
+  }) {
+    if (!selectedTableSetupItemBehavior?.zone) {
+      return;
+    }
+
+    updateTableSetupItemBehavior({
+      ...selectedTableSetupItemBehavior,
+      zone: {
+        ...selectedTableSetupItemBehavior.zone,
+        acceptedKinds,
+        acceptedObjectFileNodeIds
+      }
+    });
+  }
+
   async function uploadPropertyImageValue(
     variable: ProjectObjectVariableDefinition,
     file: File,
@@ -1194,7 +1346,9 @@ export function ProjectObjectInspectorPanel({
       cardPresetLockedRectTransformFields.has(fieldKey)
     );
 
-    return presetLocked || Boolean(zone && zoneLockedRectTransformFields.has(fieldKey));
+    return (
+      presetLocked || Boolean(zone?.mode === "slots" && zoneLockedRectTransformFields.has(fieldKey))
+    );
   }
 
   function updateRectTransformDraft(fieldKey: RectTransformFieldKey, value: string) {
@@ -2424,11 +2578,14 @@ export function ProjectObjectInspectorPanel({
     zoneReferenceObjectFileOptions.map((option) => [option.value, option])
   );
   const zoneReferenceObjectFileSelectOptions =
-    zone?.referenceObjectFileId &&
-    !zoneReferenceObjectFileOptionById.has(zone.referenceObjectFileId)
+    zone?.sizeReferenceObjectFileId &&
+    !zoneReferenceObjectFileOptionById.has(zone.sizeReferenceObjectFileId)
       ? [
           { label: "No reference", value: "" },
-          { label: `${zone.referenceObjectFileId} (missing)`, value: zone.referenceObjectFileId },
+          {
+            label: `${zone.sizeReferenceObjectFileId} (missing)`,
+            value: zone.sizeReferenceObjectFileId
+          },
           ...zoneReferenceObjectFileOptions
         ]
       : [{ label: "No reference", value: "" }, ...zoneReferenceObjectFileOptions];
@@ -2438,14 +2595,16 @@ export function ProjectObjectInspectorPanel({
   const sizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
   const textDraftBold = isTextFontWeightBold(textDraft.fontWeight);
   const textDraftItalic = textDraft.fontStyle === "italic";
-  const sizeLockedRectTransformFields = zone
-    ? zoneLockedRectTransformFields
-    : sizePresetLocked
-      ? cardPresetLockedRectTransformFields
-      : undefined;
-  const sizeLockedTitle = zone
-    ? "Size is controlled by the selected zone reference, capacity, layout, gap, and padding"
-    : "Size is controlled by the selected card preset";
+  const sizeLockedRectTransformFields =
+    zone?.mode === "slots"
+      ? zoneLockedRectTransformFields
+      : sizePresetLocked
+        ? cardPresetLockedRectTransformFields
+        : undefined;
+  const sizeLockedTitle =
+    zone?.mode === "slots"
+      ? "Size is controlled by the selected zone reference, slots, layout, gap, and padding"
+      : "Size is controlled by the selected card preset";
   const appearanceBackgroundColorBinding = getVariableBindingField("appearance.backgroundColor");
   const appearanceBorderColorBinding = getVariableBindingField("appearance.borderColor");
   const iconColorBinding = getVariableBindingField("icon.color");
@@ -2506,6 +2665,36 @@ export function ProjectObjectInspectorPanel({
                   )
                 }
               />
+              {selectedTableSetupItemBehavior ? (
+                <ProjectTableSetupBehaviorSection
+                  behavior={selectedTableSetupItemBehavior}
+                  fileTree={fileTree}
+                  zoneMode={selectedTableSetupItemZoneMode}
+                  onContainerDrawOrderChange={(value) =>
+                    updateTableSetupItemContainerBehavior("drawOrder", value)
+                  }
+                  onContainerDrawnItemSideChange={(value) =>
+                    updateTableSetupItemContainerBehavior("drawnItemSide", value)
+                  }
+                  onContainerShuffleOnStartChange={(value) =>
+                    updateTableSetupItemContainerBehavior("shuffleOnStart", value)
+                  }
+                  onInitialHiddenChange={updateTableSetupItemVisibilityBehavior}
+                  onInitialSideChange={updateTableSetupItemSideBehavior}
+                  onInteractableChange={updateTableSetupItemInteractionBehavior}
+                  onMovableChange={updateTableSetupItemMovementBehavior}
+                  onZoneAcceptedObjectsChange={updateTableSetupItemZoneAcceptedObjects}
+                  onZoneAllowRemoveChange={(value) =>
+                    updateTableSetupItemZoneBehavior("allowRemove", value)
+                  }
+                  onZoneSideOnEnterChange={(value) =>
+                    updateTableSetupItemZoneBehavior("sideOnEnter", value)
+                  }
+                  onZoneSlotOccupancyChange={(value) =>
+                    updateTableSetupItemZoneBehavior("slotOccupancy", value)
+                  }
+                />
+              ) : null}
               {linkedTableSourceTemplate ? (
                 <ProjectObjectLinkedObjectSection
                   imageAssets={imageAssets}
@@ -2551,6 +2740,37 @@ export function ProjectObjectInspectorPanel({
                 onNameKeyDown={handleNameKeyDown}
                 onVisibilityChange={handleVisibilityChange}
               />
+
+              {selectedTableSetupItemBehavior ? (
+                <ProjectTableSetupBehaviorSection
+                  behavior={selectedTableSetupItemBehavior}
+                  fileTree={fileTree}
+                  zoneMode={selectedTableSetupItemZoneMode}
+                  onContainerDrawOrderChange={(value) =>
+                    updateTableSetupItemContainerBehavior("drawOrder", value)
+                  }
+                  onContainerDrawnItemSideChange={(value) =>
+                    updateTableSetupItemContainerBehavior("drawnItemSide", value)
+                  }
+                  onContainerShuffleOnStartChange={(value) =>
+                    updateTableSetupItemContainerBehavior("shuffleOnStart", value)
+                  }
+                  onInitialHiddenChange={updateTableSetupItemVisibilityBehavior}
+                  onInitialSideChange={updateTableSetupItemSideBehavior}
+                  onInteractableChange={updateTableSetupItemInteractionBehavior}
+                  onMovableChange={updateTableSetupItemMovementBehavior}
+                  onZoneAcceptedObjectsChange={updateTableSetupItemZoneAcceptedObjects}
+                  onZoneAllowRemoveChange={(value) =>
+                    updateTableSetupItemZoneBehavior("allowRemove", value)
+                  }
+                  onZoneSideOnEnterChange={(value) =>
+                    updateTableSetupItemZoneBehavior("sideOnEnter", value)
+                  }
+                  onZoneSlotOccupancyChange={(value) =>
+                    updateTableSetupItemZoneBehavior("slotOccupancy", value)
+                  }
+                />
+              ) : null}
 
               {objectTemplate ? (
                 <ProjectObjectTemplateSection
@@ -2626,11 +2846,11 @@ export function ProjectObjectInspectorPanel({
                 <ProjectObjectZoneSection
                   draft={zoneDraft}
                   referenceMissing={
-                    !zoneReferenceObjectFileOptionById.has(zone.referenceObjectFileId)
+                    !zoneReferenceObjectFileOptionById.has(zone.sizeReferenceObjectFileId)
                   }
                   referenceOptions={zoneReferenceObjectFileSelectOptions}
-                  zoneReferenceObjectFileId={zone.referenceObjectFileId}
-                  onCommitCapacity={commitZoneNumberField}
+                  sizeReferenceObjectFileId={zone.sizeReferenceObjectFileId}
+                  onCommitSlots={commitZoneNumberField}
                   onDraftChange={updateZoneDraft}
                   onReset={resetZoneDraft}
                 />
@@ -2703,7 +2923,7 @@ export function ProjectObjectInspectorPanel({
                 />
               ) : null}
 
-              {layout ? (
+              {layout && (!zone || zone.mode === "slots") ? (
                 <ProjectObjectLayoutSection
                   draft={layoutDraft}
                   isZoneLayout={Boolean(zone)}

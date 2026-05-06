@@ -15,7 +15,8 @@ import {
 import { type PointerEvent, type ReactNode, useRef, useState } from "react";
 import {
   getProjectObjectNodeCounter,
-  getProjectObjectNodeDie
+  getProjectObjectNodeDie,
+  getProjectObjectNodeScoreTrack
 } from "../project-objects/project-object-tree";
 import type { PlaytestAction, PlaytestItem, PlaytestSession } from "./project-playtest";
 
@@ -49,13 +50,18 @@ export function ProjectPlaytestPanel({
   onUndo
 }: ProjectPlaytestPanelProps) {
   const selectedObject = selectedItem?.baseObject ?? null;
-  const selectedIsContainer =
-    selectedObject?.kind === "deck" || selectedObject?.kind === "stack";
+  const selectedIsContainer = Boolean(selectedObject?.components?.container);
   const selectedIsCounter = selectedObject?.kind === "counter";
   const selectedIsDie = selectedObject?.kind === "die";
+  const selectedIsScoreTrack = selectedObject?.kind === "scoreTrack";
   const selectedCanFlip = selectedObject ? hasProjectObjectSides(selectedObject.kind) : false;
   const selectedCounter = selectedIsCounter && selectedObject ? getProjectObjectNodeCounter(selectedObject) : null;
   const selectedDie = selectedIsDie && selectedObject ? getProjectObjectNodeDie(selectedObject) : null;
+  const selectedScoreTrack =
+    selectedIsScoreTrack && selectedObject ? getProjectObjectNodeScoreTrack(selectedObject) : null;
+  const selectedScoreTrackMarkers = selectedItem?.scoreTrackMarkers ?? selectedScoreTrack?.markers ?? [];
+  const selectedInteractable =
+    selectedItem?.behavior.interaction?.interactableInPlaytest !== false;
   const selectedCount = selectedItem?.contents.length ?? 0;
   const [historyPosition, setHistoryPosition] = useState({ x: 12, y: 84 });
   const historyDragRef = useRef<{
@@ -74,6 +80,7 @@ export function ProjectPlaytestPanel({
           selectedIsContainer,
           selectedIsCounter,
           selectedIsDie,
+          selectedInteractable,
           selectedItem,
           selectedObjectKind: selectedObject.kind
         })
@@ -208,6 +215,11 @@ export function ProjectPlaytestPanel({
               <p className="mt-0.5 text-xs font-medium text-slate-500">
                 Face {selectedItem.dieFace ?? selectedDie.activeFace} / {selectedDie.faceCount}
               </p>
+            ) : selectedScoreTrack ? (
+              <p className="mt-0.5 text-xs font-medium text-slate-500">
+                {selectedScoreTrackMarkers.length} marker
+                {selectedScoreTrackMarkers.length === 1 ? "" : "s"}
+              </p>
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -222,6 +234,13 @@ export function ProjectPlaytestPanel({
                 onClick={action.onClick}
               />
             ))}
+            {selectedItem && selectedScoreTrack && selectedInteractable ? (
+              <ScoreTrackMarkerControls
+                itemId={selectedItem.id}
+                markers={selectedScoreTrackMarkers}
+                onAction={onAction}
+              />
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -299,6 +318,64 @@ function PlaytestActionButton({
   );
 }
 
+function ScoreTrackMarkerControls({
+  itemId,
+  markers,
+  onAction
+}: {
+  itemId: string;
+  markers: NonNullable<PlaytestItem["scoreTrackMarkers"]>;
+  onAction: (action: PlaytestAction) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {markers.map((marker) => (
+        <div
+          key={marker.id}
+          className="flex h-10 items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 shadow-sm"
+        >
+          <span className="min-w-12 max-w-24 truncate px-1 text-xs font-semibold text-slate-700">
+            {marker.label || marker.id}
+          </span>
+          <span className="w-9 rounded border border-slate-100 bg-slate-50 px-1 py-0.5 text-center text-xs font-bold tabular-nums text-slate-700">
+            {marker.value}
+          </span>
+          <button
+            aria-label={`Decrease ${marker.label || marker.id}`}
+            className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+            title={`Decrease ${marker.label || marker.id}`}
+            type="button"
+            onClick={() =>
+              onAction({
+                itemId,
+                markerId: marker.id,
+                type: "decrementScoreTrackMarker"
+              })
+            }
+          >
+            <Minus size={15} />
+          </button>
+          <button
+            aria-label={`Increase ${marker.label || marker.id}`}
+            className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+            title={`Increase ${marker.label || marker.id}`}
+            type="button"
+            onClick={() =>
+              onAction({
+                itemId,
+                markerId: marker.id,
+                type: "incrementScoreTrackMarker"
+              })
+            }
+          >
+            <Plus size={15} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PlaytestIconButton({
   destructive = false,
   disabled = false,
@@ -361,6 +438,7 @@ function getAvailablePlaytestActions({
   selectedIsContainer,
   selectedIsCounter,
   selectedIsDie,
+  selectedInteractable,
   selectedItem,
   selectedObjectKind
 }: {
@@ -370,10 +448,15 @@ function getAvailablePlaytestActions({
   selectedIsContainer: boolean;
   selectedIsCounter: boolean;
   selectedIsDie: boolean;
+  selectedInteractable: boolean;
   selectedItem: PlaytestItem;
   selectedObjectKind: PlaytestItem["baseObject"]["kind"];
 }): PlaytestToolbarAction[] {
   const actions: PlaytestToolbarAction[] = [];
+
+  if (!selectedInteractable) {
+    return actions;
+  }
 
   if (selectedCanFlip) {
     actions.push({
@@ -405,7 +488,12 @@ function getAvailablePlaytestActions({
   }
 
   if (selectedIsContainer && selectedCount >= 1) {
-    const label = selectedObjectKind === "stack" ? "Take top" : "Draw";
+    const label =
+      selectedObjectKind === "stack"
+        ? "Take top"
+        : selectedObjectKind === "bag"
+          ? "Take random"
+          : "Draw";
 
     actions.push({
       icon: <Play size={17} />,

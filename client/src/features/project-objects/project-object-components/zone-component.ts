@@ -1,8 +1,5 @@
 import type { ProjectObjectNode, ProjectObjectZone } from "@bg-maker/shared";
-import {
-  getDefaultProjectObjectZone,
-  normalizeProjectObjectZoneCapacity
-} from "@bg-maker/shared";
+import { getDefaultProjectObjectZone, normalizeProjectObjectZoneSlots } from "@bg-maker/shared";
 
 export function getProjectObjectZoneComponent(object: ProjectObjectNode): ProjectObjectZone {
   return normalizeProjectObjectZoneComponent({
@@ -30,10 +27,11 @@ export function normalizeProjectObjectZoneComponent(
   const defaultZone = getDefaultProjectObjectZone();
 
   return {
-    capacity: normalizeProjectObjectZoneCapacity(zone.capacity ?? defaultZone.capacity),
-    referenceObjectFileId:
-      typeof zone.referenceObjectFileId === "string"
-        ? zone.referenceObjectFileId.trim()
-        : defaultZone.referenceObjectFileId
+    mode: zone.mode === "slots" ? "slots" : "free",
+    sizeReferenceObjectFileId:
+      typeof zone.sizeReferenceObjectFileId === "string"
+        ? zone.sizeReferenceObjectFileId.trim()
+        : defaultZone.sizeReferenceObjectFileId,
+    slots: normalizeProjectObjectZoneSlots(zone.slots ?? defaultZone.slots)
   };
 }
