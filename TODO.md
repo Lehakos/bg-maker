@@ -79,13 +79,13 @@ Possible later additions:
 
 ## P2 - Manual Playtest Later
 
-- [ ] Add explicit edit/playtest mode.
-- [ ] Add manual card flip actions.
-- [ ] Add manual deck shuffle and draw actions.
-- [ ] Add manual die roll action.
-- [ ] Add manual counter increment/decrement actions.
-- [ ] Add hidden/revealed state for placed objects.
-- [ ] Add playtest action history.
+- [x] Add explicit edit/playtest mode.
+- [x] Add manual card flip actions.
+- [x] Add manual deck shuffle and draw actions.
+- [x] Add manual die roll action.
+- [x] Add manual counter increment/decrement actions.
+- [x] Add hidden/revealed state for placed objects.
+- [x] Add playtest action history.
 
 ## Cleanup And Quality
 

@@ -27,6 +27,7 @@ import {
   RotateCw,
   Ruler,
   Scan,
+  Play,
   Trash2,
   Undo2,
   Unlock,
@@ -77,6 +78,7 @@ type ProjectWorkspaceToolbarProps = {
   canUndo: boolean;
   canExport: boolean;
   canPrint: boolean;
+  canStartPlaytest: boolean;
   resizeAspectLocked: boolean;
   onCanvasScaleChange: (scale: number) => void;
   onExportPng: () => void;
@@ -84,6 +86,7 @@ type ProjectWorkspaceToolbarProps = {
   onPrintSheets: () => void;
   onRedo: () => void;
   onResizeAspectLockedChange: (locked: boolean) => void;
+  onStartPlaytest: () => void;
   onToolChange: (tool: WorkspaceTool) => void;
   onUndo: () => void;
   onZoomToFit: () => void;
@@ -139,6 +142,7 @@ export function ProjectWorkspaceToolbar({
   canUndo,
   canExport,
   canPrint,
+  canStartPlaytest,
   resizeAspectLocked,
   onCanvasScaleChange,
   onExportPng,
@@ -146,6 +150,7 @@ export function ProjectWorkspaceToolbar({
   onPrintSheets,
   onRedo,
   onResizeAspectLockedChange,
+  onStartPlaytest,
   onToolChange,
   onUndo,
   onZoomToFit
@@ -360,6 +365,15 @@ export function ProjectWorkspaceToolbar({
           </div>
         </>
       ) : null}
+      <span className="h-6 w-px bg-slate-200" aria-hidden />
+      <div className="flex items-center gap-1" aria-label="Playtest mode">
+        <ToolbarIconButton
+          disabled={!canStartPlaytest}
+          icon={<Play size={17} />}
+          label="Start playtest"
+          onClick={onStartPlaytest}
+        />
+      </div>
       <span className="h-6 w-px bg-slate-200" aria-hidden />
       <div className="flex items-center gap-1" aria-label="Canvas zoom">
         <ToolbarIconButton

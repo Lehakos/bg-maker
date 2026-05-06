@@ -1,4 +1,9 @@
-import { getDefaultProjectObjectText, type ProjectFileNode } from "@bg-maker/shared";
+import {
+  createDefaultProjectObjectNode,
+  getDefaultProjectObjectText,
+  getDefaultProjectTableSetup,
+  type ProjectFileNode
+} from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
   createSetProjectObjectSideSelectionCommand,
@@ -616,5 +621,70 @@ describe("project workspace store", () => {
       fileTree: after
     });
     expect(savedFileTrees).toEqual([after, before, after]);
+  });
+
+  it("runs playtest actions without saving the editor file tree", () => {
+    const card = createDefaultProjectObjectNode("card-root", "card", "Card");
+    const deck = createDefaultProjectObjectNode("deck-root", "deck", "Deck");
+    deck.components = {
+      ...deck.components,
+      container: {
+        entries: [{ objectFileNodeId: "card-file", quantity: 1 }]
+      }
+    };
+    const playtestFileTree: ProjectFileNode[] = [
+      {
+        id: "objects",
+        name: "Objects",
+        type: "folder",
+        children: [
+          { id: "card-file", kind: "object", name: "Card", objectTree: [card], type: "file" },
+          { id: "deck-file", kind: "object", name: "Deck", objectTree: [deck], type: "file" }
+        ]
+      },
+      {
+        id: "setup-file",
+        kind: "tableSetup",
+        name: "Setup",
+        tableSetup: {
+          ...getDefaultProjectTableSetup(),
+          items: [
+            {
+              id: "deck-item",
+              name: "Deck",
+              sourceObjectFileNodeId: "deck-file",
+              transform: { rotation: 0, scaleX: 1, scaleY: 1, x: 0, y: 0 },
+              type: "linkedObject",
+              values: {},
+              visible: true
+            }
+          ]
+        },
+        type: "file"
+      }
+    ];
+    const savedFileTrees: ProjectFileNode[][] = [];
+    const store = createProjectWorkspaceStore({
+      initialFileTree: playtestFileTree,
+      projectId: "project-playtest",
+      saveFileTree: (fileTree) => savedFileTrees.push(fileTree)
+    });
+
+    store.getState().startPlaytest("setup-file");
+    expect(store.getState().workspaceMode).toBe("playtest");
+    expect(store.getState().playtestSession?.itemsById["deck-item"]?.contents).toHaveLength(1);
+
+    store.getState().executePlaytestAction({ itemId: "deck-item", type: "drawFromContainer" });
+
+    expect(store.getState().playtestSession?.itemsById["deck-item"]?.contents).toHaveLength(0);
+    expect(savedFileTrees).toEqual([]);
+
+    store.getState().undo();
+    expect(store.getState().playtestSession?.itemsById["deck-item"]?.contents).toHaveLength(1);
+    expect(savedFileTrees).toEqual([]);
+
+    store.getState().stopPlaytest();
+    expect(store.getState().workspaceMode).toBe("edit");
+    expect(store.getState().playtestSession).toBeNull();
   });
 });

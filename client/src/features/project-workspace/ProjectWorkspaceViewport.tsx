@@ -9,20 +9,26 @@ import { ProjectFileNodeIcon } from "../project-files/project-file-tree-ui";
 import type { ProjectEditorCommand } from "./project-editor-commands";
 import { ObjectFileWorkspace, TableLayoutWorkspace } from "./ProjectWorkspaceObjectScenes";
 import type { CompositionSurfaceTarget } from "./CompositionRulerOverlay";
+import type { PlaytestAction, PlaytestSession } from "../project-playtest/project-playtest";
 
 type WorkspaceViewportProps = {
   contentFileNode: ProjectFileNode | null;
+  directObjectMove?: boolean;
   fileTree: ProjectFileNode[];
   highlightedGuideId?: string | null;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
   parentFolderName?: string;
+  playtestSession?: PlaytestSession | null;
   readOnly?: boolean;
   selectedNode?: ProjectFileNode;
   selectedObjectId: string | null;
   selectedObjectIds: string[];
+  showEditorOverlays?: boolean;
+  showInlineObjectControls?: boolean;
   tableSetup: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onExecutePlaytestAction?: (action: PlaytestAction) => void;
   onCompositionSurfaceChange: (surface: CompositionSurfaceTarget | null) => void;
   onObjectContextMenu?: (objectId: string, clientX: number, clientY: number) => void;
   onSelectObject: (objectId: string | null) => void;
@@ -31,17 +37,22 @@ type WorkspaceViewportProps = {
 
 export function WorkspaceViewport({
   contentFileNode,
+  directObjectMove = false,
   fileTree,
   highlightedGuideId = null,
   imageAssets,
   objectTree,
   parentFolderName,
+  playtestSession = null,
   readOnly = false,
   selectedNode,
   selectedObjectId,
   selectedObjectIds,
+  showEditorOverlays = true,
+  showInlineObjectControls = true,
   tableSetup,
   onExecuteCommand,
+  onExecutePlaytestAction,
   onCompositionSurfaceChange,
   onObjectContextMenu,
   onSelectObject,
@@ -58,14 +69,19 @@ export function WorkspaceViewport({
       <TableLayoutWorkspace
         fileTree={fileTree}
         fileNode={contentFileNode}
+        directObjectMove={directObjectMove}
         highlightedGuideId={highlightedGuideId}
         imageAssets={imageAssets}
         objectTree={objectTree}
+        playtestSession={playtestSession}
         readOnly={readOnly}
         selectedObjectId={selectedObjectId}
         selectedObjectIds={selectedObjectIds}
+        showEditorOverlays={showEditorOverlays}
+        showInlineObjectControls={showInlineObjectControls}
         tableSetup={tableSetup}
         onExecuteCommand={onExecuteCommand}
+        onExecutePlaytestAction={onExecutePlaytestAction}
         onCompositionSurfaceChange={onCompositionSurfaceChange}
         onObjectContextMenu={onObjectContextMenu}
         onSelectObject={onSelectObject}

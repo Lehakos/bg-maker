@@ -55,6 +55,8 @@ import { useProjectWorkspaceStore } from "./use-project-workspace-store";
 import type { CompositionSnapIndicator, CompositionSnapTarget } from "./composition-guides";
 
 type SceneObjectFrameProps = {
+  concealed?: boolean;
+  directMoveEnabled?: boolean;
   fileTree: ProjectFileNode[];
   fileNodeId: string;
   imageAssetById: Map<string, ProjectImageAssetOption>;
@@ -68,6 +70,7 @@ type SceneObjectFrameProps = {
   selectionObjectId?: string;
   selectedObjectId: string | null;
   selectedObjectIds: string[];
+  showInlineControls?: boolean;
   siblingIndex: number;
   snapSize?: number | null;
   snapTargets?: CompositionSnapTarget[];
@@ -95,6 +98,8 @@ type SceneObjectFrameProps = {
 };
 
 export function SceneObjectFrame({
+  concealed = false,
+  directMoveEnabled = false,
   fileTree,
   fileNodeId,
   imageAssetById,
@@ -108,6 +113,7 @@ export function SceneObjectFrame({
   selectionObjectId,
   selectedObjectId,
   selectedObjectIds,
+  showInlineControls = true,
   siblingIndex,
   snapSize = null,
   snapTargets = [],
@@ -154,13 +160,16 @@ export function SceneObjectFrame({
   const clipsChildren = doesProjectObjectClipChildren(viewObject.kind);
   const sizePresetLocked = card ? isProjectObjectCardSizePresetLocked(card) : false;
   const zoneSizeLocked = viewObject.kind === "zone";
-  const resizeLocked = activeTool === "resize" && (sizePresetLocked || zoneSizeLocked);
-  const groupMoveInteractive = multiSelectEnabled && multiSelected && activeTool === "move";
+  const interactionTool = directMoveEnabled && activeTool !== "pan" ? "move" : activeTool;
+  const resizeLocked = interactionTool === "resize" && (sizePresetLocked || zoneSizeLocked);
+  const groupMoveInteractive = multiSelectEnabled && multiSelected && interactionTool === "move";
+  const directMoveInteractive = directMoveEnabled && handlesOwnInteraction;
   const interactive =
     !readOnly &&
-    (selected || groupMoveInteractive) &&
-    activeTool !== "select" &&
-    activeTool !== "pan" &&
+    (directMoveInteractive ||
+      ((selected || groupMoveInteractive) &&
+        interactionTool !== "select" &&
+        interactionTool !== "pan")) &&
     Boolean(fileNodeId) &&
     !layoutManaged &&
     !resizeLocked &&
@@ -193,11 +202,11 @@ export function SceneObjectFrame({
 
     const transformHandle = getTransformHandle(event.target);
 
-    if (activeTool === "resize" && !isResizeHandle(transformHandle)) {
+    if (interactionTool === "resize" && !isResizeHandle(transformHandle)) {
       return;
     }
 
-    if (activeTool === "rotate" && transformHandle !== "rotate") {
+    if (interactionTool === "rotate" && transformHandle !== "rotate") {
       return;
     }
 
@@ -207,9 +216,14 @@ export function SceneObjectFrame({
 
     event.preventDefault();
     event.stopPropagation();
+
+    if (directMoveEnabled && !multiSelected) {
+      onSelectObject(selectableObjectId);
+    }
+
     event.currentTarget.setPointerCapture(event.pointerId);
     const rotateDragState =
-      activeTool === "rotate"
+      interactionTool === "rotate"
         ? getRotateDragState(event.currentTarget, event.clientX, event.clientY)
         : {};
 
@@ -235,13 +249,13 @@ export function SceneObjectFrame({
 
     const nextDragState = getNextTransformDragState(
       activeDragState,
-      activeTool,
+      interactionTool,
       canvasScale,
       event.clientX,
       event.clientY,
       {
         preserveAspectRatio:
-          activeTool === "resize" && (resizeAspectLocked ? !event.shiftKey : event.shiftKey),
+          interactionTool === "resize" && (resizeAspectLocked ? !event.shiftKey : event.shiftKey),
         positionMode: root ? "center" : "topLeft",
         resizeHandle: activeDragState.resizeHandle,
         resizeMode,
@@ -284,7 +298,7 @@ export function SceneObjectFrame({
       fileNodeId &&
       !areProjectObjectRectTransformsEqual(activeDragState.before, activeDragState.current)
     ) {
-      const label = getRectTransformCommandLabel(activeTool);
+      const label = getRectTransformCommandLabel(interactionTool);
 
       suppressNextClickRef.current = true;
 
@@ -414,10 +428,13 @@ export function SceneObjectFrame({
       aria-label={viewObject.name}
       className={cx(
         "absolute select-none overflow-visible touch-none",
-        activeTool === "move" && interactive && "cursor-move",
-        activeTool === "rotate" && interactive && "cursor-grab",
-        activeTool === "resize" && interactive && "cursor-nwse-resize"
+        interactionTool === "move" && interactive && "cursor-move",
+        interactionTool === "rotate" && interactive && "cursor-grab",
+        interactionTool === "resize" && interactive && "cursor-nwse-resize"
       )}
+      data-playtest-item-id={
+        directMoveEnabled && handlesOwnInteraction ? selectableObjectId : undefined
+      }
       role={handlesOwnInteraction ? "button" : undefined}
       style={getSceneObjectFrameStyle(visibleRectTransform, root, siblingIndex, stackRootOffset)}
       tabIndex={handlesOwnInteraction ? 0 : undefined}
@@ -436,6 +453,11 @@ export function SceneObjectFrame({
         imageAssetById={imageAssetById}
         object={viewObject}
       />
+      {concealed ? (
+        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-[inherit] border border-slate-900/20 bg-slate-950/55 text-xs font-bold uppercase tracking-normal text-white/85 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]">
+          Hidden
+        </div>
+      ) : null}
       <div
         className={cx("absolute inset-0", clipsChildren ? "overflow-hidden" : "overflow-visible")}
         style={{ borderRadius: `${appearance.borderRadius}px` }}
@@ -443,6 +465,7 @@ export function SceneObjectFrame({
         {children.map((child, index) => (
           <SceneObjectFrame
             key={child.id}
+            directMoveEnabled={directMoveEnabled}
             fileTree={fileTree}
             fileNodeId={fileNodeId}
             imageAssetById={imageAssetById}
@@ -453,6 +476,7 @@ export function SceneObjectFrame({
             selectionObjectId={selectionObjectId}
             selectedObjectId={selectedObjectId}
             selectedObjectIds={selectedObjectIds}
+            showInlineControls={showInlineControls}
             siblingIndex={index}
             onDieFaceChange={onDieFaceChange}
             onExecuteCommand={onExecuteCommand}
@@ -468,7 +492,7 @@ export function SceneObjectFrame({
           />
         ))}
       </div>
-      {selected && card && doubleSide?.enabled ? (
+      {showInlineControls && selected && card && doubleSide?.enabled ? (
         <ObjectSideSwitcher
           activeSide={getProjectObjectNodeActiveSide(viewObject)}
           canvasScale={canvasScale}
@@ -476,7 +500,7 @@ export function SceneObjectFrame({
           onSideChange={(activeSide) => onObjectSideChange(viewObject.id, activeSide)}
         />
       ) : null}
-      {selected && die ? (
+      {showInlineControls && selected && die ? (
         <DieFaceSwitcher
           activeFace={die.activeFace}
           canvasScale={canvasScale}
@@ -484,7 +508,7 @@ export function SceneObjectFrame({
           onFaceChange={(activeFace) => onDieFaceChange(viewObject.id, die, activeFace)}
         />
       ) : null}
-      {selected && tokenLike && doubleSide?.enabled ? (
+      {showInlineControls && selected && tokenLike && doubleSide?.enabled ? (
         <ObjectSideSwitcher
           activeSide={getProjectObjectNodeActiveSide(viewObject)}
           canvasScale={canvasScale}
@@ -494,10 +518,10 @@ export function SceneObjectFrame({
       ) : null}
       {multiSelected ? (
         <ObjectSelectionOverlay
-          activeTool={layoutManaged || resizeLocked ? "select" : activeTool}
+          activeTool={directMoveEnabled || layoutManaged || resizeLocked ? "select" : activeTool}
           canvasScale={canvasScale}
           muted={!selected}
-          topControlsOffset={hasTopObjectControls ? 44 : 0}
+          topControlsOffset={showInlineControls && hasTopObjectControls ? 44 : 0}
         />
       ) : null}
     </div>

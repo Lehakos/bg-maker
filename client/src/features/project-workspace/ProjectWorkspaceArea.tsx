@@ -54,12 +54,14 @@ type ProjectWorkspaceAreaProps = {
   showArrangeControls: boolean;
   canExport: boolean;
   canPrint: boolean;
+  canStartPlaytest: boolean;
   onPosition: (position: TableSetupPositionPreset) => void;
   onExportPng: () => void;
   onObjectContextMenu?: (objectId: string, clientX: number, clientY: number) => void;
   onPrintSheets: () => void;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
+  onStartPlaytest: () => void;
   onUndo: () => void;
 };
 
@@ -85,12 +87,14 @@ export function ProjectWorkspaceArea({
   showArrangeControls,
   canExport,
   canPrint,
+  canStartPlaytest,
   onPosition,
   onExportPng,
   onObjectContextMenu,
   onPrintSheets,
   onSelectObject,
   onSelectObjects,
+  onStartPlaytest,
   onUndo
 }: ProjectWorkspaceAreaProps) {
   const activeTool = useProjectWorkspaceStore((state) => state.activeTool);
@@ -351,6 +355,7 @@ export function ProjectWorkspaceArea({
         canUndo={canUndo}
         canExport={canExport}
         canPrint={canPrint}
+        canStartPlaytest={canStartPlaytest}
         guideControls={
           guideComposition
             ? {
@@ -369,6 +374,7 @@ export function ProjectWorkspaceArea({
         onPrintSheets={onPrintSheets}
         onRedo={onRedo}
         onResizeAspectLockedChange={setResizeAspectLocked}
+        onStartPlaytest={onStartPlaytest}
         onToolChange={setActiveTool}
         onUndo={onUndo}
         onZoomToFit={handleZoomToFit}

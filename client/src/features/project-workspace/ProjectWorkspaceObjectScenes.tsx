@@ -1,6 +1,7 @@
 import {
   getDefaultProjectTableSetup,
   getProjectTableSetupItemId,
+  hasProjectObjectSides,
   normalizeProjectObjectDieActiveFace,
   type ProjectCompositionSettings,
   type ProjectFileNode,
@@ -10,6 +11,11 @@ import {
   type ProjectObjectSide,
   type ProjectTableSetup
 } from "@bg-maker/shared";
+import {
+  getPlaytestRenderedObject,
+  type PlaytestAction,
+  type PlaytestSession
+} from "../project-playtest/project-playtest";
 import {
   type CSSProperties,
   type DragEvent,
@@ -67,16 +73,21 @@ import {
 } from "./composition-guides";
 
 type ProjectWorkspaceSceneProps = {
+  directObjectMove?: boolean;
   fileTree: ProjectFileNode[];
   fileNode: ProjectFileNode;
   highlightedGuideId?: string | null;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
+  playtestSession?: PlaytestSession | null;
   readOnly?: boolean;
   selectedObjectId: string | null;
   selectedObjectIds: string[];
+  showEditorOverlays?: boolean;
+  showInlineObjectControls?: boolean;
   tableSetup?: ProjectTableSetup | null;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onExecutePlaytestAction?: (action: PlaytestAction) => void;
   onCompositionSurfaceChange: (surface: CompositionSurfaceTarget | null) => void;
   onObjectContextMenu?: (objectId: string, clientX: number, clientY: number) => void;
   onSelectObject: (objectId: string | null) => void;
@@ -86,15 +97,20 @@ type ProjectWorkspaceSceneProps = {
 type ObjectSceneSize = "large" | "small";
 
 export function TableLayoutWorkspace({
+  directObjectMove = false,
   fileTree,
   fileNode,
   highlightedGuideId = null,
   imageAssets,
+  playtestSession = null,
   readOnly = false,
   selectedObjectId,
   selectedObjectIds,
+  showEditorOverlays = true,
+  showInlineObjectControls = true,
   tableSetup: resolvedTableSetup,
   onExecuteCommand,
+  onExecutePlaytestAction,
   onCompositionSurfaceChange,
   onObjectContextMenu,
   onSelectObject,
@@ -105,6 +121,7 @@ export function TableLayoutWorkspace({
   const canvasScale = useProjectWorkspaceStore((state) => state.canvasScale);
   const activeTool = useProjectWorkspaceStore((state) => state.activeTool);
   const composition = getProjectCompositionSettings(tableSetup.composition);
+  const playtestActive = Boolean(playtestSession);
   const suppressNextClickRef = useRef(false);
   const tableSurfaceRef = useRef<HTMLElement | null>(null);
   const [previewRectTransforms, setPreviewRectTransforms] = useState<
@@ -216,7 +233,7 @@ export function TableLayoutWorkspace({
   }
 
   function handleTablePointerDown(event: PointerEvent<HTMLElement>) {
-    if (readOnly || activeTool !== "select" || event.button !== 0) {
+    if ((readOnly && !playtestActive) || activeTool !== "select" || event.button !== 0) {
       return;
     }
 
@@ -294,7 +311,7 @@ export function TableLayoutWorkspace({
   }
 
   function handleTableDragOver(event: DragEvent<HTMLElement>) {
-    if (readOnly || !event.dataTransfer.types.includes(projectObjectFileDragMimeType)) {
+    if (readOnly || playtestActive || !event.dataTransfer.types.includes(projectObjectFileDragMimeType)) {
       return;
     }
 
@@ -303,7 +320,7 @@ export function TableLayoutWorkspace({
   }
 
   function handleTableDrop(event: DragEvent<HTMLElement>) {
-    if (readOnly) {
+    if (readOnly || playtestActive) {
       return;
     }
 
@@ -389,21 +406,24 @@ export function TableLayoutWorkspace({
             {tableSetup.grid.visible ? (
               <>
                 <TableSetupGridOverlay tableSetup={tableSetup} />
-                <TableSetupGridSizeGuide tableSetup={tableSetup} />
+                {showEditorOverlays ? <TableSetupGridSizeGuide tableSetup={tableSetup} /> : null}
               </>
             ) : null}
-            {tableSetup.items.length > 0 ? (
+            {(playtestActive ? playtestSession?.tableItemIds.length : tableSetup.items.length) ? (
               <TableSetupScene
                 fileTree={fileTree}
                 fileNodeId={fileNode.id}
                 imageAssets={imageAssets}
-                readOnly={readOnly}
+                readOnly={readOnly && !playtestActive}
                 selectedObjectId={selectedObjectId}
                 selectedObjectIds={selectedObjectIds}
                 previewRectTransforms={previewRectTransforms}
                 composition={composition}
+                directObjectMove={directObjectMove}
+                playtestSession={playtestSession}
                 tableSetup={tableSetup}
                 onExecuteCommand={onExecuteCommand}
+                onExecutePlaytestAction={onExecutePlaytestAction}
                 onObjectContextMenu={onObjectContextMenu}
                 onRectTransformPreviewChange={handleTableItemRectTransformPreviewChange}
                 onRectTransformPreviewEnd={handleTableItemRectTransformPreviewEnd}
@@ -411,6 +431,8 @@ export function TableLayoutWorkspace({
                 onRectTransformChange={handleTableItemRectTransformChange}
                 onSelectObject={onSelectObject}
                 onSelectObjects={onSelectObjects}
+                showEditorOverlays={showEditorOverlays}
+                showInlineObjectControls={showInlineObjectControls}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center p-8">
@@ -427,25 +449,27 @@ export function TableLayoutWorkspace({
               />
             ) : null}
           </section>
-          <div
-            className="pointer-events-none absolute left-0 top-0 z-20"
-            style={{
-              height: tableSetup.height,
-              transform: `scale(${canvasScale})`,
-              transformOrigin: "top left",
-              width: tableSetup.width
-            }}
-          >
-            <CompositionGuideLayer
-              canvasScale={canvasScale}
-              composition={composition}
-              height={tableSetup.height}
-              highlightedGuideId={highlightedGuideId}
-              snapIndicators={snapIndicators}
-              width={tableSetup.width}
-              onCompositionChange={handleTableCompositionChange}
-            />
-          </div>
+          {showEditorOverlays ? (
+            <div
+              className="pointer-events-none absolute left-0 top-0 z-20"
+              style={{
+                height: tableSetup.height,
+                transform: `scale(${canvasScale})`,
+                transformOrigin: "top left",
+                width: tableSetup.width
+              }}
+            >
+              <CompositionGuideLayer
+                canvasScale={canvasScale}
+                composition={composition}
+                height={tableSetup.height}
+                highlightedGuideId={highlightedGuideId}
+                snapIndicators={snapIndicators}
+                width={tableSetup.width}
+                onCompositionChange={handleTableCompositionChange}
+              />
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -605,6 +629,7 @@ function formatTableGuideNumber(value: number) {
 }
 
 type TableSetupSceneProps = {
+  directObjectMove: boolean;
   fileTree: ProjectFileNode[];
   fileNodeId: string;
   imageAssets: ProjectImageAssetOption[];
@@ -613,8 +638,12 @@ type TableSetupSceneProps = {
   selectedObjectIds: string[];
   previewRectTransforms: ReadonlyMap<string, ProjectObjectRectTransform>;
   composition: ProjectCompositionSettings;
+  playtestSession: PlaytestSession | null;
+  showEditorOverlays: boolean;
+  showInlineObjectControls: boolean;
   tableSetup: ProjectTableSetup;
   onExecuteCommand: (command: ProjectEditorCommand) => void;
+  onExecutePlaytestAction?: (action: PlaytestAction) => void;
   onRectTransformPreviewChange: (
     objectId: string,
     before: ProjectObjectRectTransform,
@@ -634,6 +663,7 @@ type TableSetupSceneProps = {
 };
 
 function TableSetupScene({
+  directObjectMove,
   fileTree,
   fileNodeId,
   imageAssets,
@@ -642,8 +672,12 @@ function TableSetupScene({
   selectedObjectIds,
   previewRectTransforms,
   composition,
+  playtestSession,
+  showEditorOverlays,
+  showInlineObjectControls,
   tableSetup,
   onExecuteCommand,
+  onExecutePlaytestAction,
   onRectTransformPreviewChange,
   onRectTransformPreviewEnd,
   onSnapIndicatorsChange,
@@ -657,17 +691,70 @@ function TableSetupScene({
     [imageAssets]
   );
   const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
+  const playtestActive = Boolean(playtestSession);
   const snapSize = tableSetup.grid.snap ? tableSetup.grid.size : null;
   const snapTargets = useMemo(
-    () => getTableSetupSnapTargets(fileTree, tableSetup, selectedObjectIds, composition),
-    [composition, fileTree, selectedObjectIds, tableSetup]
+    () =>
+      showEditorOverlays
+        ? getTableSetupSnapTargets(fileTree, tableSetup, selectedObjectIds, composition)
+        : [],
+    [composition, fileTree, selectedObjectIds, showEditorOverlays, tableSetup]
+  );
+  const sceneItems = useMemo(
+    () =>
+      playtestSession
+        ? playtestSession.tableItemIds.flatMap((itemId) => {
+            const item = playtestSession.itemsById[itemId];
+
+            return item
+              ? [
+                  {
+                    concealed: item.hidden && !item.revealed && !hasProjectObjectSides(item.baseObject.kind),
+                    id: item.id,
+                    object: getPlaytestRenderedObject(item, playtestSession.itemsById),
+                    resizeMode: "size" as const
+                  }
+                ]
+              : [];
+          })
+        : tableSetup.items.flatMap((item) => {
+            const itemId = getProjectTableSetupItemId(item);
+            const itemObject = getProjectTableSetupResolvedItemObject(fileTree, item);
+            const object = itemObject
+              ? getProjectObjectTreeWithActiveSides([itemObject], (objectNode) =>
+                  getProjectObjectSideSelection(objectSideSelections, fileNodeId, objectNode.id)
+                )[0]
+              : null;
+
+            return object
+              ? [
+                  {
+                    concealed: false,
+                    id: itemId,
+                    object,
+                    resizeMode: item.type === "linkedObject" ? ("scale" as const) : ("size" as const)
+                  }
+                ]
+              : [];
+          }),
+    [fileNodeId, fileTree, objectSideSelections, playtestSession, tableSetup.items]
   );
 
   function handleDieFaceChange() {
-    // Linked table items follow their source object, and runtime die state is out of scope for MVP.
+    // Playtest dice are controlled through the action panel; linked table items follow their source object.
   }
 
   function handleObjectSideChange(objectId: string, activeSide: ProjectObjectSide) {
+    if (playtestActive) {
+      const item = playtestSession?.itemsById[objectId];
+
+      if (item && item.activeSide !== activeSide) {
+        onExecutePlaytestAction?.({ itemId: objectId, type: "flipItem" });
+      }
+
+      return;
+    }
+
     const currentSide = getProjectObjectSideSelection(objectSideSelections, fileNodeId, objectId);
 
     if (currentSide === activeSide) {
@@ -725,48 +812,50 @@ function TableSetupScene({
 
   return (
     <div className="absolute inset-0 z-0 overflow-visible">
-      <WorkspaceAxes />
-      {tableSetup.items.map((item, index) => {
-        const itemId = getProjectTableSetupItemId(item);
-        const itemObject = getProjectTableSetupResolvedItemObject(fileTree, item);
-        const object = itemObject
-          ? getProjectObjectTreeWithActiveSides([itemObject], (objectNode) =>
-              getProjectObjectSideSelection(objectSideSelections, fileNodeId, objectNode.id)
-            )[0]
-          : null;
-
-        if (!object) {
-          return null;
-        }
-
+      {showEditorOverlays ? <WorkspaceAxes /> : null}
+      {sceneItems.map((item, index) => {
         return (
           <SceneObjectFrame
-            key={object.id}
+            key={item.id}
+            concealed={item.concealed}
+            directMoveEnabled={directObjectMove}
             fileTree={fileTree}
             fileNodeId={fileNodeId}
             imageAssetById={imageAssetById}
             multiSelectEnabled
-            object={object}
-            previewRectTransform={previewRectTransforms.get(itemId)}
-            readOnly={readOnly}
-            resizeMode={item.type === "linkedObject" ? "scale" : "size"}
+            object={item.object}
+            previewRectTransform={previewRectTransforms.get(item.id)}
+            readOnly={readOnly && !playtestActive}
+            resizeMode={item.resizeMode}
             root
-            selectionObjectId={itemId}
+            selectionObjectId={item.id}
             selectedObjectId={selectedObjectId}
             selectedObjectIds={selectedObjectIds}
+            showInlineControls={showInlineObjectControls}
             siblingIndex={index}
             snapSize={snapSize}
             snapTargets={snapTargets}
             stackRootOffset={false}
             onDieFaceChange={handleDieFaceChange}
             onExecuteCommand={onExecuteCommand}
-            onImageAssetDrop={item.type === "localObject" ? handleLocalImageAssetDrop : undefined}
+            onImageAssetDrop={playtestActive ? undefined : handleLocalImageAssetDrop}
             onObjectContextMenu={onObjectContextMenu}
             onObjectSideChange={handleObjectSideChange}
-            onRectTransformPreviewChange={onRectTransformPreviewChange}
-            onRectTransformPreviewEnd={onRectTransformPreviewEnd}
+            onRectTransformPreviewChange={playtestActive ? undefined : onRectTransformPreviewChange}
+            onRectTransformPreviewEnd={playtestActive ? undefined : onRectTransformPreviewEnd}
             onSnapIndicatorsChange={onSnapIndicatorsChange}
-            onRectTransformChange={onRectTransformChange}
+            onRectTransformChange={(objectId, before, after, label) => {
+              if (playtestActive) {
+                onExecutePlaytestAction?.({
+                  itemTransforms: { [objectId]: after },
+                  label,
+                  type: "moveItems"
+                });
+                return;
+              }
+
+              onRectTransformChange(objectId, before, after, label);
+            }}
             onSelectObject={onSelectObject}
             onSelectObjects={onSelectObjects}
           />

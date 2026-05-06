@@ -1,0 +1,453 @@
+import { hasProjectObjectSides } from "@bg-maker/shared";
+import {
+  Dices,
+  Eye,
+  EyeOff,
+  History,
+  Minus,
+  Play,
+  Plus,
+  Redo2,
+  Shuffle,
+  Square,
+  Undo2
+} from "lucide-react";
+import { type PointerEvent, type ReactNode, useRef, useState } from "react";
+import {
+  getProjectObjectNodeCounter,
+  getProjectObjectNodeDie
+} from "../project-objects/project-object-tree";
+import type { PlaytestAction, PlaytestItem, PlaytestSession } from "./project-playtest";
+
+type ProjectPlaytestPanelProps = {
+  actionToolbarPosition: {
+    left: number;
+    placement: "bottom" | "top";
+    top: number;
+  } | null;
+  className?: string;
+  canRedo: boolean;
+  canUndo: boolean;
+  session: PlaytestSession | null;
+  selectedItem: PlaytestItem | null;
+  onAction: (action: PlaytestAction) => void;
+  onRedo: () => void;
+  onStop: () => void;
+  onUndo: () => void;
+};
+
+export function ProjectPlaytestPanel({
+  actionToolbarPosition,
+  className = "",
+  canRedo,
+  canUndo,
+  session,
+  selectedItem,
+  onAction,
+  onRedo,
+  onStop,
+  onUndo
+}: ProjectPlaytestPanelProps) {
+  const selectedObject = selectedItem?.baseObject ?? null;
+  const selectedIsContainer =
+    selectedObject?.kind === "deck" || selectedObject?.kind === "stack";
+  const selectedIsCounter = selectedObject?.kind === "counter";
+  const selectedIsDie = selectedObject?.kind === "die";
+  const selectedCanFlip = selectedObject ? hasProjectObjectSides(selectedObject.kind) : false;
+  const selectedCounter = selectedIsCounter && selectedObject ? getProjectObjectNodeCounter(selectedObject) : null;
+  const selectedDie = selectedIsDie && selectedObject ? getProjectObjectNodeDie(selectedObject) : null;
+  const selectedCount = selectedItem?.contents.length ?? 0;
+  const [historyPosition, setHistoryPosition] = useState({ x: 12, y: 84 });
+  const historyDragRef = useRef<{
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const actionButtons =
+    selectedItem && selectedObject
+      ? getAvailablePlaytestActions({
+          onAction,
+          selectedCanFlip,
+          selectedCount,
+          selectedIsContainer,
+          selectedIsCounter,
+          selectedIsDie,
+          selectedItem,
+          selectedObjectKind: selectedObject.kind
+        })
+      : [];
+
+  function handleHistoryPointerDown(event: PointerEvent<HTMLElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    historyDragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: historyPosition.x,
+      startY: historyPosition.y
+    };
+  }
+
+  function handleHistoryPointerMove(event: PointerEvent<HTMLElement>) {
+    const dragState = historyDragRef.current;
+
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const overlay = event.currentTarget.closest<HTMLElement>("[data-playtest-overlay-root='true']");
+    const overlayWidth = overlay?.clientWidth ?? window.innerWidth;
+    const overlayHeight = overlay?.clientHeight ?? window.innerHeight;
+    const nextX = dragState.startX + event.clientX - dragState.startClientX;
+    const nextY = dragState.startY + event.clientY - dragState.startClientY;
+
+    setHistoryPosition({
+      x: clamp(nextX, 8, Math.max(8, overlayWidth - 280)),
+      y: clamp(nextY, 8, Math.max(8, overlayHeight - 96))
+    });
+  }
+
+  function handleHistoryPointerEnd(event: PointerEvent<HTMLElement>) {
+    const dragState = historyDragRef.current;
+
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    historyDragRef.current = null;
+  }
+
+  return (
+    <div
+      className={`pointer-events-none absolute inset-0 z-[110] ${className}`}
+      data-export-exclude="true"
+      data-playtest-overlay-root="true"
+    >
+      <div className="pointer-events-auto absolute right-3 top-3 flex max-w-[calc(100%-24px)] items-center gap-2 rounded-md border border-slate-900/15 bg-white/95 px-2 py-2 shadow-xl shadow-slate-900/15 backdrop-blur">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white">
+            <Play size={16} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-normal text-emerald-700">
+              Playtest mode
+            </p>
+            <h2 className="truncate text-sm font-semibold text-slate-950">
+              {session?.tableSetupName ?? "No session"}
+            </h2>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <PlaytestIconButton
+            disabled={!canUndo}
+            icon={<Undo2 size={15} />}
+            label="Undo"
+            onClick={onUndo}
+          />
+          <PlaytestIconButton
+            disabled={!canRedo}
+            icon={<Redo2 size={15} />}
+            label="Redo"
+            onClick={onRedo}
+          />
+          <PlaytestIconButton
+            destructive
+            icon={<Square size={15} />}
+            label="Stop playtest"
+            onClick={onStop}
+          />
+        </div>
+      </div>
+
+      {selectedItem && actionToolbarPosition ? (
+        <section
+          className="pointer-events-auto absolute flex max-w-[calc(100%-24px)] flex-wrap items-center gap-3 rounded-md border border-slate-900/15 bg-white/95 p-2 shadow-xl shadow-slate-900/20 backdrop-blur"
+          style={{
+            left: actionToolbarPosition.left,
+            top: actionToolbarPosition.top,
+            transform:
+              actionToolbarPosition.placement === "top"
+                ? "translate(-50%, -100%)"
+                : "translate(-50%, 0)"
+          }}
+        >
+          <div className="min-w-40 max-w-60 px-1">
+            <div className="flex items-center gap-1.5">
+              <p className="truncate text-sm font-semibold text-slate-950">{selectedItem.name}</p>
+              <span className="shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-normal text-slate-500">
+                {selectedItem.baseObject.kind}
+              </span>
+            </div>
+            {selectedIsContainer ? (
+              <p className="mt-0.5 text-xs font-medium text-slate-500">
+                {selectedCount} item{selectedCount === 1 ? "" : "s"} inside
+              </p>
+            ) : selectedCounter ? (
+              <p className="mt-0.5 text-xs font-medium text-slate-500">
+                Value {selectedItem.counterValue ?? selectedCounter.defaultValue}
+              </p>
+            ) : selectedDie ? (
+              <p className="mt-0.5 text-xs font-medium text-slate-500">
+                Face {selectedItem.dieFace ?? selectedDie.activeFace} / {selectedDie.faceCount}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {actionButtons.map((action) => (
+              <PlaytestActionButton
+                key={action.title}
+                compact={action.compact}
+                displayLabel={action.displayLabel}
+                icon={action.icon}
+                label={action.label}
+                title={action.title}
+                onClick={action.onClick}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <section
+        aria-label="Playtest action history"
+        className="pointer-events-auto absolute w-[min(360px,calc(100%-24px))] rounded-md border border-slate-900/15 bg-white/95 p-3 shadow-xl shadow-slate-900/15 backdrop-blur"
+        role="region"
+        style={{ left: historyPosition.x, top: historyPosition.y }}
+      >
+        <div
+          className="mb-3 flex cursor-grab items-center gap-2 text-xs font-bold uppercase tracking-normal text-slate-500 active:cursor-grabbing"
+          onPointerCancel={handleHistoryPointerEnd}
+          onPointerDown={handleHistoryPointerDown}
+          onPointerMove={handleHistoryPointerMove}
+          onPointerUp={handleHistoryPointerEnd}
+        >
+          <History size={16} />
+          Action history
+        </div>
+        {session?.actionLog.length ? (
+          <ol className="max-h-96 space-y-2 overflow-auto pr-1">
+            {session.actionLog
+              .slice()
+              .reverse()
+              .slice(0, 8)
+              .map((entry) => (
+                <li
+                  key={entry.id}
+                  className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                >
+                  <span className="block truncate font-semibold text-slate-800">{entry.label}</span>
+                  <time className="mt-1 block text-xs font-medium text-slate-400">
+                    {formatPlaytestActionTime(entry.createdAt)}
+                  </time>
+                </li>
+              ))}
+          </ol>
+        ) : (
+          <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs font-medium text-slate-500">
+            No actions yet
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function PlaytestActionButton({
+  compact = false,
+  displayLabel,
+  icon,
+  label,
+  title = label,
+  onClick
+}: {
+  compact?: boolean;
+  displayLabel?: string;
+  icon: ReactNode;
+  label: string;
+  title?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={title}
+      className={`flex h-10 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 ${compact ? "w-11 min-w-0 px-0 text-base" : "min-w-20"}`}
+      title={title}
+      type="button"
+      onClick={onClick}
+    >
+      {icon}
+      <span className={compact ? "sr-only" : "truncate"}>{displayLabel ?? label}</span>
+    </button>
+  );
+}
+
+function PlaytestIconButton({
+  destructive = false,
+  disabled = false,
+  icon,
+  label,
+  onClick
+}: {
+  destructive?: boolean;
+  disabled?: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className={`flex h-8 w-8 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        destructive
+          ? "border-red-100 bg-red-50 text-red-700 hover:border-red-200 hover:bg-red-100"
+          : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+      }`}
+      disabled={disabled}
+      title={label}
+      type="button"
+      onClick={onClick}
+    >
+      {icon}
+    </button>
+  );
+}
+
+function formatPlaytestActionTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleTimeString([], {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+type PlaytestToolbarAction = {
+  compact?: boolean;
+  displayLabel?: string;
+  icon: ReactNode;
+  label: string;
+  title: string;
+  onClick: () => void;
+};
+
+function getAvailablePlaytestActions({
+  onAction,
+  selectedCanFlip,
+  selectedCount,
+  selectedIsContainer,
+  selectedIsCounter,
+  selectedIsDie,
+  selectedItem,
+  selectedObjectKind
+}: {
+  onAction: (action: PlaytestAction) => void;
+  selectedCanFlip: boolean;
+  selectedCount: number;
+  selectedIsContainer: boolean;
+  selectedIsCounter: boolean;
+  selectedIsDie: boolean;
+  selectedItem: PlaytestItem;
+  selectedObjectKind: PlaytestItem["baseObject"]["kind"];
+}): PlaytestToolbarAction[] {
+  const actions: PlaytestToolbarAction[] = [];
+
+  if (selectedCanFlip) {
+    actions.push({
+      icon: <Undo2 size={17} />,
+      label: "Flip",
+      title: "Flip",
+      onClick: () => onAction({ itemId: selectedItem.id, type: "flipItem" })
+    });
+  }
+
+  actions.push({
+    icon: selectedItem.hidden ? <Eye size={17} /> : <EyeOff size={17} />,
+    label: selectedItem.hidden ? "Reveal" : "Hide",
+    title: selectedItem.hidden ? "Reveal" : "Hide",
+    onClick: () =>
+      onAction({
+        itemId: selectedItem.id,
+        type: selectedItem.hidden ? "revealItem" : "hideItem"
+      })
+  });
+
+  if (selectedIsContainer && selectedCount >= 2) {
+    actions.push({
+      icon: <Shuffle size={17} />,
+      label: "Shuffle",
+      title: "Shuffle",
+      onClick: () => onAction({ itemId: selectedItem.id, type: "shuffleContainer" })
+    });
+  }
+
+  if (selectedIsContainer && selectedCount >= 1) {
+    const label = selectedObjectKind === "stack" ? "Take top" : "Draw";
+
+    actions.push({
+      icon: <Play size={17} />,
+      label,
+      title: label,
+      onClick: () => onAction({ itemId: selectedItem.id, type: "drawFromContainer" })
+    });
+  }
+
+  if (selectedIsDie) {
+    actions.push({
+      icon: <Dices size={17} />,
+      label: "Roll",
+      title: "Roll",
+      onClick: () => onAction({ itemId: selectedItem.id, type: "rollDie" })
+    });
+  }
+
+  if (selectedIsCounter) {
+    actions.push(
+      {
+        compact: true,
+        displayLabel: "-",
+        icon: <Minus size={17} />,
+        label: "Decrease",
+        title: "Decrease",
+        onClick: () => onAction({ itemId: selectedItem.id, type: "decrementCounter" })
+      },
+      {
+        compact: true,
+        displayLabel: "+",
+        icon: <Plus size={17} />,
+        label: "Increase",
+        title: "Increase",
+        onClick: () => onAction({ itemId: selectedItem.id, type: "incrementCounter" })
+      }
+    );
+  }
+
+  return actions;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}

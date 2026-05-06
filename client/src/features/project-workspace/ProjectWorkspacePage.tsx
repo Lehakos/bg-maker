@@ -60,6 +60,7 @@ import {
   getProjectTableSetupWithRemovedItem
 } from "../project-table-setup/project-table-setup";
 import { ReusableObjectNameModal } from "../project-variants/ReusableObjectNameModal";
+import { ProjectPlaytestWorkspace } from "../project-playtest/ProjectPlaytestWorkspace";
 import {
   createReusableObjectFromSelection,
   detachLinkedObjectFile,
@@ -203,10 +204,6 @@ function ProjectWorkspaceContent({
   saveError,
   onBack
 }: ProjectWorkspaceContentProps) {
-  const headerContent = useMemo(
-    () => <ProjectWorkspaceHeader project={project} onBack={onBack} />,
-    [onBack, project]
-  );
   const fileTree = useProjectWorkspaceStore((state) => state.fileTree);
   const canRedo = useProjectWorkspaceStore((state) => state.canRedo);
   const canUndo = useProjectWorkspaceStore((state) => state.canUndo);
@@ -219,12 +216,15 @@ function ProjectWorkspaceContent({
     (state) => state.closeWorkspaceTabsToRight
   );
   const executeEditorCommand = useProjectWorkspaceStore((state) => state.executeCommand);
+  const executePlaytestAction = useProjectWorkspaceStore((state) => state.executePlaytestAction);
   const openObjectForEditing = useProjectWorkspaceStore((state) => state.openObjectForEditing);
   const openTabIds = useProjectWorkspaceStore((state) => state.openTabIds);
   const openWorkspaceNode = useProjectWorkspaceStore((state) => state.openWorkspaceNode);
+  const playtestSession = useProjectWorkspaceStore((state) => state.playtestSession);
   const redo = useProjectWorkspaceStore((state) => state.redo);
   const selectObject = useProjectWorkspaceStore((state) => state.selectObject);
   const selectObjects = useProjectWorkspaceStore((state) => state.selectObjects);
+  const selectPlaytestItems = useProjectWorkspaceStore((state) => state.selectPlaytestItems);
   const selectTableSetupItems = useProjectWorkspaceStore((state) => state.selectTableSetupItems);
   const selectTableSetupLocalObject = useProjectWorkspaceStore(
     (state) => state.selectTableSetupLocalObject
@@ -232,8 +232,11 @@ function ProjectWorkspaceContent({
   const clipboard = useProjectWorkspaceStore((state) => state.clipboard);
   const setClipboard = useProjectWorkspaceStore((state) => state.setClipboard);
   const setActiveTool = useProjectWorkspaceStore((state) => state.setActiveTool);
+  const startPlaytest = useProjectWorkspaceStore((state) => state.startPlaytest);
+  const stopPlaytest = useProjectWorkspaceStore((state) => state.stopPlaytest);
   const undo = useProjectWorkspaceStore((state) => state.undo);
   const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
+  const workspaceMode = useProjectWorkspaceStore((state) => state.workspaceMode);
   const {
     effectiveSelectedNodeId,
     selectedContentFileNode,
@@ -262,10 +265,30 @@ function ProjectWorkspaceContent({
       objectSideSelections
     );
   }, [fileTree, objectSideSelections, selectedContentFileNode, selectedTableSetupItem]);
+  const playtestActive = workspaceMode === "playtest" && Boolean(playtestSession);
+  const effectiveCanUndo = playtestActive ? (playtestSession?.undoStack.length ?? 0) > 0 : canUndo;
+  const effectiveCanRedo = playtestActive ? (playtestSession?.redoStack.length ?? 0) > 0 : canRedo;
+  const effectiveViewportObjectId = playtestActive
+    ? (playtestSession?.selectedItemId ?? null)
+    : selectedViewportObjectId;
+  const effectiveViewportObjectIds = playtestActive
+    ? (playtestSession?.selectedItemIds ?? [])
+    : selectedViewportObjectIds;
   const [workspaceContextMenu, setWorkspaceContextMenu] =
     useState<WorkspaceContextMenuState | null>(null);
   const [workspaceReusableRequest, setWorkspaceReusableRequest] =
     useState<WorkspaceReusableObjectRequest | null>(null);
+  const headerContent = useMemo(
+    () => (
+      <ProjectWorkspaceHeader
+        activePlaytestName={playtestActive ? playtestSession?.tableSetupName : null}
+        project={project}
+        workspaceMode={workspaceMode}
+        onBack={onBack}
+      />
+    ),
+    [onBack, playtestActive, playtestSession?.tableSetupName, project, workspaceMode]
+  );
   useAppHeaderContent(headerContent);
   const [workspaceElementRef, workspaceSize] = useElementSize<HTMLElement>();
   const [rightPanelElementRef, rightPanelSize] = useElementSize<HTMLDivElement>();
@@ -812,6 +835,39 @@ function ProjectWorkspaceContent({
         return false;
       }
 
+      if (playtestActive && playtestSession) {
+        const itemTransforms = Object.fromEntries(
+          playtestSession.selectedItemIds.flatMap((itemId) => {
+            const item = playtestSession.itemsById[itemId];
+
+            return item
+              ? [
+                  [
+                    itemId,
+                    {
+                      ...item.rectTransform,
+                      x: item.rectTransform.x + delta.x,
+                      y: item.rectTransform.y + delta.y
+                    }
+                  ]
+                ]
+              : [];
+          })
+        );
+
+        if (!Object.keys(itemTransforms).length) {
+          return false;
+        }
+
+        event.preventDefault();
+        executePlaytestAction({
+          itemTransforms,
+          label: "Nudge item",
+          type: "moveItems"
+        });
+        return true;
+      }
+
       if (!selectedContentFileNode || !selectedObjectId) {
         return false;
       }
@@ -904,9 +960,19 @@ function ProjectWorkspaceContent({
           return;
         }
 
+        if (event.key === "Escape" && playtestActive) {
+          event.preventDefault();
+          selectPlaytestItems([], null);
+          return;
+        }
+
         if (event.key === "Escape" && selectedContentFileNode?.kind === "tableSetup") {
           event.preventDefault();
           selectObject(null);
+          return;
+        }
+
+        if (playtestActive) {
           return;
         }
 
@@ -921,6 +987,10 @@ function ProjectWorkspaceContent({
       }
 
       if (key === "c") {
+        if (playtestActive) {
+          return;
+        }
+
         const copied = handleWorkspaceCopy();
 
         if (copied) {
@@ -931,6 +1001,10 @@ function ProjectWorkspaceContent({
       }
 
       if (key === "v") {
+        if (playtestActive) {
+          return;
+        }
+
         const pasted = handleWorkspacePaste();
 
         if (pasted) {
@@ -941,6 +1015,10 @@ function ProjectWorkspaceContent({
       }
 
       if (key === "d") {
+        if (playtestActive) {
+          return;
+        }
+
         const duplicated = handleWorkspaceDuplicate();
 
         if (duplicated) {
@@ -974,13 +1052,17 @@ function ProjectWorkspaceContent({
   }, [
     fileTree,
     executeEditorCommand,
+    executePlaytestAction,
     handleWorkspaceCopy,
     handleWorkspaceDuplicate,
     handleWorkspacePaste,
     persistObjectTree,
     persistTableSetup,
+    playtestActive,
+    playtestSession,
     redo,
     selectObject,
+    selectPlaytestItems,
     setActiveTool,
     selectedContentFileNode,
     selectedObjectId,
@@ -1194,6 +1276,57 @@ function ProjectWorkspaceContent({
         : "Create reusable object"
   });
 
+  function handleStartPlaytest() {
+    if (selectedContentFileNode?.kind === "tableSetup") {
+      startPlaytest(selectedContentFileNode.id);
+    }
+  }
+
+  function handleSelectViewportObject(objectId: string | null) {
+    if (playtestActive) {
+      selectPlaytestItems(objectId ? [objectId] : [], objectId);
+      return;
+    }
+
+    selectObject(objectId);
+  }
+
+  function handleSelectViewportObjects(objectIds: string[], primaryObjectId?: string | null) {
+    if (playtestActive) {
+      selectPlaytestItems(objectIds, primaryObjectId);
+      return;
+    }
+
+    selectObjects(objectIds, primaryObjectId);
+  }
+
+  if (
+    playtestActive &&
+    playtestSession &&
+    selectedContentFileNode?.kind === "tableSetup" &&
+    selectedTableSetup
+  ) {
+    return (
+      <ProjectPlaytestWorkspace
+        canRedo={effectiveCanRedo}
+        canUndo={effectiveCanUndo}
+        contentFileNode={selectedContentFileNode}
+        fileTree={fileTree}
+        project={project}
+        selectedObjectId={effectiveViewportObjectId}
+        selectedObjectIds={effectiveViewportObjectIds}
+        session={playtestSession}
+        tableSetup={selectedTableSetup}
+        onExecutePlaytestAction={executePlaytestAction}
+        onRedo={redo}
+        onSelectObject={handleSelectViewportObject}
+        onSelectObjects={handleSelectViewportObjects}
+        onStop={stopPlaytest}
+        onUndo={undo}
+      />
+    );
+  }
+
   return (
     <section
       ref={workspaceElementRef}
@@ -1229,8 +1362,9 @@ function ProjectWorkspaceContent({
         project={project}
         selectedNodeId={effectiveSelectedNodeId}
         tableSetup={selectedTableSetup}
-        canRedo={canRedo}
-        canUndo={canUndo}
+        canRedo={effectiveCanRedo}
+        canUndo={effectiveCanUndo}
+        canStartPlaytest={selectedContentFileNode?.kind === "tableSetup"}
         onCloseAllTabs={closeAllWorkspaceTabs}
         onCloseOtherTabs={closeOtherWorkspaceTabs}
         onCloseTab={closeWorkspaceTab}
@@ -1238,18 +1372,19 @@ function ProjectWorkspaceContent({
         onExecuteCommand={executeEditorCommand}
         onOpenTab={openWorkspaceNode}
         onRedo={redo}
-        selectedObjectId={selectedViewportObjectId}
-        selectedObjectIds={selectedViewportObjectIds}
-        canAlign={canArrangeTableItems}
-        showArrangeControls={selectedContentFileNode?.kind === "tableSetup"}
+        selectedObjectId={effectiveViewportObjectId}
+        selectedObjectIds={effectiveViewportObjectIds}
+        canAlign={!playtestActive && canArrangeTableItems}
+        showArrangeControls={selectedContentFileNode?.kind === "tableSetup" && !playtestActive}
         canExport={canExport}
         canPrint={canPrint}
         onPosition={handlePositionTableItems}
         onExportPng={handleExportPng}
-        onObjectContextMenu={handleWorkspaceObjectContextMenu}
+        onObjectContextMenu={playtestActive ? undefined : handleWorkspaceObjectContextMenu}
         onPrintSheets={handlePrintSheets}
-        onSelectObject={selectObject}
-        onSelectObjects={selectObjects}
+        onSelectObject={handleSelectViewportObject}
+        onSelectObjects={handleSelectViewportObjects}
+        onStartPlaytest={handleStartPlaytest}
         onUndo={undo}
       />
       <div
@@ -1302,7 +1437,7 @@ function ProjectWorkspaceContent({
             contentFileNode={selectedContentFileNode}
             fileTree={fileTree}
             objectTree={selectedContentObjectTree}
-            readOnly={Boolean(selectedContentFileNode?.sourceRef)}
+            readOnly={Boolean(selectedContentFileNode?.sourceRef) || playtestActive}
             saving={saving}
             selectedObjectId={selectedObjectId}
             selectedObjectIds={selectedObjectIds}
@@ -1397,11 +1532,20 @@ function useDebouncedProjectFileTreeSave(onSaveFileTree: (fileTree: ProjectFileN
 }
 
 type ProjectWorkspaceHeaderProps = {
+  activePlaytestName?: string | null;
   project: Project;
+  workspaceMode: "edit" | "playtest";
   onBack: () => void;
 };
 
-function ProjectWorkspaceHeader({ project, onBack }: ProjectWorkspaceHeaderProps) {
+function ProjectWorkspaceHeader({
+  activePlaytestName = null,
+  project,
+  workspaceMode,
+  onBack
+}: ProjectWorkspaceHeaderProps) {
+  const playtestActive = workspaceMode === "playtest";
+
   return (
     <div className="flex w-full min-w-0 items-center justify-between gap-4">
       <div className="flex min-w-0 items-center gap-4">
@@ -1415,9 +1559,13 @@ function ProjectWorkspaceHeader({ project, onBack }: ProjectWorkspaceHeaderProps
         </button>
         <div className="min-w-0">
           <h1 className="truncate text-xl font-semibold uppercase leading-tight tracking-[0.12em] text-slate-600">
-            File tree
+            {playtestActive ? "Playtest" : "File tree"}
           </h1>
-          <p className="truncate text-sm font-medium text-slate-600">{project.name}</p>
+          <p className="truncate text-sm font-medium text-slate-600">
+            {playtestActive && activePlaytestName
+              ? `${project.name} / ${activePlaytestName}`
+              : project.name}
+          </p>
         </div>
       </div>
       <p className="hidden shrink-0 text-sm text-slate-500 sm:block">

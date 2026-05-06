@@ -7,6 +7,16 @@ import type {
 import { getProjectTableSetupItemId } from "@bg-maker/shared";
 import { resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
 import { createStore, type StoreApi } from "zustand/vanilla";
+import {
+  createPlaytestSession,
+  executePlaytestAction as executePlaytestRuntimeAction,
+  redoPlaytestSession,
+  selectPlaytestItems,
+  undoPlaytestSession,
+  type PlaytestAction,
+  type PlaytestSession,
+  type ProjectWorkspaceMode
+} from "../project-playtest/project-playtest";
 import { findProjectFileNode, sortProjectFileTree } from "../project-files/project-file-tree";
 import {
   findProjectObjectNode,
@@ -94,18 +104,22 @@ export type ProjectWorkspaceStoreState = {
   closeWorkspaceTab: (nodeId: string) => void;
   closeWorkspaceTabsToRight: (nodeId: string) => void;
   clipboard: ProjectWorkspaceClipboard;
+  executePlaytestAction: (action: PlaytestAction) => void;
   executeCommand: (command: ProjectEditorCommand) => void;
   fileTree: ProjectFileNode[];
   objectSideSelections: ProjectObjectSideSelections;
   openObjectForEditing: (options: { fileNodeId: string; objectId?: string | null }) => void;
   openTabIds: string[];
   openWorkspaceNode: (nodeId: string | null) => void;
+  playtestSession: PlaytestSession | null;
   projectId: string;
   redo: () => void;
+  redoPlaytest: () => void;
   redoStack: ProjectEditorCommand[];
   saveFileTree: (fileTree: ProjectFileNode[]) => void;
   selectObject: (objectId: string | null) => void;
   selectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
+  selectPlaytestItems: (itemIds: string[], primaryItemId?: string | null) => void;
   selectTableSetupItems: (itemIds: string[], primaryItemId?: string | null) => void;
   selectTableSetupLocalObject: (itemId: string, objectId?: string | null) => void;
   selectedNodeId: string | null;
@@ -117,8 +131,12 @@ export type ProjectWorkspaceStoreState = {
   setResizeAspectLocked: (locked: boolean) => void;
   setSaveFileTree: (saveFileTree: (fileTree: ProjectFileNode[]) => void) => void;
   setSelectedNodeId: (nodeId: string | null) => void;
+  startPlaytest: (tableSetupFileNodeId: string) => void;
+  stopPlaytest: () => void;
   undo: () => void;
+  undoPlaytest: () => void;
   undoStack: ProjectEditorCommand[];
+  workspaceMode: ProjectWorkspaceMode;
 };
 
 export type ProjectWorkspaceStore = StoreApi<ProjectWorkspaceStoreState>;
@@ -135,8 +153,13 @@ export function createProjectWorkspaceStore({
   saveFileTree
 }: CreateProjectWorkspaceStoreOptions): ProjectWorkspaceStore {
   const fileTree = sortProjectFileTree(initialFileTree);
-  const initialOpenTabIds = readProjectWorkspaceOpenTabIds(projectId, fileTree);
-  const initialSelectedNodeId = initialOpenTabIds[0] ?? fileTree[0]?.id ?? null;
+  const storedOpenTabIds = readProjectWorkspaceOpenTabIds(projectId, fileTree);
+  const initialPlaytestSession = readProjectWorkspacePlaytestSession(projectId, fileTree);
+  const initialOpenTabIds = initialPlaytestSession
+    ? addProjectWorkspaceOpenTabId(storedOpenTabIds, initialPlaytestSession.tableSetupFileNodeId)
+    : storedOpenTabIds;
+  const initialSelectedNodeId =
+    initialPlaytestSession?.tableSetupFileNodeId ?? initialOpenTabIds[0] ?? fileTree[0]?.id ?? null;
 
   return createStore<ProjectWorkspaceStoreState>((set, get) => ({
     activeTool: "select",
@@ -221,8 +244,32 @@ export function createProjectWorkspaceStore({
       set(nextTabState);
     },
     clipboard: null,
+    executePlaytestAction: (action) => {
+      const state = get();
+
+      if (!state.playtestSession) {
+        return;
+      }
+
+      const nextSession = executePlaytestRuntimeAction(state.playtestSession, action);
+
+      if (nextSession === state.playtestSession) {
+        return;
+      }
+
+      writeProjectWorkspacePlaytestSession(state.projectId, nextSession);
+      set({
+        playtestSession: nextSession,
+        workspaceMode: "playtest"
+      });
+    },
     executeCommand: (command) => {
       const state = get();
+
+      if (state.workspaceMode === "playtest") {
+        return;
+      }
+
       const editorState = getProjectEditorState(state);
       const nextEditorState = command.execute(editorState);
 
@@ -279,6 +326,10 @@ export function createProjectWorkspaceStore({
     openWorkspaceNode: (nodeId) => {
       const state = get();
       const node = nodeId ? findProjectFileNode(state.fileTree, nodeId) : undefined;
+      const leavingPlaytest =
+        state.workspaceMode === "playtest" &&
+        state.playtestSession &&
+        nodeId !== state.playtestSession.tableSetupFileNodeId;
       const openTabIds = isProjectWorkspaceTabNode(node)
         ? addProjectWorkspaceOpenTabId(state.openTabIds, node.id)
         : state.openTabIds;
@@ -287,14 +338,27 @@ export function createProjectWorkspaceStore({
         writeProjectWorkspaceOpenTabIds(state.projectId, openTabIds);
       }
 
+      if (leavingPlaytest) {
+        removeProjectWorkspacePlaytestSession(state.projectId);
+      }
+
       set({
         openTabIds,
-        selectedNodeId: nodeId
+        playtestSession: leavingPlaytest ? null : state.playtestSession,
+        selectedNodeId: nodeId,
+        workspaceMode: leavingPlaytest ? "edit" : state.workspaceMode
       });
     },
+    playtestSession: initialPlaytestSession,
     projectId,
     redo: () => {
       const state = get();
+
+      if (state.workspaceMode === "playtest") {
+        state.redoPlaytest();
+        return;
+      }
+
       const command = state.redoStack.at(-1);
 
       if (!command) {
@@ -325,6 +389,25 @@ export function createProjectWorkspaceStore({
         openTabIds,
         redoStack,
         undoStack
+      });
+    },
+    redoPlaytest: () => {
+      const state = get();
+
+      if (!state.playtestSession) {
+        return;
+      }
+
+      const nextSession = redoPlaytestSession(state.playtestSession);
+
+      if (nextSession === state.playtestSession) {
+        return;
+      }
+
+      writeProjectWorkspacePlaytestSession(state.projectId, nextSession);
+      set({
+        playtestSession: nextSession,
+        workspaceMode: "playtest"
       });
     },
     redoStack: [],
@@ -421,6 +504,25 @@ export function createProjectWorkspaceStore({
         }
       });
     },
+    selectPlaytestItems: (itemIds, primaryItemId) => {
+      const state = get();
+
+      if (!state.playtestSession) {
+        return;
+      }
+
+      const nextSession = selectPlaytestItems(state.playtestSession, itemIds, primaryItemId);
+
+      if (nextSession === state.playtestSession) {
+        return;
+      }
+
+      writeProjectWorkspacePlaytestSession(state.projectId, nextSession);
+      set({
+        playtestSession: nextSession,
+        workspaceMode: "playtest"
+      });
+    },
     selectTableSetupItems: (itemIds, primaryItemId) => {
       const state = get();
       const { selectedContentFileNode } = getProjectWorkspaceSelection(state);
@@ -467,8 +569,57 @@ export function createProjectWorkspaceStore({
     setResizeAspectLocked: (resizeAspectLocked) => set({ resizeAspectLocked }),
     setSaveFileTree: (nextSaveFileTree) => set({ saveFileTree: nextSaveFileTree }),
     setSelectedNodeId: (nodeId) => get().openWorkspaceNode(nodeId),
+    startPlaytest: (tableSetupFileNodeId) => {
+      const state = get();
+      const tableSetupFileNode = findProjectFileNode(state.fileTree, tableSetupFileNodeId);
+
+      if (tableSetupFileNode?.type !== "file" || tableSetupFileNode.kind !== "tableSetup") {
+        return;
+      }
+
+      const session = createPlaytestSession({
+        fileTree: state.fileTree,
+        projectId: state.projectId,
+        tableSetupFileNode
+      });
+
+      if (!session) {
+        return;
+      }
+
+      const openTabIds = addProjectWorkspaceOpenTabId(state.openTabIds, tableSetupFileNode.id);
+      writeProjectWorkspaceOpenTabIds(state.projectId, openTabIds);
+      writeProjectWorkspacePlaytestSession(state.projectId, session);
+      set({
+        activeTool: "select",
+        openTabIds,
+        playtestSession: session,
+        selectedNodeId: tableSetupFileNode.id,
+        selectionTarget: null,
+        workspaceMode: "playtest"
+      });
+    },
+    stopPlaytest: () => {
+      const state = get();
+
+      if (!state.playtestSession && state.workspaceMode === "edit") {
+        return;
+      }
+
+      removeProjectWorkspacePlaytestSession(state.projectId);
+      set({
+        playtestSession: null,
+        workspaceMode: "edit"
+      });
+    },
     undo: () => {
       const state = get();
+
+      if (state.workspaceMode === "playtest") {
+        state.undoPlaytest();
+        return;
+      }
+
       const command = state.undoStack.at(-1);
 
       if (!command) {
@@ -501,7 +652,27 @@ export function createProjectWorkspaceStore({
         undoStack
       });
     },
-    undoStack: []
+    undoPlaytest: () => {
+      const state = get();
+
+      if (!state.playtestSession) {
+        return;
+      }
+
+      const nextSession = undoPlaytestSession(state.playtestSession);
+
+      if (nextSession === state.playtestSession) {
+        return;
+      }
+
+      writeProjectWorkspacePlaytestSession(state.projectId, nextSession);
+      set({
+        playtestSession: nextSession,
+        workspaceMode: "playtest"
+      });
+    },
+    undoStack: [],
+    workspaceMode: initialPlaytestSession ? "playtest" : "edit"
   }));
 }
 
@@ -840,6 +1011,77 @@ function writeProjectWorkspaceOpenTabIds(projectId: string, openTabIds: readonly
 
 function getProjectWorkspaceOpenTabsStorageKey(projectId: string) {
   return `bg-maker:workspace:${projectId}:open-tabs`;
+}
+
+function readProjectWorkspacePlaytestSession(
+  projectId: string,
+  fileTree: ProjectFileNode[]
+): PlaytestSession | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const value = window.localStorage.getItem(getProjectWorkspacePlaytestStorageKey(projectId));
+    const session = value ? (JSON.parse(value) as PlaytestSession) : null;
+
+    if (!isValidStoredPlaytestSession(session, projectId, fileTree)) {
+      return null;
+    }
+
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function writeProjectWorkspacePlaytestSession(projectId: string, session: PlaytestSession) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      getProjectWorkspacePlaytestStorageKey(projectId),
+      JSON.stringify(session)
+    );
+  } catch {
+    // Runtime playtests still work without refresh recovery.
+  }
+}
+
+function removeProjectWorkspacePlaytestSession(projectId: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(getProjectWorkspacePlaytestStorageKey(projectId));
+  } catch {
+    // Runtime playtests still work without refresh recovery.
+  }
+}
+
+function getProjectWorkspacePlaytestStorageKey(projectId: string) {
+  return `bg-maker:workspace:${projectId}:playtest-session`;
+}
+
+function isValidStoredPlaytestSession(
+  session: PlaytestSession | null,
+  projectId: string,
+  fileTree: ProjectFileNode[]
+) {
+  if (
+    !session ||
+    session.projectId !== projectId ||
+    typeof session.tableSetupFileNodeId !== "string"
+  ) {
+    return false;
+  }
+
+  const tableSetupFileNode = findProjectFileNode(fileTree, session.tableSetupFileNodeId);
+
+  return tableSetupFileNode?.type === "file" && tableSetupFileNode.kind === "tableSetup";
 }
 
 function isProjectWorkspaceTabNode(
