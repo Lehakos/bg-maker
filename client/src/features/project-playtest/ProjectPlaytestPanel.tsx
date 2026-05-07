@@ -8,6 +8,8 @@ import {
   Play,
   Plus,
   Redo2,
+  RotateCcw,
+  RotateCw,
   Shuffle,
   Square,
   Undo2
@@ -55,13 +57,17 @@ export function ProjectPlaytestPanel({
   const selectedIsDie = selectedObject?.kind === "die";
   const selectedIsScoreTrack = selectedObject?.kind === "scoreTrack";
   const selectedCanFlip = selectedObject ? hasProjectObjectSides(selectedObject.kind) : false;
-  const selectedCounter = selectedIsCounter && selectedObject ? getProjectObjectNodeCounter(selectedObject) : null;
-  const selectedDie = selectedIsDie && selectedObject ? getProjectObjectNodeDie(selectedObject) : null;
+  const selectedCounter =
+    selectedIsCounter && selectedObject ? getProjectObjectNodeCounter(selectedObject) : null;
+  const selectedDie =
+    selectedIsDie && selectedObject ? getProjectObjectNodeDie(selectedObject) : null;
   const selectedScoreTrack =
     selectedIsScoreTrack && selectedObject ? getProjectObjectNodeScoreTrack(selectedObject) : null;
-  const selectedScoreTrackMarkers = selectedItem?.scoreTrackMarkers ?? selectedScoreTrack?.markers ?? [];
-  const selectedInteractable =
-    selectedItem?.behavior.interaction?.interactableInPlaytest !== false;
+  const selectedScoreTrackMarkers =
+    selectedItem?.scoreTrackMarkers ?? selectedScoreTrack?.markers ?? [];
+  const selectedInteractable = selectedItem?.behavior.interaction?.interactableInPlaytest !== false;
+  const selectedRotatable = selectedItem?.behavior.rotation?.rotatableInPlaytest !== false;
+  const selectedRotationStep = selectedItem?.behavior.rotation?.rotationStep ?? 90;
   const selectedCount = selectedItem?.contents.length ?? 0;
   const [historyPosition, setHistoryPosition] = useState({ x: 12, y: 84 });
   const historyDragRef = useRef<{
@@ -80,6 +86,8 @@ export function ProjectPlaytestPanel({
           selectedIsContainer,
           selectedIsCounter,
           selectedIsDie,
+          selectedRotatable,
+          selectedRotationStep,
           selectedInteractable,
           selectedItem,
           selectedObjectKind: selectedObject.kind
@@ -438,6 +446,8 @@ function getAvailablePlaytestActions({
   selectedIsContainer,
   selectedIsCounter,
   selectedIsDie,
+  selectedRotatable,
+  selectedRotationStep,
   selectedInteractable,
   selectedItem,
   selectedObjectKind
@@ -448,6 +458,8 @@ function getAvailablePlaytestActions({
   selectedIsContainer: boolean;
   selectedIsCounter: boolean;
   selectedIsDie: boolean;
+  selectedRotatable: boolean;
+  selectedRotationStep: number;
   selectedInteractable: boolean;
   selectedItem: PlaytestItem;
   selectedObjectKind: PlaytestItem["baseObject"]["kind"];
@@ -456,6 +468,25 @@ function getAvailablePlaytestActions({
 
   if (!selectedInteractable) {
     return actions;
+  }
+
+  if (selectedRotatable) {
+    actions.push(
+      {
+        compact: true,
+        icon: <RotateCcw size={17} />,
+        label: "Rotate left",
+        title: `Rotate left ${selectedRotationStep} deg`,
+        onClick: () => onAction({ direction: -1, itemId: selectedItem.id, type: "rotateItem" })
+      },
+      {
+        compact: true,
+        icon: <RotateCw size={17} />,
+        label: "Rotate right",
+        title: `Rotate right ${selectedRotationStep} deg`,
+        onClick: () => onAction({ direction: 1, itemId: selectedItem.id, type: "rotateItem" })
+      }
+    );
   }
 
   if (selectedCanFlip) {

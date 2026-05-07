@@ -527,6 +527,11 @@ export type ProjectTableSetupItemMovementBehavior = {
   movableInPlaytest: boolean;
 };
 
+export type ProjectTableSetupItemRotationBehavior = {
+  rotatableInPlaytest: boolean;
+  rotationStep: number;
+};
+
 export type ProjectTableSetupItemInteractionBehavior = {
   interactableInPlaytest: boolean;
 };
@@ -563,6 +568,7 @@ export type ProjectTableSetupItemBehavior = {
   container?: ProjectTableSetupItemContainerBehavior;
   interaction?: ProjectTableSetupItemInteractionBehavior;
   movement?: ProjectTableSetupItemMovementBehavior;
+  rotation?: ProjectTableSetupItemRotationBehavior;
   side?: ProjectTableSetupItemSideBehavior;
   visibility?: ProjectTableSetupItemVisibilityBehavior;
   zone?: ProjectTableSetupItemZoneBehavior;

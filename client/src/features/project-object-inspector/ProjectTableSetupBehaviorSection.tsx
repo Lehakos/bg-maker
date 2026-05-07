@@ -17,6 +17,7 @@ import {
   Hand,
   MousePointerClick,
   Move,
+  RotateCw,
   Search,
   Shuffle,
   X
@@ -27,8 +28,18 @@ import {
   getProjectObjectKindLabel
 } from "../project-objects/project-object-tree-labels";
 import { ProjectObjectKindIcon } from "../project-objects/project-object-tree-ui";
-import { InspectorSection, InspectorSelectField, InspectorSwitchField } from "./inspector-ui";
+import {
+  InspectorBehaviorNumberField,
+  InspectorSection,
+  InspectorSelectField,
+  InspectorSwitchField,
+  type InspectorFieldDefinition
+} from "./inspector-ui";
 import { cx } from "./class-names";
+import {
+  normalizeProjectTableSetupItemRotationStep,
+  projectTableSetupItemRotationStepLimits
+} from "../project-table-setup/project-table-setup-behavior";
 
 type ProjectTableSetupBehaviorSectionProps = {
   behavior: ProjectTableSetupItemBehavior;
@@ -41,6 +52,8 @@ type ProjectTableSetupBehaviorSectionProps = {
   onInitialSideChange: (value: ProjectObjectSide) => void;
   onInteractableChange: (value: boolean) => void;
   onMovableChange: (value: boolean) => void;
+  onRotatableChange: (value: boolean) => void;
+  onRotationStepChange: (value: number) => void;
   onZoneAcceptedObjectsChange: (value: {
     acceptedKinds: ProjectObjectKind[];
     acceptedObjectFileNodeIds: string[];
@@ -80,6 +93,19 @@ const zoneSlotOccupancyOptions = [
   value: ProjectTableSetupItemZoneSlotOccupancy;
 }[];
 
+type RotationBehaviorNumberFieldKey = "rotationStep";
+
+const rotationStepField = {
+  key: "rotationStep",
+  label: "Rotation step"
+} as const satisfies InspectorFieldDefinition<RotationBehaviorNumberFieldKey>;
+
+const rotationStepFieldSettings = {
+  max: projectTableSetupItemRotationStepLimits.max,
+  min: projectTableSetupItemRotationStepLimits.min,
+  step: 1
+} as const;
+
 const acceptedObjectKindOptions = projectObjectKinds
   .filter((kind) => kind !== "zone")
   .map((kind) => ({ kind, label: getProjectObjectKindLabel(kind), value: kind }));
@@ -104,6 +130,8 @@ export function ProjectTableSetupBehaviorSection({
   onInitialSideChange,
   onInteractableChange,
   onMovableChange,
+  onRotatableChange,
+  onRotationStepChange,
   onZoneAcceptedObjectsChange,
   onZoneAllowRemoveChange,
   onZoneSideOnEnterChange,
@@ -111,6 +139,7 @@ export function ProjectTableSetupBehaviorSection({
 }: ProjectTableSetupBehaviorSectionProps) {
   const hasBehavior = Boolean(
     behavior.movement ||
+    behavior.rotation ||
     behavior.interaction ||
     behavior.visibility ||
     behavior.side ||
@@ -131,6 +160,20 @@ export function ProjectTableSetupBehaviorSection({
           label="Movable in playtest"
           onChange={(event) => onMovableChange(event.currentTarget.checked)}
         />
+      ) : null}
+      {behavior.rotation ? (
+        <>
+          <InspectorSwitchField
+            checked={behavior.rotation.rotatableInPlaytest}
+            icon={<RotateCw size={15} />}
+            label="Rotatable in playtest"
+            onChange={(event) => onRotatableChange(event.currentTarget.checked)}
+          />
+          <RotationStepField
+            value={behavior.rotation.rotationStep}
+            onChange={onRotationStepChange}
+          />
+        </>
       ) : null}
       {behavior.interaction ? (
         <InspectorSwitchField
@@ -214,6 +257,59 @@ export function ProjectTableSetupBehaviorSection({
       ) : null}
     </InspectorSection>
   );
+}
+
+type RotationStepFieldProps = {
+  value: number;
+  onChange: (value: number) => void;
+};
+
+function RotationStepField({ value, onChange }: RotationStepFieldProps) {
+  const formattedValue = formatRotationStepValue(value);
+  const [draft, setDraft] = useState(formattedValue);
+
+  useEffect(() => {
+    setDraft(formattedValue);
+  }, [formattedValue]);
+
+  function commitRotationStep(_fieldKey: RotationBehaviorNumberFieldKey, draftValue: string) {
+    const normalizedValue = parseRotationStepDraftValue(draftValue);
+
+    if (normalizedValue === null) {
+      setDraft(formattedValue);
+      return;
+    }
+
+    setDraft(formatRotationStepValue(normalizedValue));
+    onChange(normalizedValue);
+  }
+
+  return (
+    <InspectorBehaviorNumberField
+      field={rotationStepField}
+      settings={rotationStepFieldSettings}
+      value={draft}
+      onCommit={commitRotationStep}
+      onDraftChange={(_fieldKey, draftValue) => setDraft(draftValue)}
+      onReset={() => setDraft(formattedValue)}
+    />
+  );
+}
+
+function parseRotationStepDraftValue(value: string): number | null {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const parsedValue = Number(value);
+
+  return Number.isFinite(parsedValue)
+    ? normalizeProjectTableSetupItemRotationStep(parsedValue)
+    : null;
+}
+
+function formatRotationStepValue(value: number): string {
+  return String(normalizeProjectTableSetupItemRotationStep(value));
 }
 
 type AcceptedObjectsFieldProps = {

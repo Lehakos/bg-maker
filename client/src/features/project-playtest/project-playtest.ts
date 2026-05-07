@@ -38,7 +38,10 @@ import {
   getProjectFileNodeTableSetup,
   getProjectTableSetupResolvedItemObject
 } from "../project-table-setup/project-table-setup";
-import { getProjectTableSetupItemBehavior } from "../project-table-setup/project-table-setup-behavior";
+import {
+  getProjectTableSetupItemBehavior,
+  normalizeProjectTableSetupItemRotationStep
+} from "../project-table-setup/project-table-setup-behavior";
 
 export type ProjectWorkspaceMode = "edit" | "playtest";
 
@@ -112,6 +115,11 @@ export type PlaytestAction =
   | {
       itemId: string;
       type: "decrementCounter" | "incrementCounter";
+    }
+  | {
+      direction: -1 | 1;
+      itemId: string;
+      type: "rotateItem";
     }
   | {
       itemId: string;
@@ -535,6 +543,17 @@ function reducePlaytestAction(
     );
   }
 
+  if (action.type === "rotateItem") {
+    if (item.behavior.rotation?.rotatableInPlaytest === false) {
+      return runtime;
+    }
+
+    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
+      ...currentItem,
+      rectTransform: getRotatedPlaytestItemRectTransform(currentItem, action.direction)
+    }));
+  }
+
   if (action.type === "hideItem") {
     return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
       ...currentItem,
@@ -835,6 +854,20 @@ export function getPlaytestMovePreviewTransforms(
   }
 
   return previewTransforms;
+}
+
+export function getRotatedPlaytestItemRectTransform(
+  item: PlaytestItem,
+  direction: -1 | 1
+): ProjectObjectRectTransform {
+  const rotationStep = normalizeProjectTableSetupItemRotationStep(
+    item.behavior.rotation?.rotationStep
+  );
+
+  return {
+    ...item.rectTransform,
+    rotation: item.rectTransform.rotation + rotationStep * direction
+  };
 }
 
 function getRuntimeWithMovedItems(
@@ -1364,6 +1397,10 @@ function getPlaytestActionLabel(
 
   if (action.type === "hideItem") {
     return `Hide ${itemName}`;
+  }
+
+  if (action.type === "rotateItem") {
+    return `Rotate ${itemName}`;
   }
 
   if (action.type === "revealItem") {

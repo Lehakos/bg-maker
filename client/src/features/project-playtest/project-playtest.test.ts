@@ -21,6 +21,7 @@ import {
   getPlaytestMovePreviewTransforms,
   getPlaytestRenderedObject,
   getPlaytestZoneContentMovePreviewTransforms,
+  getRotatedPlaytestItemRectTransform,
   getScoreTrackMarkerValueWithStep,
   redoPlaytestSession,
   undoPlaytestSession
@@ -200,6 +201,96 @@ describe("project playtest runtime", () => {
     expect(moved.itemsById["card-item"]?.rectTransform).toMatchObject({ x: -80, y: 40 });
     expect(moved.itemsById["die-item"]?.rectTransform).toMatchObject({ x: 160, y: 40 });
     expect(moved.itemsById["deck-item"]?.rectTransform).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it("rotates playtest items from configured toolbar step", () => {
+    const fileTree = createPlaytestFileTree();
+    const tableSetup = fileTree[1]?.type === "file" ? fileTree[1].tableSetup : null;
+
+    if (!tableSetup) {
+      throw new Error("Expected table setup");
+    }
+
+    tableSetup.items = tableSetup.items.map((item) =>
+      item.type === "linkedObject" && item.id === "card-item"
+        ? {
+            ...item,
+            behavior: {
+              rotation: { rotatableInPlaytest: true, rotationStep: 45 }
+            }
+          }
+        : item
+    );
+
+    const session = createPlaytestSession({
+      createId: createDeterministicId(),
+      fileTree,
+      now: () => "2026-05-05T00:00:00.000Z",
+      projectId: "project-1",
+      tableSetupFileNode: fileTree[1]!
+    });
+
+    if (!session) {
+      throw new Error("Expected playtest session");
+    }
+
+    const rotatedRight = executePlaytestAction(session, {
+      direction: 1,
+      itemId: "card-item",
+      type: "rotateItem"
+    });
+    const rotatedLeft = executePlaytestAction(rotatedRight, {
+      direction: -1,
+      itemId: "card-item",
+      type: "rotateItem"
+    });
+
+    expect(getRotatedPlaytestItemRectTransform(session.itemsById["card-item"]!, 1)).toMatchObject({
+      rotation: 45
+    });
+    expect(rotatedRight.itemsById["card-item"]?.rectTransform.rotation).toBe(45);
+    expect(rotatedRight.actionLog.at(-1)?.label).toBe("Rotate Card");
+    expect(rotatedLeft.itemsById["card-item"]?.rectTransform.rotation).toBe(0);
+  });
+
+  it("blocks playtest rotation when item behavior disables it", () => {
+    const fileTree = createPlaytestFileTree();
+    const tableSetup = fileTree[1]?.type === "file" ? fileTree[1].tableSetup : null;
+
+    if (!tableSetup) {
+      throw new Error("Expected table setup");
+    }
+
+    tableSetup.items = tableSetup.items.map((item) =>
+      item.type === "linkedObject" && item.id === "card-item"
+        ? {
+            ...item,
+            behavior: {
+              rotation: { rotatableInPlaytest: false, rotationStep: 45 }
+            }
+          }
+        : item
+    );
+
+    const session = createPlaytestSession({
+      createId: createDeterministicId(),
+      fileTree,
+      now: () => "2026-05-05T00:00:00.000Z",
+      projectId: "project-1",
+      tableSetupFileNode: fileTree[1]!
+    });
+
+    if (!session) {
+      throw new Error("Expected playtest session");
+    }
+
+    const rotated = executePlaytestAction(session, {
+      direction: 1,
+      itemId: "card-item",
+      type: "rotateItem"
+    });
+
+    expect(rotated).toBe(session);
   });
 
   it("applies counter bounds modes consistently", () => {

@@ -18,6 +18,7 @@ describe("project table setup behavior", () => {
 
     expect(getSupportedProjectTableSetupItemBehaviorKeys(card)).toEqual([
       "movement",
+      "rotation",
       "interaction",
       "visibility",
       "side"
@@ -25,6 +26,7 @@ describe("project table setup behavior", () => {
     expect(behavior).toMatchObject({
       interaction: { interactableInPlaytest: true },
       movement: { movableInPlaytest: true },
+      rotation: { rotatableInPlaytest: true, rotationStep: 90 },
       side: { initialSide: "back" },
       visibility: { initialHidden: true }
     });
@@ -56,7 +58,8 @@ describe("project table setup behavior", () => {
           shuffleOnStart: true
         },
         side: { initialSide: "back" },
-        movement: { movableInPlaytest: false }
+        movement: { movableInPlaytest: false },
+        rotation: { rotatableInPlaytest: false, rotationStep: 37.5 }
       },
       object: label
     });
@@ -64,6 +67,7 @@ describe("project table setup behavior", () => {
     expect(behavior).toEqual({
       interaction: { interactableInPlaytest: true },
       movement: { movableInPlaytest: false },
+      rotation: { rotatableInPlaytest: false, rotationStep: 38 },
       visibility: { initialHidden: false }
     });
   });
@@ -86,6 +90,7 @@ describe("project table setup behavior", () => {
 
     expect(getSupportedProjectTableSetupItemBehaviorKeys(zone)).toEqual([
       "movement",
+      "rotation",
       "interaction",
       "visibility",
       "zone"

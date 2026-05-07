@@ -1210,6 +1210,23 @@ export function ProjectObjectInspectorPanel({
     });
   }
 
+  function updateTableSetupItemRotationBehavior(
+    fieldKey: keyof NonNullable<ProjectTableSetupItemBehavior["rotation"]>,
+    value: boolean | number
+  ) {
+    if (!selectedTableSetupItemBehavior?.rotation) {
+      return;
+    }
+
+    updateTableSetupItemBehavior({
+      ...selectedTableSetupItemBehavior,
+      rotation: {
+        ...selectedTableSetupItemBehavior.rotation,
+        [fieldKey]: value
+      }
+    });
+  }
+
   function updateTableSetupItemInteractionBehavior(interactableInPlaytest: boolean) {
     if (!selectedTableSetupItemBehavior?.interaction) {
       return;
@@ -2683,6 +2700,12 @@ export function ProjectObjectInspectorPanel({
                   onInitialSideChange={updateTableSetupItemSideBehavior}
                   onInteractableChange={updateTableSetupItemInteractionBehavior}
                   onMovableChange={updateTableSetupItemMovementBehavior}
+                  onRotatableChange={(value) =>
+                    updateTableSetupItemRotationBehavior("rotatableInPlaytest", value)
+                  }
+                  onRotationStepChange={(value) =>
+                    updateTableSetupItemRotationBehavior("rotationStep", value)
+                  }
                   onZoneAcceptedObjectsChange={updateTableSetupItemZoneAcceptedObjects}
                   onZoneAllowRemoveChange={(value) =>
                     updateTableSetupItemZoneBehavior("allowRemove", value)
@@ -2759,6 +2782,12 @@ export function ProjectObjectInspectorPanel({
                   onInitialSideChange={updateTableSetupItemSideBehavior}
                   onInteractableChange={updateTableSetupItemInteractionBehavior}
                   onMovableChange={updateTableSetupItemMovementBehavior}
+                  onRotatableChange={(value) =>
+                    updateTableSetupItemRotationBehavior("rotatableInPlaytest", value)
+                  }
+                  onRotationStepChange={(value) =>
+                    updateTableSetupItemRotationBehavior("rotationStep", value)
+                  }
                   onZoneAcceptedObjectsChange={updateTableSetupItemZoneAcceptedObjects}
                   onZoneAllowRemoveChange={(value) =>
                     updateTableSetupItemZoneBehavior("allowRemove", value)

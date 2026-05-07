@@ -7,6 +7,7 @@ import type {
   ProjectTableSetupItemContainerDrawOrder,
   ProjectTableSetupItemInteractionBehavior,
   ProjectTableSetupItemMovementBehavior,
+  ProjectTableSetupItemRotationBehavior,
   ProjectTableSetupItemSideBehavior,
   ProjectTableSetupItemVisibilityBehavior,
   ProjectTableSetupItemZoneBehavior,
@@ -22,9 +23,20 @@ export type ProjectTableSetupItemBehaviorModule = {
   supports: (object: ProjectObjectNode) => boolean;
 };
 
+export const defaultProjectTableSetupItemRotationStep = 90;
+
+export const projectTableSetupItemRotationStepLimits = {
+  max: 360,
+  min: 1
+} as const;
+
 export const behaviorModules: ProjectTableSetupItemBehaviorModule[] = [
   {
     key: "movement",
+    supports: () => true
+  },
+  {
+    key: "rotation",
     supports: () => true
   },
   {
@@ -65,6 +77,7 @@ export function getProjectTableSetupItemBehavior({
   const normalizedBehavior: ProjectTableSetupItemBehavior = {
     interaction: normalizeInteractionBehavior(behavior?.interaction),
     movement: normalizeMovementBehavior(behavior?.movement),
+    rotation: normalizeRotationBehavior(behavior?.rotation),
     visibility: normalizeVisibilityBehavior(behavior?.visibility)
   };
 
@@ -94,6 +107,7 @@ export function cloneProjectTableSetupItemBehavior(
     ...(behavior.container ? { container: { ...behavior.container } } : {}),
     ...(behavior.interaction ? { interaction: { ...behavior.interaction } } : {}),
     ...(behavior.movement ? { movement: { ...behavior.movement } } : {}),
+    ...(behavior.rotation ? { rotation: { ...behavior.rotation } } : {}),
     ...(behavior.side ? { side: { ...behavior.side } } : {}),
     ...(behavior.visibility ? { visibility: { ...behavior.visibility } } : {}),
     ...(behavior.zone
@@ -115,6 +129,27 @@ function normalizeMovementBehavior(
     movableInPlaytest:
       typeof behavior?.movableInPlaytest === "boolean" ? behavior.movableInPlaytest : true
   };
+}
+
+function normalizeRotationBehavior(
+  behavior: ProjectTableSetupItemRotationBehavior | null | undefined
+): ProjectTableSetupItemRotationBehavior {
+  return {
+    rotatableInPlaytest:
+      typeof behavior?.rotatableInPlaytest === "boolean" ? behavior.rotatableInPlaytest : true,
+    rotationStep: normalizeProjectTableSetupItemRotationStep(behavior?.rotationStep)
+  };
+}
+
+export function normalizeProjectTableSetupItemRotationStep(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return defaultProjectTableSetupItemRotationStep;
+  }
+
+  return Math.min(
+    projectTableSetupItemRotationStepLimits.max,
+    Math.max(projectTableSetupItemRotationStepLimits.min, Math.round(value))
+  );
 }
 
 function normalizeInteractionBehavior(
