@@ -6,11 +6,16 @@ import type {
   ProjectObjectScoreTrackMarker,
   ProjectObjectSide,
   ProjectTableSetup,
+  ProjectTableSetupItemCommand,
+  ProjectTableSetupItemDrawFromContainerToTableOffsetCommand,
+  ProjectTableSetupItemDrawFromContainerToTargetZoneCommand,
+  ProjectTableSetupItemRefillTargetZoneFromContainerCommand,
   ProjectTableSetupItem,
   ProjectTableSetupItemBehavior
 } from "@bg-maker/shared";
 import {
   getProjectObjectContainerTotalCount,
+  getProjectTableSetupItemId,
   hasProjectObjectSides,
   normalizeProjectObjectDieActiveFace,
   resolveProjectObjectFileObjectTreeById
@@ -117,6 +122,11 @@ export type PlaytestAction =
       type: "decrementCounter" | "incrementCounter";
     }
   | {
+      commandId: string;
+      itemId: string;
+      type: "executeCommand";
+    }
+  | {
       direction: -1 | 1;
       itemId: string;
       type: "rotateItem";
@@ -150,6 +160,17 @@ export type PlaytestAction =
       label?: string;
       type: "moveItems";
     };
+
+export type PlaytestCommandPreviewRequest = {
+  commandId: string;
+  itemId: string;
+};
+
+export type PlaytestCommandDestinationPreview = {
+  destinationRectTransform?: ProjectObjectRectTransform;
+  targetItemId?: string;
+  targetRectTransform?: ProjectObjectRectTransform;
+};
 
 type PlaytestActionContext = {
   createId: () => string;
@@ -188,12 +209,14 @@ export function createPlaytestSession({
 
   const itemsById: Record<string, PlaytestItem> = {};
   const tableItemIds: string[] = [];
+  const tableSetupItemIds = tableSetup.items.map(getProjectTableSetupItemId);
 
   for (const item of tableSetup.items) {
     const runtimeItem = createPlaytestItemFromTableSetupItem({
       createId,
       fileTree,
-      item
+      item,
+      tableSetupItemIds
     });
 
     if (!runtimeItem) {
@@ -478,6 +501,65 @@ export function getPlaytestRuntimeState(session: PlaytestSession): PlaytestRunti
   };
 }
 
+export function getPlaytestCommandDestinationPreview(
+  runtime: PlaytestRuntimeState,
+  request: PlaytestCommandPreviewRequest
+): PlaytestCommandDestinationPreview | null {
+  const containerItem = runtime.itemsById[request.itemId];
+  const command = containerItem?.behavior.commands?.find(
+    (candidate) => candidate.id === request.commandId
+  );
+
+  if (!containerItem || !command || command.type === "shuffleContainer") {
+    return null;
+  }
+
+  const drawnItem = getCommandPreviewDrawnItem(runtime, containerItem);
+
+  if (!drawnItem) {
+    return null;
+  }
+
+  if (command.type === "drawFromContainerToTableOffset") {
+    return {
+      destinationRectTransform: {
+        ...drawnItem.rectTransform,
+        x: containerItem.rectTransform.x + command.offset.x,
+        y: containerItem.rectTransform.y + command.offset.y
+      }
+    };
+  }
+
+  const targetItem = runtime.itemsById[command.targetItemId];
+
+  if (!targetItem || targetItem.baseObject.kind !== "zone") {
+    return null;
+  }
+
+  const preview: PlaytestCommandDestinationPreview = {
+    targetItemId: targetItem.id,
+    targetRectTransform: targetItem.rectTransform
+  };
+
+  if (!doesZoneAcceptItem(targetItem, drawnItem)) {
+    return preview;
+  }
+
+  const placedItem = getDrawnItemForTargetZone({
+    drawnItem,
+    drawnItemSide: command.drawnItemSide,
+    runtime,
+    targetItem
+  });
+
+  return placedItem
+    ? {
+        ...preview,
+        destinationRectTransform: placedItem.rectTransform
+      }
+    : preview;
+}
+
 export function getCounterValueWithStep(
   counter: ProjectObjectCounter,
   currentValue: number,
@@ -585,6 +667,14 @@ function reducePlaytestAction(
     return getRuntimeWithDrawnContainerItem(runtime, item.id, context.random);
   }
 
+  if (action.type === "executeCommand") {
+    const command = item.behavior.commands?.find((candidate) => candidate.id === action.commandId);
+
+    return command
+      ? getRuntimeWithExecutedCommand(runtime, item.id, command, context.random)
+      : runtime;
+  }
+
   if (action.type === "rollDie") {
     if (item.baseObject.kind !== "die") {
       return runtime;
@@ -641,11 +731,13 @@ function reducePlaytestAction(
 function createPlaytestItemFromTableSetupItem({
   createId,
   fileTree,
-  item
+  item,
+  tableSetupItemIds
 }: {
   createId: () => string;
   fileTree: readonly ProjectFileNode[];
   item: ProjectTableSetupItem;
+  tableSetupItemIds: readonly string[];
 }): PlaytestItem | null {
   const object = getProjectTableSetupResolvedItemObject(fileTree, item);
 
@@ -656,7 +748,8 @@ function createPlaytestItemFromTableSetupItem({
   return createPlaytestItemFromObject({
     behavior: getProjectTableSetupItemBehavior({
       behavior: item.behavior,
-      object
+      object,
+      tableSetupItemIds
     }),
     createId,
     fileTree,
@@ -1200,6 +1293,18 @@ function isZoneSlotOccupied(
   );
 }
 
+function getFirstEmptyZoneSlotIndex(runtime: PlaytestRuntimeState, zoneItem: PlaytestItem) {
+  const slotRects = zoneItem.zoneSlotRects ?? [];
+
+  for (let slotIndex = 0; slotIndex < slotRects.length; slotIndex += 1) {
+    if (!isZoneSlotOccupied(runtime, zoneItem.id, slotIndex, "")) {
+      return slotIndex;
+    }
+  }
+
+  return null;
+}
+
 function getItemWithZonePlacement(
   item: PlaytestItem,
   zoneItem: PlaytestItem,
@@ -1223,6 +1328,30 @@ function getItemWithZonePlacement(
     activeSide: sideOnEnter,
     hidden: false,
     revealed: true
+  };
+}
+
+function getZoneSlotRectTransform(
+  zoneItem: PlaytestItem,
+  itemRectTransform: ProjectObjectRectTransform,
+  slotIndex: number
+): ProjectObjectRectTransform | null {
+  const slotRect = zoneItem.zoneSlotRects?.[slotIndex];
+
+  if (!slotRect) {
+    return null;
+  }
+
+  const zoneBounds = getTableItemBounds(zoneItem.rectTransform);
+
+  return {
+    ...itemRectTransform,
+    x:
+      zoneBounds.left +
+      (slotRect.x + slotRect.width / 2) * getRectScale(zoneItem.rectTransform.scaleX),
+    y:
+      zoneBounds.top +
+      (slotRect.y + slotRect.height / 2) * getRectScale(zoneItem.rectTransform.scaleY)
   };
 }
 
@@ -1277,6 +1406,371 @@ function getSquaredDistance(left: { x: number; y: number }, right: { x: number; 
   const distanceY = left.y - right.y;
 
   return distanceX * distanceX + distanceY * distanceY;
+}
+
+type ContainerDrawResult = {
+  drawnItem: PlaytestItem;
+  drawnItemId: string;
+  nextContents: string[];
+};
+
+function getRuntimeWithExecutedCommand(
+  runtime: PlaytestRuntimeState,
+  containerItemId: string,
+  command: ProjectTableSetupItemCommand,
+  random: () => number
+): PlaytestRuntimeState {
+  if (command.type === "shuffleContainer") {
+    const item = runtime.itemsById[containerItemId];
+
+    if (!item || !isRuntimeContainer(item) || item.contents.length < 2) {
+      return runtime;
+    }
+
+    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
+      ...currentItem,
+      contents: shuffleItems(currentItem.contents, random)
+    }));
+  }
+
+  if (command.type === "drawFromContainerToTableOffset") {
+    return getRuntimeWithDrawnContainerItemsToTableOffset(
+      runtime,
+      containerItemId,
+      command,
+      random
+    );
+  }
+
+  if (command.type === "drawFromContainerToTargetZone") {
+    return getRuntimeWithDrawnContainerItemsToTargetZone(runtime, containerItemId, command, random);
+  }
+
+  return getRuntimeWithRefilledTargetZoneFromContainer(runtime, containerItemId, command, random);
+}
+
+function getCommandPreviewDrawnItem(
+  runtime: PlaytestRuntimeState,
+  containerItem: PlaytestItem
+): PlaytestItem | null {
+  if (!isRuntimeContainer(containerItem)) {
+    return null;
+  }
+
+  const drawnItemId = containerItem.contents[0];
+
+  return drawnItemId ? (runtime.itemsById[drawnItemId] ?? null) : null;
+}
+
+function getRuntimeWithDrawnContainerItemsToTableOffset(
+  runtime: PlaytestRuntimeState,
+  containerItemId: string,
+  command: ProjectTableSetupItemDrawFromContainerToTableOffsetCommand,
+  random: () => number
+): PlaytestRuntimeState {
+  let nextRuntime = runtime;
+  const drawnItemIds: string[] = [];
+
+  for (let index = 0; index < command.count; index += 1) {
+    const containerItem = nextRuntime.itemsById[containerItemId];
+    const draw = containerItem
+      ? getContainerDrawResult(nextRuntime, containerItem, command.drawOrder, random)
+      : null;
+
+    if (!containerItem || !draw) {
+      break;
+    }
+
+    const drawnItem = {
+      ...draw.drawnItem,
+      ...getDrawnItemVisibilityState(draw.drawnItem, command.drawnItemSide),
+      rectTransform: {
+        ...draw.drawnItem.rectTransform,
+        x: containerItem.rectTransform.x + command.offset.x + index * defaultDrawOffset,
+        y: containerItem.rectTransform.y + command.offset.y + index * defaultDrawOffset
+      },
+      visible: true,
+      zonePlacement: undefined
+    };
+
+    nextRuntime = getRuntimeWithCommittedContainerDraw(
+      nextRuntime,
+      containerItemId,
+      draw,
+      drawnItem,
+      drawnItemIds.length
+    );
+    drawnItemIds.push(draw.drawnItemId);
+  }
+
+  return getRuntimeWithSelectedDrawnItems(nextRuntime, drawnItemIds, runtime);
+}
+
+function getRuntimeWithDrawnContainerItemsToTargetZone(
+  runtime: PlaytestRuntimeState,
+  containerItemId: string,
+  command: ProjectTableSetupItemDrawFromContainerToTargetZoneCommand,
+  random: () => number
+): PlaytestRuntimeState {
+  let nextRuntime = runtime;
+  const drawnItemIds: string[] = [];
+
+  for (let index = 0; index < command.count; index += 1) {
+    const result = getNextRuntimeWithDrawnContainerItemToTargetZone({
+      containerItemId,
+      drawOrder: command.drawOrder,
+      drawnItemSide: command.drawnItemSide,
+      random,
+      runtime: nextRuntime,
+      tableInsertOffset: drawnItemIds.length,
+      targetItemId: command.targetItemId
+    });
+
+    if (!result) {
+      break;
+    }
+
+    nextRuntime = result.runtime;
+    drawnItemIds.push(result.drawnItemId);
+  }
+
+  return getRuntimeWithSelectedDrawnItems(nextRuntime, drawnItemIds, runtime);
+}
+
+function getRuntimeWithRefilledTargetZoneFromContainer(
+  runtime: PlaytestRuntimeState,
+  containerItemId: string,
+  command: ProjectTableSetupItemRefillTargetZoneFromContainerCommand,
+  random: () => number
+): PlaytestRuntimeState {
+  let nextRuntime = runtime;
+  const drawnItemIds: string[] = [];
+
+  while (true) {
+    const targetItem = nextRuntime.itemsById[command.targetItemId];
+
+    if (!targetItem || targetItem.baseObject.kind !== "zone") {
+      break;
+    }
+
+    const zone = getProjectObjectNodeZone(targetItem.baseObject);
+
+    if (zone.mode !== "slots" || getFirstEmptyZoneSlotIndex(nextRuntime, targetItem) === null) {
+      break;
+    }
+
+    const result = getNextRuntimeWithDrawnContainerItemToTargetZone({
+      containerItemId,
+      drawOrder: command.drawOrder,
+      drawnItemSide: command.drawnItemSide,
+      random,
+      runtime: nextRuntime,
+      tableInsertOffset: drawnItemIds.length,
+      targetItemId: command.targetItemId
+    });
+
+    if (!result) {
+      break;
+    }
+
+    nextRuntime = result.runtime;
+    drawnItemIds.push(result.drawnItemId);
+  }
+
+  return getRuntimeWithSelectedDrawnItems(nextRuntime, drawnItemIds, runtime);
+}
+
+function getNextRuntimeWithDrawnContainerItemToTargetZone({
+  containerItemId,
+  drawOrder,
+  drawnItemSide,
+  random,
+  runtime,
+  tableInsertOffset,
+  targetItemId
+}: {
+  containerItemId: string;
+  drawOrder: ProjectTableSetupItemDrawFromContainerToTargetZoneCommand["drawOrder"];
+  drawnItemSide: ProjectObjectSide;
+  random: () => number;
+  runtime: PlaytestRuntimeState;
+  tableInsertOffset: number;
+  targetItemId: string;
+}): { drawnItemId: string; runtime: PlaytestRuntimeState } | null {
+  const containerItem = runtime.itemsById[containerItemId];
+  const targetItem = runtime.itemsById[targetItemId];
+  const draw = containerItem
+    ? getContainerDrawResult(runtime, containerItem, drawOrder, random)
+    : null;
+
+  if (
+    !containerItem ||
+    !targetItem ||
+    targetItem.baseObject.kind !== "zone" ||
+    !draw ||
+    !doesZoneAcceptItem(targetItem, draw.drawnItem)
+  ) {
+    return null;
+  }
+
+  const placedItem = getDrawnItemForTargetZone({
+    drawnItem: draw.drawnItem,
+    drawnItemSide,
+    runtime,
+    targetItem
+  });
+
+  if (!placedItem) {
+    return null;
+  }
+
+  const withDrawnItem = getRuntimeWithCommittedContainerDraw(
+    runtime,
+    containerItemId,
+    draw,
+    placedItem,
+    tableInsertOffset
+  );
+
+  return {
+    drawnItemId: draw.drawnItemId,
+    runtime: getRuntimeWithItemPlacedAboveZone(withDrawnItem, draw.drawnItemId, targetItem.id)
+  };
+}
+
+function getDrawnItemForTargetZone({
+  drawnItem,
+  drawnItemSide,
+  runtime,
+  targetItem
+}: {
+  drawnItem: PlaytestItem;
+  drawnItemSide: ProjectObjectSide;
+  runtime: PlaytestRuntimeState;
+  targetItem: PlaytestItem;
+}): PlaytestItem | null {
+  if (targetItem.baseObject.kind !== "zone") {
+    return null;
+  }
+
+  const zone = getProjectObjectNodeZone(targetItem.baseObject);
+  const visibleDrawnItem = {
+    ...drawnItem,
+    ...getDrawnItemVisibilityState(drawnItem, drawnItemSide),
+    visible: true,
+    zonePlacement: undefined
+  };
+
+  if (zone.mode !== "slots") {
+    return getItemWithZonePlacement(
+      visibleDrawnItem,
+      targetItem,
+      {
+        ...visibleDrawnItem.rectTransform,
+        x: targetItem.rectTransform.x,
+        y: targetItem.rectTransform.y
+      },
+      { zoneItemId: targetItem.id }
+    );
+  }
+
+  const slotIndex = getFirstEmptyZoneSlotIndex(runtime, targetItem);
+
+  if (slotIndex === null) {
+    return null;
+  }
+
+  const rectTransform = getZoneSlotRectTransform(
+    targetItem,
+    visibleDrawnItem.rectTransform,
+    slotIndex
+  );
+
+  return rectTransform
+    ? getItemWithZonePlacement(visibleDrawnItem, targetItem, rectTransform, {
+        slotIndex,
+        zoneItemId: targetItem.id
+      })
+    : null;
+}
+
+function getContainerDrawResult(
+  runtime: PlaytestRuntimeState,
+  containerItem: PlaytestItem,
+  drawOrder: ProjectTableSetupItemDrawFromContainerToTargetZoneCommand["drawOrder"],
+  random: () => number
+): ContainerDrawResult | null {
+  if (!isRuntimeContainer(containerItem) || !containerItem.contents.length) {
+    return null;
+  }
+
+  const drawIndex =
+    drawOrder === "random" ? Math.floor(random() * containerItem.contents.length) : 0;
+  const drawnItemId = containerItem.contents[drawIndex];
+  const drawnItem = drawnItemId ? runtime.itemsById[drawnItemId] : undefined;
+
+  if (!drawnItemId || !drawnItem) {
+    return null;
+  }
+
+  return {
+    drawnItem,
+    drawnItemId,
+    nextContents: containerItem.contents.filter((_, index) => index !== drawIndex)
+  };
+}
+
+function getRuntimeWithCommittedContainerDraw(
+  runtime: PlaytestRuntimeState,
+  containerItemId: string,
+  draw: ContainerDrawResult,
+  drawnItem: PlaytestItem,
+  tableInsertOffset: number
+): PlaytestRuntimeState {
+  const containerItem = runtime.itemsById[containerItemId];
+
+  if (!containerItem) {
+    return runtime;
+  }
+
+  const insertIndex = runtime.tableItemIds.indexOf(containerItemId);
+  const nextTableItemIds = [...runtime.tableItemIds];
+  nextTableItemIds.splice(
+    insertIndex >= 0
+      ? Math.min(insertIndex + tableInsertOffset + 1, nextTableItemIds.length)
+      : nextTableItemIds.length,
+    0,
+    draw.drawnItemId
+  );
+
+  return {
+    ...runtime,
+    itemsById: {
+      ...runtime.itemsById,
+      [containerItemId]: {
+        ...containerItem,
+        contents: draw.nextContents
+      },
+      [draw.drawnItemId]: drawnItem
+    },
+    tableItemIds: nextTableItemIds
+  };
+}
+
+function getRuntimeWithSelectedDrawnItems(
+  runtime: PlaytestRuntimeState,
+  drawnItemIds: readonly string[],
+  fallbackRuntime: PlaytestRuntimeState
+): PlaytestRuntimeState {
+  if (!drawnItemIds.length) {
+    return fallbackRuntime;
+  }
+
+  return {
+    ...runtime,
+    selectedItemId: drawnItemIds[0] ?? null,
+    selectedItemIds: [...drawnItemIds]
+  };
 }
 
 function getRuntimeWithDrawnContainerItem(
@@ -1416,6 +1910,14 @@ function getPlaytestActionLabel(
     const drawnItem = drawnItemId ? after.itemsById[drawnItemId] : null;
 
     return drawnItem ? `Draw ${drawnItem.name}` : `Draw from ${itemName}`;
+  }
+
+  if (action.type === "executeCommand") {
+    const command = beforeItem?.behavior.commands?.find(
+      (candidate) => candidate.id === action.commandId
+    );
+
+    return command?.label || `Run ${itemName}`;
   }
 
   if (action.type === "rollDie") {

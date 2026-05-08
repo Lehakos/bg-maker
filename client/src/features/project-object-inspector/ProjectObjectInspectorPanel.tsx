@@ -25,6 +25,7 @@ import type {
   ProjectObjectVariableType,
   ProjectObjectZone,
   ProjectTableSetup,
+  ProjectTableSetupItemCommand,
   ProjectTableSetupItemBehavior,
   ProjectTableSetupItemContainerDrawOrder,
   ProjectTableSetupItemZoneSideOnEnter,
@@ -46,6 +47,7 @@ import {
   getProjectObjectContainerAcceptedObjectKinds,
   getProjectObjectContainerTotalCount,
   getProjectTableSetupItemId,
+  getProjectTableSetupItemName,
   getProjectObjectVariableDefaultValues,
   hasProjectObjectLayout,
   hasProjectObjectSides,
@@ -263,7 +265,10 @@ import {
   ProjectObjectLayoutSection,
   ProjectObjectTransformSections
 } from "./ProjectObjectStyleSections";
-import { ProjectTableSetupBehaviorSection } from "./ProjectTableSetupBehaviorSection";
+import {
+  ProjectTableSetupBehaviorSection,
+  type ProjectTableSetupCommandTargetOption
+} from "./ProjectTableSetupBehaviorSection";
 import {
   InspectorBehaviorNumberField,
   InspectorColorField,
@@ -454,15 +459,40 @@ export function ProjectObjectInspectorPanel({
         : null,
     [fileTree, selectedTableSetupItem]
   );
+  const selectedTableSetupItemId = selectedTableSetupItem
+    ? getProjectTableSetupItemId(selectedTableSetupItem)
+    : null;
+  const tableSetupItemIds = useMemo(
+    () => tableSetup?.items.map(getProjectTableSetupItemId) ?? [],
+    [tableSetup]
+  );
+  const commandTargetOptions = useMemo<ProjectTableSetupCommandTargetOption[]>(
+    () =>
+      tableSetup?.items.flatMap((item) => {
+        const itemId = getProjectTableSetupItemId(item);
+
+        if (itemId === selectedTableSetupItemId) {
+          return [];
+        }
+
+        const object = getProjectTableSetupResolvedItemObject(fileTree, item);
+
+        return object?.kind === "zone"
+          ? [{ label: getProjectTableSetupItemName(item), value: itemId }]
+          : [];
+      }) ?? [],
+    [fileTree, selectedTableSetupItemId, tableSetup]
+  );
   const selectedTableSetupItemBehavior = useMemo(
     () =>
       selectedTableSetupItem && selectedTableSetupItemObject
         ? getProjectTableSetupItemBehavior({
             behavior: selectedTableSetupItem.behavior,
-            object: selectedTableSetupItemObject
+            object: selectedTableSetupItemObject,
+            tableSetupItemIds
           })
         : null,
-    [selectedTableSetupItem, selectedTableSetupItemObject]
+    [selectedTableSetupItem, selectedTableSetupItemObject, tableSetupItemIds]
   );
   const selectedTableSetupItemZoneMode = useMemo(
     () =>
@@ -1274,6 +1304,17 @@ export function ProjectObjectInspectorPanel({
         ...selectedTableSetupItemBehavior.container,
         [fieldKey]: value
       }
+    });
+  }
+
+  function updateTableSetupItemCommands(commands: ProjectTableSetupItemCommand[]) {
+    if (!selectedTableSetupItemBehavior?.container) {
+      return;
+    }
+
+    updateTableSetupItemBehavior({
+      ...selectedTableSetupItemBehavior,
+      commands
     });
   }
 
@@ -2685,8 +2726,10 @@ export function ProjectObjectInspectorPanel({
               {selectedTableSetupItemBehavior ? (
                 <ProjectTableSetupBehaviorSection
                   behavior={selectedTableSetupItemBehavior}
+                  commandTargetOptions={commandTargetOptions}
                   fileTree={fileTree}
                   zoneMode={selectedTableSetupItemZoneMode}
+                  onCommandsChange={updateTableSetupItemCommands}
                   onContainerDrawOrderChange={(value) =>
                     updateTableSetupItemContainerBehavior("drawOrder", value)
                   }
@@ -2767,8 +2810,10 @@ export function ProjectObjectInspectorPanel({
               {selectedTableSetupItemBehavior ? (
                 <ProjectTableSetupBehaviorSection
                   behavior={selectedTableSetupItemBehavior}
+                  commandTargetOptions={commandTargetOptions}
                   fileTree={fileTree}
                   zoneMode={selectedTableSetupItemZoneMode}
+                  onCommandsChange={updateTableSetupItemCommands}
                   onContainerDrawOrderChange={(value) =>
                     updateTableSetupItemContainerBehavior("drawOrder", value)
                   }

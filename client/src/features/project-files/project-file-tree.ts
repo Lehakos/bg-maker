@@ -12,11 +12,15 @@ import type {
 import {
   getDefaultProjectTableSetup,
   getDefaultProjectObjectName,
+  getProjectTableSetupItemId,
   projectAssetsFolderId,
   projectAssetsFolderName
 } from "@bg-maker/shared";
 import { createProjectObjectNode } from "../project-objects/project-object-tree";
-import { cloneProjectTableSetupItemBehavior } from "../project-table-setup/project-table-setup-behavior";
+import {
+  cloneProjectTableSetupItemBehavior,
+  remapProjectTableSetupItemBehaviorCommandTargets
+} from "../project-table-setup/project-table-setup-behavior";
 
 export type ProjectFileTreeParentId = string | null;
 
@@ -375,9 +379,20 @@ function cloneProjectObjectNode(node: ProjectObjectNode): ProjectObjectNode {
 }
 
 function cloneProjectTableSetup(tableSetup: ProjectTableSetup): ProjectTableSetup {
+  const clonedItems = tableSetup.items.map(cloneProjectTableSetupItem);
+  const itemIdMap = new Map(
+    tableSetup.items.map((item, index) => [
+      getProjectTableSetupItemId(item),
+      getProjectTableSetupItemId(clonedItems[index]!)
+    ])
+  );
+
   return {
     ...tableSetup,
-    items: tableSetup.items.map(cloneProjectTableSetupItem)
+    items: clonedItems.map((item) => ({
+      ...item,
+      behavior: remapProjectTableSetupItemBehaviorCommandTargets(item.behavior, itemIdMap)
+    }))
   };
 }
 

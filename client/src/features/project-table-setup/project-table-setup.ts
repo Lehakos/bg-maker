@@ -26,7 +26,11 @@ import {
   getProjectObjectNodeRectTransform,
   setProjectObjectNodeRectTransform
 } from "../project-objects/project-object-tree";
-import { cloneProjectTableSetupItemBehavior } from "./project-table-setup-behavior";
+import {
+  cleanProjectTableSetupItemBehaviorCommandTargets,
+  cloneProjectTableSetupItemBehavior,
+  remapProjectTableSetupItemBehaviorCommandTargets
+} from "./project-table-setup-behavior";
 
 export type ProjectTableSetupObjectFileOption = {
   id: string;
@@ -162,16 +166,23 @@ export function getProjectTableSetupWithDuplicatedItems(
 
   const clonedItems = sourceEntries.map(({ item }) => cloneProjectTableSetupItem(item, { offset }));
   const clonedItemIds = clonedItems.map(getProjectTableSetupItemId);
+  const itemIdMap = new Map(
+    sourceEntries.map(({ itemId }, index) => [itemId, clonedItemIds[index]!])
+  );
+  const clonedItemsWithRemappedCommands = remapTableSetupItemsCommandTargets(
+    clonedItems,
+    itemIdMap
+  );
   const insertIndex = Math.max(...sourceEntries.map(({ index }) => index)) + 1;
   const items = [
     ...tableSetup.items.slice(0, insertIndex),
-    ...clonedItems,
+    ...clonedItemsWithRemappedCommands,
     ...tableSetup.items.slice(insertIndex)
   ];
 
   return {
     itemIds: clonedItemIds,
-    tableSetup: { ...tableSetup, items }
+    tableSetup: getTableSetupWithCleanedCommandTargets({ ...tableSetup, items })
   };
 }
 
@@ -189,20 +200,29 @@ export function getProjectTableSetupWithInsertedItems(
   const selectedIndexes = tableSetup.items
     .map((item, index) => (selectedIds.has(getProjectTableSetupItemId(item)) ? index : -1))
     .filter((index) => index >= 0);
-  const insertIndex = selectedIndexes.length ? Math.max(...selectedIndexes) + 1 : tableSetup.items.length;
+  const insertIndex = selectedIndexes.length
+    ? Math.max(...selectedIndexes) + 1
+    : tableSetup.items.length;
   const clonedItems = itemsToInsert.map((item) => cloneProjectTableSetupItem(item, { offset }));
   const clonedItemIds = clonedItems.map(getProjectTableSetupItemId);
+  const itemIdMap = new Map(
+    itemsToInsert.map((item, index) => [getProjectTableSetupItemId(item), clonedItemIds[index]!])
+  );
+  const clonedItemsWithRemappedCommands = remapTableSetupItemsCommandTargets(
+    clonedItems,
+    itemIdMap
+  );
 
   return {
     itemIds: clonedItemIds,
-    tableSetup: {
+    tableSetup: getTableSetupWithCleanedCommandTargets({
       ...tableSetup,
       items: [
         ...tableSetup.items.slice(0, insertIndex),
-        ...clonedItems,
+        ...clonedItemsWithRemappedCommands,
         ...tableSetup.items.slice(insertIndex)
       ]
-    }
+    })
   };
 }
 
@@ -214,7 +234,7 @@ export function getProjectTableSetupWithRemovedItem(
 
   return nextItems.length === tableSetup.items.length
     ? tableSetup
-    : { ...tableSetup, items: nextItems };
+    : getTableSetupWithCleanedCommandTargets({ ...tableSetup, items: nextItems });
 }
 
 export function getProjectTableSetupWithMovedItem(
@@ -431,6 +451,28 @@ function updateProjectTableSetupItem(
   });
 
   return changed ? { ...tableSetup, items } : tableSetup;
+}
+
+function remapTableSetupItemsCommandTargets(
+  items: readonly ProjectTableSetupItem[],
+  itemIdMap: ReadonlyMap<string, string>
+): ProjectTableSetupItem[] {
+  return items.map((item) => ({
+    ...item,
+    behavior: remapProjectTableSetupItemBehaviorCommandTargets(item.behavior, itemIdMap)
+  }));
+}
+
+function getTableSetupWithCleanedCommandTargets(tableSetup: ProjectTableSetup): ProjectTableSetup {
+  const validItemIds = tableSetup.items.map(getProjectTableSetupItemId);
+
+  return {
+    ...tableSetup,
+    items: tableSetup.items.map((item) => ({
+      ...item,
+      behavior: cleanProjectTableSetupItemBehaviorCommandTargets(item.behavior, validItemIds)
+    }))
+  };
 }
 
 function normalizeProjectTableSetupItemTransform(

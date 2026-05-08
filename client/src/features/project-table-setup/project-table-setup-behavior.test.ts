@@ -1,8 +1,11 @@
+import type { ProjectTableSetupItemBehavior } from "@bg-maker/shared";
 import { createDefaultProjectObjectNode } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import {
+  cloneProjectTableSetupItemBehavior,
   getProjectTableSetupItemBehavior,
-  getSupportedProjectTableSetupItemBehaviorKeys
+  getSupportedProjectTableSetupItemBehaviorKeys,
+  remapProjectTableSetupItemBehaviorCommandTargets
 } from "./project-table-setup-behavior";
 
 describe("project table setup behavior", () => {
@@ -127,6 +130,122 @@ describe("project table setup behavior", () => {
       allowRemove: true,
       sideOnEnter: "preserve",
       slotOccupancy: "single"
+    });
+  });
+
+  it("normalizes container commands and drops missing targets", () => {
+    const deck = createDefaultProjectObjectNode("deck-1", "deck", "Deck");
+    const card = createDefaultProjectObjectNode("card-1", "card", "Card");
+    const behavior = getProjectTableSetupItemBehavior({
+      behavior: {
+        commands: [
+          {
+            count: 2.6,
+            drawOrder: "sideways",
+            drawnItemSide: "edge",
+            id: " draw-zone ",
+            label: " Draw to Market ",
+            targetItemId: "zone-item",
+            type: "drawFromContainerToTargetZone"
+          },
+          {
+            drawOrder: "random",
+            drawnItemSide: "back",
+            id: "missing-target",
+            label: "Missing",
+            targetItemId: "missing-zone",
+            type: "refillTargetZoneFromContainer"
+          },
+          {
+            count: 1200,
+            drawOrder: "random",
+            drawnItemSide: "back",
+            id: "offset",
+            label: " ",
+            offset: { x: 12.4, y: Number.POSITIVE_INFINITY },
+            type: "drawFromContainerToTableOffset"
+          }
+        ] as unknown as ProjectTableSetupItemBehavior["commands"]
+      },
+      object: deck,
+      tableSetupItemIds: ["deck-item", "zone-item"]
+    });
+
+    expect(behavior.commands).toEqual([
+      {
+        count: 3,
+        drawOrder: "top",
+        drawnItemSide: "front",
+        id: "draw-zone",
+        label: "Draw to Market",
+        targetItemId: "zone-item",
+        type: "drawFromContainerToTargetZone"
+      },
+      {
+        count: 999,
+        drawOrder: "random",
+        drawnItemSide: "back",
+        id: "offset",
+        label: "Draw",
+        offset: { x: 12, y: 0 },
+        type: "drawFromContainerToTableOffset"
+      }
+    ]);
+    expect(
+      getProjectTableSetupItemBehavior({
+        behavior: { commands: behavior.commands },
+        object: card,
+        tableSetupItemIds: ["zone-item"]
+      }).commands
+    ).toBeUndefined();
+  });
+
+  it("clones and remaps command targets without sharing nested state", () => {
+    const behavior: ProjectTableSetupItemBehavior = {
+      commands: [
+        {
+          count: 1,
+          drawOrder: "top",
+          drawnItemSide: "front",
+          id: "offset",
+          label: "Draw",
+          offset: { x: 96, y: 32 },
+          type: "drawFromContainerToTableOffset"
+        },
+        {
+          drawOrder: "top",
+          drawnItemSide: "front",
+          id: "refill",
+          label: "Refill",
+          refillMode: "emptySlots",
+          targetItemId: "zone-item",
+          type: "refillTargetZoneFromContainer"
+        }
+      ]
+    };
+    const cloned = cloneProjectTableSetupItemBehavior(behavior);
+    const offsetCommand = cloned?.commands?.[0];
+
+    if (offsetCommand?.type !== "drawFromContainerToTableOffset") {
+      throw new Error("Expected offset command");
+    }
+
+    offsetCommand.offset.x = 12;
+
+    const originalOffsetCommand = behavior.commands?.[0];
+
+    expect(
+      originalOffsetCommand?.type === "drawFromContainerToTableOffset"
+        ? originalOffsetCommand.offset.x
+        : null
+    ).toBe(96);
+    expect(
+      remapProjectTableSetupItemBehaviorCommandTargets(
+        cloned,
+        new Map([["zone-item", "zone-copy"]])
+      )?.commands?.[1]
+    ).toMatchObject({
+      targetItemId: "zone-copy"
     });
   });
 });

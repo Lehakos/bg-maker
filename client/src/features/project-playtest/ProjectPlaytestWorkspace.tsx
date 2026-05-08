@@ -18,6 +18,7 @@ import { ProjectPlaytestPanel } from "./ProjectPlaytestPanel";
 import {
   getPlaytestSelectedItem,
   type PlaytestAction,
+  type PlaytestCommandPreviewRequest,
   type PlaytestSession
 } from "./project-playtest";
 
@@ -72,6 +73,7 @@ export function ProjectPlaytestWorkspace({
     placement: "bottom" | "top";
     top: number;
   } | null>(null);
+  const [commandPreview, setCommandPreview] = useState<PlaytestCommandPreviewRequest | null>(null);
   const imageAssets = useMemo(
     () => getProjectImageAssetOptions(project.id, fileTree),
     [fileTree, project.id]
@@ -82,6 +84,12 @@ export function ProjectPlaytestWorkspace({
   );
   const selectedItem =
     session.selectedItemIds.length === 1 ? getPlaytestSelectedItem(session) : null;
+  const effectiveCommandPreview =
+    commandPreview &&
+    selectedItem?.id === commandPreview.itemId &&
+    selectedItem.behavior.commands?.some((command) => command.id === commandPreview.commandId)
+      ? commandPreview
+      : null;
   const panInteractionActive = spacePanPressed || Boolean(panState);
   const noopExecuteCommand = useCallback((command: ProjectEditorCommand) => {
     void command;
@@ -267,6 +275,7 @@ export function ProjectPlaytestWorkspace({
           highlightedGuideId={null}
           imageAssets={imageAssets}
           objectTree={objectTree}
+          playtestCommandPreview={effectiveCommandPreview}
           playtestSession={session}
           readOnly={false}
           selectedObjectId={selectedObjectId}
@@ -288,6 +297,7 @@ export function ProjectPlaytestWorkspace({
         selectedItem={selectedItem}
         session={session}
         onAction={onExecutePlaytestAction}
+        onCommandPreviewChange={setCommandPreview}
         onRedo={onRedo}
         onStop={onStop}
         onUndo={onUndo}

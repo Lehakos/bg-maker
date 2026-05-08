@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import {
   createPlaytestSession,
   executePlaytestAction,
+  getPlaytestCommandDestinationPreview,
   getCounterValueWithStep,
   getPlaytestItemGroupMoveTransforms,
   getPlaytestItemMovePreview,
@@ -375,6 +376,272 @@ describe("project playtest runtime", () => {
 
     expect(moved).toBe(lockedSession);
     expect(drawnFromLocked).toBe(lockedSession);
+  });
+
+  it("executes configured draw commands to a table offset", () => {
+    const session = createCommandSession({
+      cardQuantity: 3,
+      deckBehavior: {
+        commands: [
+          {
+            count: 2,
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "draw-offset",
+            label: "Draw Pair",
+            offset: { x: 20, y: 10 },
+            type: "drawFromContainerToTableOffset"
+          }
+        ]
+      }
+    });
+    const drawn = executePlaytestAction(session, {
+      commandId: "draw-offset",
+      itemId: "deck-item",
+      type: "executeCommand"
+    });
+    const [firstDrawnId, secondDrawnId] = drawn.selectedItemIds;
+
+    expect(drawn.itemsById["deck-item"]?.contents).toHaveLength(1);
+    expect(drawn.selectedItemIds).toHaveLength(2);
+    expect(drawn.itemsById[firstDrawnId!]?.rectTransform).toMatchObject({ x: 20, y: 10 });
+    expect(drawn.itemsById[secondDrawnId!]?.rectTransform).toMatchObject({ x: 52, y: 42 });
+  });
+
+  it("executes configured draw commands to target zone slots", () => {
+    const session = createCommandSession({
+      cardQuantity: 3,
+      deckBehavior: {
+        commands: [
+          {
+            count: 2,
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "draw-zone",
+            label: "Draw to Market",
+            targetItemId: "zone-item",
+            type: "drawFromContainerToTargetZone"
+          }
+        ]
+      }
+    });
+    const drawn = executePlaytestAction(session, {
+      commandId: "draw-zone",
+      itemId: "deck-item",
+      type: "executeCommand"
+    });
+
+    expect(drawn.itemsById["deck-item"]?.contents).toHaveLength(1);
+    expect(drawn.selectedItemIds.map((itemId) => drawn.itemsById[itemId]?.zonePlacement)).toEqual([
+      { slotIndex: 0, zoneItemId: "zone-item" },
+      { slotIndex: 1, zoneItemId: "zone-item" }
+    ]);
+  });
+
+  it("previews configured command destinations without mutating runtime state", () => {
+    const session = createCommandSession({
+      cardQuantity: 3,
+      deckBehavior: {
+        commands: [
+          {
+            count: 1,
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "draw-offset",
+            label: "Draw",
+            offset: { x: 20, y: 10 },
+            type: "drawFromContainerToTableOffset"
+          },
+          {
+            count: 1,
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "draw-zone",
+            label: "Draw to Market",
+            targetItemId: "zone-item",
+            type: "drawFromContainerToTargetZone"
+          }
+        ]
+      }
+    });
+    const offsetPreview = getPlaytestCommandDestinationPreview(session, {
+      commandId: "draw-offset",
+      itemId: "deck-item"
+    });
+    const zonePreview = getPlaytestCommandDestinationPreview(session, {
+      commandId: "draw-zone",
+      itemId: "deck-item"
+    });
+
+    expect(offsetPreview?.destinationRectTransform).toMatchObject({ x: 20, y: 10 });
+    expect(zonePreview).toMatchObject({
+      targetItemId: "zone-item",
+      targetRectTransform: { x: 100, y: 100 }
+    });
+    expect(zonePreview?.destinationRectTransform).toEqual(
+      expect.objectContaining({
+        x: expect.any(Number),
+        y: expect.any(Number)
+      })
+    );
+    expect(session.itemsById["deck-item"]?.contents).toHaveLength(3);
+    expect(session.tableItemIds).toEqual(["deck-item", "zone-item"]);
+  });
+
+  it("refills only empty target zone slots from a configured command", () => {
+    const session = createCommandSession({
+      cardQuantity: 3,
+      deckBehavior: {
+        commands: [
+          {
+            count: 1,
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "draw-one-zone",
+            label: "Draw One",
+            targetItemId: "zone-item",
+            type: "drawFromContainerToTargetZone"
+          },
+          {
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "refill-zone",
+            label: "Refill Market",
+            refillMode: "emptySlots",
+            targetItemId: "zone-item",
+            type: "refillTargetZoneFromContainer"
+          }
+        ]
+      }
+    });
+    const withOccupiedSlot = executePlaytestAction(session, {
+      commandId: "draw-one-zone",
+      itemId: "deck-item",
+      type: "executeCommand"
+    });
+    const refilled = executePlaytestAction(withOccupiedSlot, {
+      commandId: "refill-zone",
+      itemId: "deck-item",
+      type: "executeCommand"
+    });
+    const zoneSlotIndexes = Object.values(refilled.itemsById)
+      .filter((item) => item.zonePlacement?.zoneItemId === "zone-item")
+      .map((item) => item.zonePlacement?.slotIndex)
+      .sort();
+
+    expect(refilled.itemsById["deck-item"]?.contents).toHaveLength(0);
+    expect(zoneSlotIndexes).toEqual([0, 1, 2]);
+    expect(refilled.selectedItemIds).toHaveLength(2);
+  });
+
+  it("respects accepted zone rules for configured draw commands", () => {
+    const session = createCommandSession({
+      cardQuantity: 1,
+      deckBehavior: {
+        commands: [
+          {
+            count: 1,
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "draw-zone",
+            label: "Draw to Market",
+            targetItemId: "zone-item",
+            type: "drawFromContainerToTargetZone"
+          }
+        ]
+      },
+      zoneBehavior: { acceptedKinds: ["token"] }
+    });
+    const rejected = executePlaytestAction(session, {
+      commandId: "draw-zone",
+      itemId: "deck-item",
+      type: "executeCommand"
+    });
+
+    expect(rejected).toBe(session);
+  });
+
+  it("applies drawn side before target zone side-on-enter for configured draw commands", () => {
+    const session = createCommandSession({
+      cardQuantity: 1,
+      deckBehavior: {
+        commands: [
+          {
+            count: 1,
+            drawOrder: "top",
+            drawnItemSide: "back",
+            id: "draw-zone",
+            label: "Draw to Market",
+            targetItemId: "zone-item",
+            type: "drawFromContainerToTargetZone"
+          }
+        ]
+      },
+      zoneBehavior: { sideOnEnter: "front" }
+    });
+    const drawn = executePlaytestAction(session, {
+      commandId: "draw-zone",
+      itemId: "deck-item",
+      type: "executeCommand"
+    });
+    const drawnItem = drawn.selectedItemId ? drawn.itemsById[drawn.selectedItemId] : null;
+
+    expect(drawnItem).toMatchObject({
+      activeSide: "front",
+      hidden: false,
+      revealed: true,
+      zonePlacement: { slotIndex: 0, zoneItemId: "zone-item" }
+    });
+  });
+
+  it("safely no-ops configured commands when source or target is missing", () => {
+    const sourceSession = createCommandSession({
+      cardQuantity: 1,
+      deckBehavior: {
+        commands: [
+          {
+            count: 1,
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "draw-offset",
+            label: "Draw",
+            offset: { x: 20, y: 10 },
+            type: "drawFromContainerToTableOffset"
+          }
+        ]
+      }
+    });
+    const targetSession = createCommandSession({
+      cardQuantity: 1,
+      deckBehavior: {
+        commands: [
+          {
+            count: 1,
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "missing-target",
+            label: "Draw to Missing",
+            targetItemId: "missing-zone",
+            type: "drawFromContainerToTargetZone"
+          }
+        ]
+      }
+    });
+
+    expect(
+      executePlaytestAction(sourceSession, {
+        commandId: "draw-offset",
+        itemId: "missing-source",
+        type: "executeCommand"
+      })
+    ).toBe(sourceSession);
+    expect(
+      executePlaytestAction(targetSession, {
+        commandId: "missing-target",
+        itemId: "deck-item",
+        type: "executeCommand"
+      })
+    ).toBe(targetSession);
   });
 
   it("updates score track markers at runtime and supports undo", () => {
@@ -964,6 +1231,111 @@ function createContainerSession({
     now: () => "2026-05-05T00:00:00.000Z",
     projectId: "project-1",
     random,
+    tableSetupFileNode: fileTree[1]!
+  });
+
+  if (!session) {
+    throw new Error("Expected playtest session");
+  }
+
+  return session;
+}
+
+function createCommandSession({
+  cardQuantity,
+  deckBehavior,
+  zoneBehavior = {}
+}: {
+  cardQuantity: number;
+  deckBehavior: ProjectTableSetupItemBehavior;
+  zoneBehavior?: Partial<NonNullable<ProjectTableSetupItemBehavior["zone"]>>;
+}) {
+  const card = createDefaultProjectObjectNode("card-root", "card", "Card");
+  const token = createDefaultProjectObjectNode("token-root", "token", "Token");
+  const deck = createDefaultProjectObjectNode("deck-root", "deck", "Deck");
+  const zone = createDefaultProjectObjectNode("zone-root", "zone", "Zone");
+  deck.components = {
+    ...deck.components,
+    container: {
+      entries: [{ objectFileNodeId: "card-file", quantity: cardQuantity }]
+    }
+  };
+  zone.components = {
+    ...zone.components,
+    appearance: {
+      ...zone.components!.appearance!,
+      padding: 0
+    },
+    layout: {
+      ...zone.components!.layout!,
+      gap: 10,
+      mode: "horizontal"
+    },
+    zone: {
+      mode: "slots",
+      sizeReferenceObjectFileId: "card-file",
+      slots: 3
+    }
+  };
+  const tableSetup: ProjectTableSetup = {
+    ...getDefaultProjectTableSetup(),
+    items: [
+      {
+        behavior: deckBehavior,
+        id: "deck-item",
+        name: "Deck",
+        sourceObjectFileNodeId: "deck-file",
+        transform: { rotation: 0, scaleX: 1, scaleY: 1, x: 0, y: 0 },
+        type: "linkedObject",
+        values: {},
+        visible: true
+      },
+      {
+        behavior: {
+          zone: {
+            acceptedKinds: [],
+            acceptedObjectFileNodeIds: [],
+            allowRemove: true,
+            sideOnEnter: "preserve",
+            slotOccupancy: "single",
+            ...zoneBehavior
+          }
+        },
+        id: "zone-item",
+        name: "Zone",
+        sourceObjectFileNodeId: "zone-file",
+        transform: { rotation: 0, scaleX: 1, scaleY: 1, x: 100, y: 100 },
+        type: "linkedObject",
+        values: {},
+        visible: true
+      }
+    ]
+  };
+  const fileTree: ProjectFileNode[] = [
+    {
+      id: "objects",
+      name: "Objects",
+      type: "folder",
+      children: [
+        { id: "card-file", kind: "object", name: "Card", objectTree: [card], type: "file" },
+        { id: "token-file", kind: "object", name: "Token", objectTree: [token], type: "file" },
+        { id: "deck-file", kind: "object", name: "Deck", objectTree: [deck], type: "file" },
+        { id: "zone-file", kind: "object", name: "Zone", objectTree: [zone], type: "file" }
+      ]
+    },
+    {
+      id: "setup-file",
+      kind: "tableSetup",
+      name: "Setup",
+      tableSetup,
+      type: "file"
+    }
+  ];
+  const session = createPlaytestSession({
+    createId: createDeterministicId(),
+    fileTree,
+    now: () => "2026-05-05T00:00:00.000Z",
+    projectId: "project-1",
     tableSetupFileNode: fileTree[1]!
   });
 

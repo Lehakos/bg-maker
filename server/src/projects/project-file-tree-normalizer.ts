@@ -9,6 +9,9 @@ import type {
   ProjectObjectVariableType,
   ProjectObjectVariableValue,
   ProjectTableSetup,
+  ProjectTableSetupItemCommand,
+  ProjectTableSetupItemCommandTableOffset,
+  ProjectTableSetupItemCommandType,
   ProjectTableSetupItem,
   ProjectTableSetupItemBehavior,
   ProjectTableSetupItemContainerDrawOrder,
@@ -19,6 +22,7 @@ import {
   getDefaultProjectTableSetupGrid,
   getDefaultProjectTableSetupItemTransform,
   getDefaultProjectObjectVariableValue,
+  projectObjectContainerEntryQuantityLimits,
   projectAssetsFolderId,
   projectAssetsFolderName,
   projectObjectKinds,
@@ -47,6 +51,8 @@ const maxProjectObjectVariableCount = 100;
 const maxProjectObjectVariableNameLength = 80;
 const maxProjectObjectVariableTextValueLength = 2000;
 const maxProjectTableSetupItemCount = 1000;
+const maxProjectTableSetupItemCommandCount = 100;
+const maxProjectTableSetupItemCommandLabelLength = 80;
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
 const projectObjectKindSet = new Set<ProjectObjectKind>(projectObjectKinds);
 const projectObjectVariableTypeSet = new Set<ProjectObjectVariableType>(projectObjectVariableTypes);
@@ -54,6 +60,16 @@ const projectTableSetupContainerDrawOrderSet = new Set<ProjectTableSetupItemCont
   "random",
   "top"
 ]);
+const projectTableSetupItemCommandTypeSet = new Set<ProjectTableSetupItemCommandType>([
+  "drawFromContainerToTableOffset",
+  "drawFromContainerToTargetZone",
+  "refillTargetZoneFromContainer",
+  "shuffleContainer"
+]);
+const projectTableSetupItemCommandOffsetLimits = {
+  max: 9999,
+  min: -9999
+} as const;
 
 export function normalizeStoredProject(value: unknown): Project | null {
   if (!value || typeof value !== "object") {
@@ -454,6 +470,13 @@ function normalizeProjectTableSetupItemBehavior(
     };
   }
 
+  if (hasOwnRecordKey(record, "commands")) {
+    behavior.commands = normalizeProjectTableSetupItemCommands(
+      record.commands,
+      behavior.container
+    );
+  }
+
   if (hasOwnRecordKey(record, "zone")) {
     const zone = getRecord(record.zone);
 
@@ -470,6 +493,198 @@ function normalizeProjectTableSetupItemBehavior(
   }
 
   return Object.keys(behavior).length ? behavior : undefined;
+}
+
+function normalizeProjectTableSetupItemCommands(
+  value: unknown,
+  container: ProjectTableSetupItemBehavior["container"]
+): ProjectTableSetupItemCommand[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const commands: ProjectTableSetupItemCommand[] = [];
+  const usedIds = new Set<string>();
+
+  for (const [index, command] of value.slice(0, maxProjectTableSetupItemCommandCount).entries()) {
+    const normalizedCommand = normalizeProjectTableSetupItemCommand(command, {
+      container,
+      index,
+      usedIds
+    });
+
+    if (normalizedCommand) {
+      commands.push(normalizedCommand);
+      usedIds.add(normalizedCommand.id);
+    }
+  }
+
+  return commands;
+}
+
+function normalizeProjectTableSetupItemCommand(
+  value: unknown,
+  {
+    container,
+    index,
+    usedIds
+  }: {
+    container: ProjectTableSetupItemBehavior["container"];
+    index: number;
+    usedIds: ReadonlySet<string>;
+  }
+): ProjectTableSetupItemCommand | null {
+  const record = getRecord(value);
+  const type = normalizeProjectTableSetupItemCommandType(record.type);
+
+  if (!type) {
+    return null;
+  }
+
+  const common = {
+    id: normalizeProjectTableSetupItemCommandId(record.id, index, usedIds),
+    label: normalizeProjectTableSetupItemCommandLabel(record.label, type)
+  };
+
+  if (type === "shuffleContainer") {
+    return {
+      ...common,
+      type
+    };
+  }
+
+  const drawSettings = {
+    drawOrder: normalizeProjectTableSetupItemCommandDrawOrder(
+      record.drawOrder,
+      container?.drawOrder ?? "top"
+    ),
+    drawnItemSide:
+      record.drawnItemSide === "back" || record.drawnItemSide === "front"
+        ? record.drawnItemSide
+        : (container?.drawnItemSide ?? "front")
+  };
+
+  if (type === "drawFromContainerToTableOffset") {
+    return {
+      ...common,
+      ...drawSettings,
+      count: normalizeIntegerNumber(record.count, projectObjectContainerEntryQuantityLimits.min, {
+        max: projectObjectContainerEntryQuantityLimits.max,
+        min: projectObjectContainerEntryQuantityLimits.min
+      }),
+      offset: normalizeProjectTableSetupItemCommandOffset(record.offset),
+      type
+    };
+  }
+
+  const targetItemId = typeof record.targetItemId === "string" ? record.targetItemId.trim() : "";
+
+  if (!targetItemId) {
+    return null;
+  }
+
+  if (type === "drawFromContainerToTargetZone") {
+    return {
+      ...common,
+      ...drawSettings,
+      count: normalizeIntegerNumber(record.count, projectObjectContainerEntryQuantityLimits.min, {
+        max: projectObjectContainerEntryQuantityLimits.max,
+        min: projectObjectContainerEntryQuantityLimits.min
+      }),
+      targetItemId,
+      type
+    };
+  }
+
+  return {
+    ...common,
+    ...drawSettings,
+    refillMode: "emptySlots",
+    targetItemId,
+    type
+  };
+}
+
+function normalizeProjectTableSetupItemCommandType(
+  value: unknown
+): ProjectTableSetupItemCommandType | null {
+  return projectTableSetupItemCommandTypeSet.has(value as ProjectTableSetupItemCommandType)
+    ? (value as ProjectTableSetupItemCommandType)
+    : null;
+}
+
+function normalizeProjectTableSetupItemCommandId(
+  value: unknown,
+  index: number,
+  usedIds: ReadonlySet<string>
+) {
+  const fallbackId = `command-${index + 1}`;
+  const baseId = typeof value === "string" && value.trim() ? value.trim() : fallbackId;
+
+  if (!usedIds.has(baseId)) {
+    return baseId;
+  }
+
+  let suffix = 2;
+  let nextId = `${baseId}-${suffix}`;
+
+  while (usedIds.has(nextId)) {
+    suffix += 1;
+    nextId = `${baseId}-${suffix}`;
+  }
+
+  return nextId;
+}
+
+function normalizeProjectTableSetupItemCommandLabel(
+  value: unknown,
+  type: ProjectTableSetupItemCommandType
+) {
+  const fallback = getDefaultProjectTableSetupItemCommandLabel(type);
+
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const label = value.trim().slice(0, maxProjectTableSetupItemCommandLabelLength);
+
+  return label || fallback;
+}
+
+function getDefaultProjectTableSetupItemCommandLabel(type: ProjectTableSetupItemCommandType) {
+  if (type === "shuffleContainer") {
+    return "Shuffle";
+  }
+
+  if (type === "drawFromContainerToTargetZone") {
+    return "Draw to Zone";
+  }
+
+  if (type === "refillTargetZoneFromContainer") {
+    return "Refill Zone";
+  }
+
+  return "Draw";
+}
+
+function normalizeProjectTableSetupItemCommandDrawOrder(
+  value: unknown,
+  fallback: ProjectTableSetupItemContainerDrawOrder
+): ProjectTableSetupItemContainerDrawOrder {
+  return projectTableSetupContainerDrawOrderSet.has(value as ProjectTableSetupItemContainerDrawOrder)
+    ? (value as ProjectTableSetupItemContainerDrawOrder)
+    : fallback;
+}
+
+function normalizeProjectTableSetupItemCommandOffset(
+  value: unknown
+): ProjectTableSetupItemCommandTableOffset {
+  const record = getRecord(value);
+
+  return {
+    x: normalizeIntegerNumber(record.x, 96, projectTableSetupItemCommandOffsetLimits),
+    y: normalizeIntegerNumber(record.y, 32, projectTableSetupItemCommandOffsetLimits)
+  };
 }
 
 function normalizeProjectTableSetupZoneAcceptedKinds(value: unknown): ProjectObjectKind[] {

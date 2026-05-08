@@ -8,6 +8,7 @@ import {
   Play,
   Plus,
   Redo2,
+  RefreshCw,
   RotateCcw,
   RotateCw,
   Shuffle,
@@ -20,7 +21,12 @@ import {
   getProjectObjectNodeDie,
   getProjectObjectNodeScoreTrack
 } from "../project-objects/project-object-tree";
-import type { PlaytestAction, PlaytestItem, PlaytestSession } from "./project-playtest";
+import type {
+  PlaytestAction,
+  PlaytestCommandPreviewRequest,
+  PlaytestItem,
+  PlaytestSession
+} from "./project-playtest";
 
 type ProjectPlaytestPanelProps = {
   actionToolbarPosition: {
@@ -34,6 +40,7 @@ type ProjectPlaytestPanelProps = {
   session: PlaytestSession | null;
   selectedItem: PlaytestItem | null;
   onAction: (action: PlaytestAction) => void;
+  onCommandPreviewChange?: (preview: PlaytestCommandPreviewRequest | null) => void;
   onRedo: () => void;
   onStop: () => void;
   onUndo: () => void;
@@ -47,6 +54,7 @@ export function ProjectPlaytestPanel({
   session,
   selectedItem,
   onAction,
+  onCommandPreviewChange,
   onRedo,
   onStop,
   onUndo
@@ -83,6 +91,7 @@ export function ProjectPlaytestPanel({
           onAction,
           selectedCanFlip,
           selectedCount,
+          selectedCommands: selectedItem.behavior.commands ?? [],
           selectedIsContainer,
           selectedIsCounter,
           selectedIsDie,
@@ -231,14 +240,22 @@ export function ProjectPlaytestPanel({
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {actionButtons.map((action) => (
+            {actionButtons.map((action, index) => (
               <PlaytestActionButton
-                key={action.title}
+                key={`${action.title}:${index}`}
                 compact={action.compact}
                 displayLabel={action.displayLabel}
                 icon={action.icon}
                 label={action.label}
                 title={action.title}
+                onPreviewEnd={
+                  action.preview ? () => onCommandPreviewChange?.(null) : undefined
+                }
+                onPreviewStart={
+                  action.preview
+                    ? () => onCommandPreviewChange?.(action.preview ?? null)
+                    : undefined
+                }
                 onClick={action.onClick}
               />
             ))}
@@ -303,6 +320,8 @@ function PlaytestActionButton({
   icon,
   label,
   title = label,
+  onPreviewEnd,
+  onPreviewStart,
   onClick
 }: {
   compact?: boolean;
@@ -310,6 +329,8 @@ function PlaytestActionButton({
   icon: ReactNode;
   label: string;
   title?: string;
+  onPreviewEnd?: () => void;
+  onPreviewStart?: () => void;
   onClick: () => void;
 }) {
   return (
@@ -318,7 +339,15 @@ function PlaytestActionButton({
       className={`flex h-10 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 ${compact ? "w-11 min-w-0 px-0 text-base" : "min-w-20"}`}
       title={title}
       type="button"
-      onClick={onClick}
+      onBlur={onPreviewEnd}
+      onClick={() => {
+        onPreviewEnd?.();
+        onClick();
+      }}
+      onFocus={onPreviewStart}
+      onPointerCancel={onPreviewEnd}
+      onPointerEnter={onPreviewStart}
+      onPointerLeave={onPreviewEnd}
     >
       {icon}
       <span className={compact ? "sr-only" : "truncate"}>{displayLabel ?? label}</span>
@@ -435,13 +464,27 @@ type PlaytestToolbarAction = {
   displayLabel?: string;
   icon: ReactNode;
   label: string;
+  preview?: PlaytestCommandPreviewRequest;
   title: string;
   onClick: () => void;
 };
 
+function getCommandPreviewRequest(
+  itemId: string,
+  command: NonNullable<PlaytestItem["behavior"]["commands"]>[number]
+): PlaytestCommandPreviewRequest | undefined {
+  return command.type === "shuffleContainer"
+    ? undefined
+    : {
+        commandId: command.id,
+        itemId
+      };
+}
+
 function getAvailablePlaytestActions({
   onAction,
   selectedCanFlip,
+  selectedCommands,
   selectedCount,
   selectedIsContainer,
   selectedIsCounter,
@@ -454,6 +497,7 @@ function getAvailablePlaytestActions({
 }: {
   onAction: (action: PlaytestAction) => void;
   selectedCanFlip: boolean;
+  selectedCommands: NonNullable<PlaytestItem["behavior"]["commands"]>;
   selectedCount: number;
   selectedIsContainer: boolean;
   selectedIsCounter: boolean;
@@ -468,6 +512,36 @@ function getAvailablePlaytestActions({
 
   if (!selectedInteractable) {
     return actions;
+  }
+
+  for (const command of selectedCommands) {
+    if (command.type === "shuffleContainer" && selectedCount < 2) {
+      continue;
+    }
+
+    if (command.type !== "shuffleContainer" && selectedCount < 1) {
+      continue;
+    }
+
+    actions.push({
+      icon:
+        command.type === "shuffleContainer" ? (
+          <Shuffle size={17} />
+        ) : command.type === "refillTargetZoneFromContainer" ? (
+          <RefreshCw size={17} />
+        ) : (
+          <Play size={17} />
+      ),
+      label: command.label,
+      preview: getCommandPreviewRequest(selectedItem.id, command),
+      title: command.label,
+      onClick: () =>
+        onAction({
+          commandId: command.id,
+          itemId: selectedItem.id,
+          type: "executeCommand"
+        })
+    });
   }
 
   if (selectedRotatable) {
@@ -509,7 +583,7 @@ function getAvailablePlaytestActions({
       })
   });
 
-  if (selectedIsContainer && selectedCount >= 2) {
+  if (!selectedCommands.length && selectedIsContainer && selectedCount >= 2) {
     actions.push({
       icon: <Shuffle size={17} />,
       label: "Shuffle",
@@ -518,7 +592,7 @@ function getAvailablePlaytestActions({
     });
   }
 
-  if (selectedIsContainer && selectedCount >= 1) {
+  if (!selectedCommands.length && selectedIsContainer && selectedCount >= 1) {
     const label =
       selectedObjectKind === "stack"
         ? "Take top"

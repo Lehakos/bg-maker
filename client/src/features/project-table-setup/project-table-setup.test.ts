@@ -1,4 +1,8 @@
-import type { ProjectFileNode, ProjectObjectNode } from "@bg-maker/shared";
+import type {
+  ProjectFileNode,
+  ProjectObjectNode,
+  ProjectTableSetupItemBehavior
+} from "@bg-maker/shared";
 import { getDefaultProjectTableSetup } from "@bg-maker/shared";
 import { describe, expect, it } from "vitest";
 import { getDraggedProjectObjectRectTransform } from "../project-workspace/transform-drag-helpers";
@@ -159,6 +163,48 @@ describe("project table setup helpers", () => {
     expect(getItemId(locked.items[1]!)).toBe(duplicateId);
     expect(locked.items[1]).toMatchObject({ object: { locked: true } });
     expect(reordered.items.map(getItemId)).toEqual([secondItemId, firstItemId]);
+  });
+
+  it("remaps and cleans table setup command target references", () => {
+    const baseDeckItem = createProjectTableSetupLocalObjectItem("deck");
+    const zoneItem = createProjectTableSetupLocalObjectItem("zone");
+    const deckItemId = getItemId(baseDeckItem);
+    const zoneItemId = getItemId(zoneItem);
+    const deckBehavior: ProjectTableSetupItemBehavior = {
+      commands: [
+        {
+          count: 1,
+          drawOrder: "top",
+          drawnItemSide: "front",
+          id: "draw-zone",
+          label: "Draw to Zone",
+          targetItemId: zoneItemId,
+          type: "drawFromContainerToTargetZone"
+        }
+      ]
+    };
+    const deckItem = {
+      ...baseDeckItem,
+      behavior: deckBehavior
+    };
+    const tableSetup = {
+      ...getDefaultProjectTableSetup(),
+      items: [deckItem, zoneItem]
+    };
+    const duplicated = getProjectTableSetupWithDuplicatedItems(tableSetup, [
+      deckItemId,
+      zoneItemId
+    ]);
+    const [duplicatedDeckItemId, duplicatedZoneItemId] = duplicated.itemIds;
+    const duplicatedDeckItem = duplicated.tableSetup.items.find(
+      (item) => getItemId(item) === duplicatedDeckItemId
+    );
+    const removedZone = getProjectTableSetupWithRemovedItem(tableSetup, zoneItemId);
+
+    expect(duplicatedDeckItem?.behavior?.commands?.[0]).toMatchObject({
+      targetItemId: duplicatedZoneItemId
+    });
+    expect(removedZone.items[0]?.behavior?.commands).toEqual([]);
   });
 
   it("updates table setup item behavior without writing to object components", () => {

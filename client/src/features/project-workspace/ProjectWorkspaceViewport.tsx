@@ -9,7 +9,11 @@ import { ProjectFileNodeIcon } from "../project-files/project-file-tree-ui";
 import type { ProjectEditorCommand } from "./project-editor-commands";
 import { ObjectFileWorkspace, TableLayoutWorkspace } from "./ProjectWorkspaceObjectScenes";
 import type { CompositionSurfaceTarget } from "./CompositionRulerOverlay";
-import type { PlaytestAction, PlaytestSession } from "../project-playtest/project-playtest";
+import type {
+  PlaytestAction,
+  PlaytestCommandPreviewRequest,
+  PlaytestSession
+} from "../project-playtest/project-playtest";
 
 type WorkspaceViewportProps = {
   contentFileNode: ProjectFileNode | null;
@@ -19,6 +23,7 @@ type WorkspaceViewportProps = {
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
   parentFolderName?: string;
+  playtestCommandPreview?: PlaytestCommandPreviewRequest | null;
   playtestSession?: PlaytestSession | null;
   readOnly?: boolean;
   selectedNode?: ProjectFileNode;
@@ -43,6 +48,7 @@ export function WorkspaceViewport({
   imageAssets,
   objectTree,
   parentFolderName,
+  playtestCommandPreview = null,
   playtestSession = null,
   readOnly = false,
   selectedNode,
@@ -73,6 +79,7 @@ export function WorkspaceViewport({
         highlightedGuideId={highlightedGuideId}
         imageAssets={imageAssets}
         objectTree={objectTree}
+        playtestCommandPreview={playtestCommandPreview}
         playtestSession={playtestSession}
         readOnly={readOnly}
         selectedObjectId={selectedObjectId}

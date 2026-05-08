@@ -4,6 +4,10 @@ import type {
   ProjectObjectZoneMode,
   ProjectObjectSide,
   ProjectTableSetupItemBehavior,
+  ProjectTableSetupItemCommand,
+  ProjectTableSetupItemCommandTableOffset,
+  ProjectTableSetupItemCommandType,
+  ProjectTableSetupItemContainerBehavior,
   ProjectTableSetupItemContainerDrawOrder,
   ProjectTableSetupItemZoneSideOnEnter,
   ProjectTableSetupItemZoneSlotOccupancy
@@ -17,9 +21,11 @@ import {
   Hand,
   MousePointerClick,
   Move,
+  Plus,
   RotateCw,
   Search,
   Shuffle,
+  Trash2,
   X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -30,6 +36,7 @@ import {
 import { ProjectObjectKindIcon } from "../project-objects/project-object-tree-ui";
 import {
   InspectorBehaviorNumberField,
+  InspectorInlineTextField,
   InspectorSection,
   InspectorSelectField,
   InspectorSwitchField,
@@ -37,14 +44,27 @@ import {
 } from "./inspector-ui";
 import { cx } from "./class-names";
 import {
+  createProjectTableSetupItemCommand,
+  getDefaultProjectTableSetupItemCommandLabel,
+  normalizeProjectTableSetupItemCommandCount,
+  normalizeProjectTableSetupItemCommandOffsetValue,
   normalizeProjectTableSetupItemRotationStep,
+  projectTableSetupItemCommandCountLimits,
+  projectTableSetupItemCommandOffsetLimits,
   projectTableSetupItemRotationStepLimits
 } from "../project-table-setup/project-table-setup-behavior";
 
+export type ProjectTableSetupCommandTargetOption = {
+  label: string;
+  value: string;
+};
+
 type ProjectTableSetupBehaviorSectionProps = {
   behavior: ProjectTableSetupItemBehavior;
+  commandTargetOptions: readonly ProjectTableSetupCommandTargetOption[];
   fileTree: readonly ProjectFileNode[];
   zoneMode?: ProjectObjectZoneMode;
+  onCommandsChange: (commands: ProjectTableSetupItemCommand[]) => void;
   onContainerDrawOrderChange: (value: ProjectTableSetupItemContainerDrawOrder) => void;
   onContainerDrawnItemSideChange: (value: ProjectObjectSide) => void;
   onContainerShuffleOnStartChange: (value: boolean) => void;
@@ -93,6 +113,17 @@ const zoneSlotOccupancyOptions = [
   value: ProjectTableSetupItemZoneSlotOccupancy;
 }[];
 
+const commandTypeOptions = [
+  { label: "Shuffle container", value: "shuffleContainer" },
+  { label: "Draw to table", value: "drawFromContainerToTableOffset" },
+  { label: "Draw to zone", value: "drawFromContainerToTargetZone" },
+  { label: "Refill zone", value: "refillTargetZoneFromContainer" }
+] as const satisfies readonly { label: string; value: ProjectTableSetupItemCommandType }[];
+
+const commandRefillModeOptions = [
+  { label: "Empty slots", value: "emptySlots" }
+] as const satisfies readonly { label: string; value: "emptySlots" }[];
+
 type RotationBehaviorNumberFieldKey = "rotationStep";
 
 const rotationStepField = {
@@ -121,8 +152,10 @@ const acceptedObjectsModeOptions = [
 
 export function ProjectTableSetupBehaviorSection({
   behavior,
+  commandTargetOptions,
   fileTree,
   zoneMode,
+  onCommandsChange,
   onContainerDrawOrderChange,
   onContainerDrawnItemSideChange,
   onContainerShuffleOnStartChange,
@@ -144,6 +177,7 @@ export function ProjectTableSetupBehaviorSection({
     behavior.visibility ||
     behavior.side ||
     behavior.container ||
+    behavior.commands?.length ||
     behavior.zone
   );
 
@@ -221,6 +255,12 @@ export function ProjectTableSetupBehaviorSection({
               onChange={onContainerDrawnItemSideChange}
             />
           </div>
+          <CommandListField
+            commands={behavior.commands ?? []}
+            container={behavior.container}
+            targetOptions={commandTargetOptions}
+            onChange={onCommandsChange}
+          />
         </>
       ) : null}
       {behavior.zone ? (
@@ -310,6 +350,441 @@ function parseRotationStepDraftValue(value: string): number | null {
 
 function formatRotationStepValue(value: number): string {
   return String(normalizeProjectTableSetupItemRotationStep(value));
+}
+
+type CommandListFieldProps = {
+  commands: readonly ProjectTableSetupItemCommand[];
+  container: ProjectTableSetupItemContainerBehavior;
+  targetOptions: readonly ProjectTableSetupCommandTargetOption[];
+  onChange: (commands: ProjectTableSetupItemCommand[]) => void;
+};
+
+type CommandDraftCache = Record<
+  string,
+  Partial<Record<ProjectTableSetupItemCommandType, ProjectTableSetupItemCommand>>
+>;
+
+function CommandListField({ commands, container, targetOptions, onChange }: CommandListFieldProps) {
+  const [draftCache, setDraftCache] = useState<CommandDraftCache>({});
+  const availableTypeOptions = useMemo(
+    () =>
+      targetOptions.length
+        ? commandTypeOptions
+        : commandTypeOptions.filter(
+            (option) =>
+              option.value === "drawFromContainerToTableOffset" ||
+              option.value === "shuffleContainer"
+          ),
+    [targetOptions.length]
+  );
+
+  useEffect(() => {
+    const commandIds = new Set(commands.map((command) => command.id));
+
+    setDraftCache((currentCache) => {
+      const nextCache = Object.fromEntries(
+        Object.entries(currentCache).filter(([commandId]) => commandIds.has(commandId))
+      );
+
+      return Object.keys(nextCache).length === Object.keys(currentCache).length
+        ? currentCache
+        : nextCache;
+    });
+  }, [commands]);
+
+  function addCommand() {
+    onChange([
+      ...commands,
+      createProjectTableSetupItemCommand({
+        container,
+        targetItemId: targetOptions[0]?.value,
+        type: "drawFromContainerToTableOffset"
+      })
+    ]);
+  }
+
+  function removeCommand(commandId: string) {
+    onChange(commands.filter((command) => command.id !== commandId));
+  }
+
+  function updateCommand(nextCommand: ProjectTableSetupItemCommand) {
+    rememberCommandDraft(nextCommand);
+    onChange(commands.map((command) => (command.id === nextCommand.id ? nextCommand : command)));
+  }
+
+  function changeCommandType(
+    command: ProjectTableSetupItemCommand,
+    type: ProjectTableSetupItemCommandType
+  ) {
+    rememberCommandDraft(command);
+    updateCommand(getCommandForType(command, type));
+  }
+
+  function rememberCommandDraft(command: ProjectTableSetupItemCommand) {
+    setDraftCache((currentCache) => ({
+      ...currentCache,
+      [command.id]: {
+        ...currentCache[command.id],
+        [command.type]: command
+      }
+    }));
+  }
+
+  function getCommandForType(
+    command: ProjectTableSetupItemCommand,
+    type: ProjectTableSetupItemCommandType
+  ): ProjectTableSetupItemCommand {
+    const cachedCommand = draftCache[command.id]?.[type];
+    const nextCommand =
+      cachedCommand ??
+      createProjectTableSetupItemCommand({
+        container,
+        targetItemId: targetOptions[0]?.value,
+        type
+      });
+    const currentLabel = command.label.trim();
+    const currentDefaultLabel = getDefaultProjectTableSetupItemCommandLabel(command.type);
+    const nextDefaultLabel = getDefaultProjectTableSetupItemCommandLabel(type);
+    const label =
+      !currentLabel || currentLabel === currentDefaultLabel ? nextDefaultLabel : command.label;
+
+    return normalizeCommandTargetForOptions({
+      ...nextCommand,
+      id: command.id,
+      label,
+      type
+    } as ProjectTableSetupItemCommand);
+  }
+
+  function normalizeCommandTargetForOptions(
+    command: ProjectTableSetupItemCommand
+  ): ProjectTableSetupItemCommand {
+    if (!("targetItemId" in command)) {
+      return command;
+    }
+
+    if (targetOptions.some((option) => option.value === command.targetItemId)) {
+      return command;
+    }
+
+    return {
+      ...command,
+      targetItemId: targetOptions[0]?.value ?? ""
+    };
+  }
+
+  function updateCommandLabel(command: ProjectTableSetupItemCommand, label: string) {
+    updateCommand({ ...command, label });
+  }
+
+  return (
+    <div className="space-y-2 pt-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-slate-500">Commands</span>
+        <button
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700"
+          title="Add command"
+          type="button"
+          onClick={addCommand}
+        >
+          <Plus size={15} />
+        </button>
+      </div>
+      {commands.length ? (
+        <div className="space-y-2">
+          {commands.map((command) => (
+            <div
+              key={command.id}
+              className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2"
+            >
+              <div className="flex items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <InspectorSelectField
+                    label="Type"
+                    value={command.type}
+                    options={availableTypeOptions}
+                    onChange={(type) => changeCommandType(command, type)}
+                  />
+                </div>
+                <button
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-600"
+                  title="Remove command"
+                  type="button"
+                  onClick={() => removeCommand(command.id)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <InspectorInlineTextField
+                label="Label"
+                value={command.label}
+                onChange={(label) => updateCommandLabel(command, label)}
+              />
+              <CommandSettings
+                command={command}
+                targetOptions={targetOptions}
+                onChange={updateCommand}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-500">
+          No commands assigned.
+        </p>
+      )}
+    </div>
+  );
+}
+
+type CommandSettingsProps = {
+  command: ProjectTableSetupItemCommand;
+  targetOptions: readonly ProjectTableSetupCommandTargetOption[];
+  onChange: (command: ProjectTableSetupItemCommand) => void;
+};
+
+function CommandSettings({ command, targetOptions, onChange }: CommandSettingsProps) {
+  if (command.type === "shuffleContainer") {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-500">
+        <Shuffle size={14} />
+        <span>Shuffle</span>
+      </div>
+    );
+  }
+
+  const targetSelectOptions = targetOptions.length
+    ? targetOptions
+    : [{ label: "No zones", value: "" }];
+
+  return (
+    <div className="space-y-2">
+      {"count" in command ? (
+        <CommandNumberField
+          label="Draw count"
+          max={projectTableSetupItemCommandCountLimits.max}
+          min={projectTableSetupItemCommandCountLimits.min}
+          step={1}
+          value={command.count}
+          onChange={(count) =>
+            onChange({
+              ...command,
+              count: normalizeProjectTableSetupItemCommandCount(count)
+            })
+          }
+        />
+      ) : null}
+      <div className="grid grid-cols-2 gap-2">
+        <InspectorSelectField
+          label="Draw order"
+          value={command.drawOrder}
+          options={drawOrderOptions}
+          onChange={(drawOrder) => onChange({ ...command, drawOrder })}
+        />
+        <InspectorSelectField
+          label="Drawn side"
+          value={command.drawnItemSide}
+          options={sideOptions}
+          onChange={(drawnItemSide) => onChange({ ...command, drawnItemSide })}
+        />
+      </div>
+      {command.type === "drawFromContainerToTableOffset" ? (
+        <DrawToTableOffsetSettings command={command} onChange={onChange} />
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          <InspectorSelectField
+            disabled={!targetOptions.length}
+            label="Target zone"
+            value={command.targetItemId}
+            options={targetSelectOptions}
+            onChange={(targetItemId) => onChange({ ...command, targetItemId })}
+          />
+          {command.type === "refillTargetZoneFromContainer" ? (
+            <InspectorSelectField
+              disabled
+              label="Refill mode"
+              value={command.refillMode}
+              options={commandRefillModeOptions}
+              onChange={(refillMode) => onChange({ ...command, refillMode })}
+            />
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type DrawToTableOffsetSettingsProps = {
+  command: Extract<ProjectTableSetupItemCommand, { type: "drawFromContainerToTableOffset" }>;
+  onChange: (command: ProjectTableSetupItemCommand) => void;
+};
+
+function DrawToTableOffsetSettings({ command, onChange }: DrawToTableOffsetSettingsProps) {
+  const [previewOffset, setPreviewOffset] = useState(command.offset);
+
+  useEffect(() => {
+    setPreviewOffset(command.offset);
+  }, [command.offset]);
+
+  function updateOffset(axis: "x" | "y", value: number) {
+    const offset = {
+      ...command.offset,
+      [axis]: normalizeProjectTableSetupItemCommandOffsetValue(value)
+    };
+
+    setPreviewOffset(offset);
+    onChange({
+      ...command,
+      offset
+    });
+  }
+
+  function updatePreviewOffset(axis: "x" | "y", draft: string) {
+    const parsedValue = Number(draft);
+
+    if (!Number.isFinite(parsedValue)) {
+      return;
+    }
+
+    setPreviewOffset({
+      ...previewOffset,
+      [axis]: normalizeProjectTableSetupItemCommandOffsetValue(parsedValue)
+    });
+  }
+
+  return (
+    <>
+      <CommandOffsetPreview offset={previewOffset} />
+      <div className="grid grid-cols-2 gap-2">
+        <CommandNumberField
+          label="Horizontal"
+          max={projectTableSetupItemCommandOffsetLimits.max}
+          min={projectTableSetupItemCommandOffsetLimits.min}
+          step={1}
+          value={command.offset.x}
+          onChange={(value) => updateOffset("x", value)}
+          onDraftChange={(draft) => updatePreviewOffset("x", draft)}
+        />
+        <CommandNumberField
+          label="Vertical"
+          max={projectTableSetupItemCommandOffsetLimits.max}
+          min={projectTableSetupItemCommandOffsetLimits.min}
+          step={1}
+          value={command.offset.y}
+          onChange={(value) => updateOffset("y", value)}
+          onDraftChange={(draft) => updatePreviewOffset("y", draft)}
+        />
+      </div>
+    </>
+  );
+}
+
+function CommandOffsetPreview({ offset }: { offset: ProjectTableSetupItemCommandTableOffset }) {
+  const sourceX = 36;
+  const sourceY = 48;
+  const drawnX = clampPreviewPosition(sourceX + offset.x * 0.18);
+  const drawnY = clampPreviewPosition(sourceY + offset.y * 0.18);
+  const itemPreviewClassName =
+    "absolute h-14 w-10 -translate-x-1/2 -translate-y-1/2 rounded border shadow-sm";
+
+  return (
+    <div
+      aria-label="Draw placement preview"
+      className="relative h-24 overflow-hidden rounded-md border border-slate-200 bg-white"
+      role="img"
+    >
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(148,163,184,0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,0.12)_1px,transparent_1px)] bg-[size:16px_16px]" />
+      <div
+        className={`${itemPreviewClassName} border-slate-300 bg-slate-100`}
+        style={{ left: `${sourceX}%`, top: `${sourceY}%` }}
+      />
+      <div
+        className={`${itemPreviewClassName} border-emerald-500 bg-emerald-100 shadow-emerald-950/10`}
+        style={{ left: `${drawnX}%`, top: `${drawnY}%` }}
+      />
+      <div
+        className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-slate-400"
+        style={{ left: `${sourceX}%`, top: `${sourceY}%` }}
+      />
+      <div
+        className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-600"
+        style={{ left: `${drawnX}%`, top: `${drawnY}%` }}
+      />
+    </div>
+  );
+}
+
+type CommandNumberFieldProps = {
+  label: string;
+  max: number;
+  min: number;
+  step: number;
+  value: number;
+  onChange: (value: number) => void;
+  onDraftChange?: (value: string) => void;
+};
+
+function CommandNumberField({
+  label,
+  max,
+  min,
+  step,
+  value,
+  onChange,
+  onDraftChange
+}: CommandNumberFieldProps) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  function commitDraft() {
+    const parsedValue = Number(draft);
+
+    if (!Number.isFinite(parsedValue)) {
+      setDraft(String(value));
+      return;
+    }
+
+    const normalizedValue = Math.min(max, Math.max(min, Math.round(parsedValue)));
+    setDraft(String(normalizedValue));
+    onChange(normalizedValue);
+  }
+
+  return (
+    <label className="block min-w-0 text-xs font-medium text-slate-500">
+      <span className="flex min-h-5 items-center">{label}</span>
+      <input
+        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm tabular-nums text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        inputMode="decimal"
+        max={max}
+        min={min}
+        step={step}
+        type="number"
+        value={draft}
+        onBlur={commitDraft}
+        onChange={(event) => {
+          setDraft(event.currentTarget.value);
+          onDraftChange?.(event.currentTarget.value);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.currentTarget.blur();
+          }
+
+          if (event.key === "Escape") {
+            event.preventDefault();
+            setDraft(String(value));
+          }
+        }}
+      />
+    </label>
+  );
+}
+
+function clampPreviewPosition(value: number) {
+  return Math.min(88, Math.max(12, value));
 }
 
 type AcceptedObjectsFieldProps = {

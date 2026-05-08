@@ -979,6 +979,142 @@ describe("ProjectService", () => {
     });
   });
 
+  it("preserves configured table setup playtest commands", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "setup-file",
+        kind: "tableSetup",
+        name: "Setup",
+        tableSetup: {
+          backgroundColor: "#6f8b70",
+          composition: { guides: [], snapToGuides: true, snapToObjects: true },
+          grid: { size: 32, snap: true, visible: true },
+          height: 720,
+          items: [
+            {
+              behavior: {
+                container: {
+                  drawOrder: "random",
+                  drawnItemSide: "back",
+                  shuffleOnStart: true
+                },
+                commands: [
+                  {
+                    id: "shuffle",
+                    label: "Shuffle",
+                    type: "shuffleContainer"
+                  },
+                  {
+                    count: projectObjectContainerEntryQuantityLimits.max + 1,
+                    drawOrder: "top",
+                    drawnItemSide: "front",
+                    id: "draw-market",
+                    label: " Draw to Market ",
+                    targetItemId: " zone-item ",
+                    type: "drawFromContainerToTargetZone"
+                  },
+                  {
+                    drawOrder: "top",
+                    drawnItemSide: "front",
+                    id: "refill-market",
+                    label: "Refill Market",
+                    refillMode: "unexpected",
+                    targetItemId: "zone-item",
+                    type: "refillTargetZoneFromContainer"
+                  },
+                  {
+                    count: 2,
+                    drawOrder: "random",
+                    drawnItemSide: "back",
+                    id: "draw-table",
+                    label: "Draw Pair",
+                    offset: { x: 24.8, y: -4.2 },
+                    type: "drawFromContainerToTableOffset"
+                  }
+                ]
+              },
+              id: "deck-item",
+              name: "Deck",
+              sourceObjectFileNodeId: "deck-file",
+              transform: { rotation: 0, scaleX: 1, scaleY: 1, x: 0, y: 0 },
+              type: "linkedObject",
+              values: {},
+              visible: true
+            },
+            {
+              behavior: {
+                zone: {
+                  acceptedObjectFileNodeIds: [],
+                  acceptedKinds: [],
+                  allowRemove: true,
+                  sideOnEnter: "preserve",
+                  slotOccupancy: "single"
+                }
+              },
+              id: "zone-item",
+              name: "Zone",
+              sourceObjectFileNodeId: "zone-file",
+              transform: { rotation: 0, scaleX: 1, scaleY: 1, x: 100, y: 100 },
+              type: "linkedObject",
+              values: {},
+              visible: true
+            }
+          ],
+          width: 960
+        },
+        type: "file"
+      }
+    ]);
+
+    const deckItem = updatedProject?.fileTree[0]?.tableSetup?.items[0];
+
+    expect(deckItem).toMatchObject({
+      behavior: {
+        commands: [
+          {
+            id: "shuffle",
+            label: "Shuffle",
+            type: "shuffleContainer"
+          },
+          {
+            count: projectObjectContainerEntryQuantityLimits.max,
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "draw-market",
+            label: "Draw to Market",
+            targetItemId: "zone-item",
+            type: "drawFromContainerToTargetZone"
+          },
+          {
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "refill-market",
+            label: "Refill Market",
+            refillMode: "emptySlots",
+            targetItemId: "zone-item",
+            type: "refillTargetZoneFromContainer"
+          },
+          {
+            count: 2,
+            drawOrder: "random",
+            drawnItemSide: "back",
+            id: "draw-table",
+            label: "Draw Pair",
+            offset: { x: 25, y: -4 },
+            type: "drawFromContainerToTableOffset"
+          }
+        ],
+        container: {
+          drawOrder: "random",
+          drawnItemSide: "back",
+          shuffleOnStart: true
+        }
+      }
+    });
+  });
+
   it("normalizes stack components as a free-sized token tile and meeple stack", async () => {
     await writeStore([createStoredProject({ id: "project-1" })]);
 

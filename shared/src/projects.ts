@@ -552,6 +552,59 @@ export type ProjectTableSetupItemContainerBehavior = {
   shuffleOnStart: boolean;
 };
 
+export type ProjectTableSetupItemCommandType =
+  | "drawFromContainerToTableOffset"
+  | "drawFromContainerToTargetZone"
+  | "refillTargetZoneFromContainer"
+  | "shuffleContainer";
+
+export type ProjectTableSetupItemCommandTableOffset = {
+  x: number;
+  y: number;
+};
+
+export type ProjectTableSetupItemCommandBase = {
+  id: string;
+  label: string;
+};
+
+export type ProjectTableSetupItemShuffleContainerCommand = ProjectTableSetupItemCommandBase & {
+  type: "shuffleContainer";
+};
+
+export type ProjectTableSetupItemDrawFromContainerToTableOffsetCommand =
+  ProjectTableSetupItemCommandBase & {
+    count: number;
+    drawOrder: ProjectTableSetupItemContainerDrawOrder;
+    drawnItemSide: ProjectObjectSide;
+    offset: ProjectTableSetupItemCommandTableOffset;
+    type: "drawFromContainerToTableOffset";
+  };
+
+export type ProjectTableSetupItemDrawFromContainerToTargetZoneCommand =
+  ProjectTableSetupItemCommandBase & {
+    count: number;
+    drawOrder: ProjectTableSetupItemContainerDrawOrder;
+    drawnItemSide: ProjectObjectSide;
+    targetItemId: string;
+    type: "drawFromContainerToTargetZone";
+  };
+
+export type ProjectTableSetupItemRefillTargetZoneFromContainerCommand =
+  ProjectTableSetupItemCommandBase & {
+    drawOrder: ProjectTableSetupItemContainerDrawOrder;
+    drawnItemSide: ProjectObjectSide;
+    refillMode: "emptySlots";
+    targetItemId: string;
+    type: "refillTargetZoneFromContainer";
+  };
+
+export type ProjectTableSetupItemCommand =
+  | ProjectTableSetupItemDrawFromContainerToTableOffsetCommand
+  | ProjectTableSetupItemDrawFromContainerToTargetZoneCommand
+  | ProjectTableSetupItemRefillTargetZoneFromContainerCommand
+  | ProjectTableSetupItemShuffleContainerCommand;
+
 export type ProjectTableSetupItemZoneSideOnEnter = "back" | "front" | "preserve";
 
 export type ProjectTableSetupItemZoneSlotOccupancy = "single" | "stack";
@@ -565,6 +618,7 @@ export type ProjectTableSetupItemZoneBehavior = {
 };
 
 export type ProjectTableSetupItemBehavior = {
+  commands?: ProjectTableSetupItemCommand[];
   container?: ProjectTableSetupItemContainerBehavior;
   interaction?: ProjectTableSetupItemInteractionBehavior;
   movement?: ProjectTableSetupItemMovementBehavior;

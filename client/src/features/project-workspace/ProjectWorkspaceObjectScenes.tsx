@@ -12,11 +12,14 @@ import {
   type ProjectTableSetup
 } from "@bg-maker/shared";
 import {
+  getPlaytestCommandDestinationPreview,
   getPlaytestItemGroupMoveTransforms,
   getPlaytestItemMovePreview,
   getPlaytestMovePreviewTransforms,
   getPlaytestRenderedObject,
   type PlaytestAction,
+  type PlaytestCommandDestinationPreview,
+  type PlaytestCommandPreviewRequest,
   type PlaytestSession
 } from "../project-playtest/project-playtest";
 import {
@@ -82,6 +85,7 @@ type ProjectWorkspaceSceneProps = {
   highlightedGuideId?: string | null;
   imageAssets: ProjectImageAssetOption[];
   objectTree: ProjectObjectNode[];
+  playtestCommandPreview?: PlaytestCommandPreviewRequest | null;
   playtestSession?: PlaytestSession | null;
   readOnly?: boolean;
   selectedObjectId: string | null;
@@ -105,6 +109,7 @@ export function TableLayoutWorkspace({
   fileNode,
   highlightedGuideId = null,
   imageAssets,
+  playtestCommandPreview = null,
   playtestSession = null,
   readOnly = false,
   selectedObjectId,
@@ -427,6 +432,7 @@ export function TableLayoutWorkspace({
                 previewRectTransforms={previewRectTransforms}
                 composition={composition}
                 directObjectMove={directObjectMove}
+                playtestCommandPreview={playtestCommandPreview}
                 playtestSession={playtestSession}
                 tableSetup={tableSetup}
                 onExecuteCommand={onExecuteCommand}
@@ -645,6 +651,7 @@ type TableSetupSceneProps = {
   selectedObjectIds: string[];
   previewRectTransforms: ReadonlyMap<string, ProjectObjectRectTransform>;
   composition: ProjectCompositionSettings;
+  playtestCommandPreview: PlaytestCommandPreviewRequest | null;
   playtestSession: PlaytestSession | null;
   showEditorOverlays: boolean;
   showInlineObjectControls: boolean;
@@ -685,6 +692,7 @@ function TableSetupScene({
   selectedObjectIds,
   previewRectTransforms,
   composition,
+  playtestCommandPreview,
   playtestSession,
   showEditorOverlays,
   showInlineObjectControls,
@@ -705,6 +713,13 @@ function TableSetupScene({
   );
   const objectSideSelections = useProjectWorkspaceStore((state) => state.objectSideSelections);
   const playtestActive = Boolean(playtestSession);
+  const commandDestinationPreview = useMemo(
+    () =>
+      playtestSession && playtestCommandPreview
+        ? getPlaytestCommandDestinationPreview(playtestSession, playtestCommandPreview)
+        : null,
+    [playtestCommandPreview, playtestSession]
+  );
   const [playtestDropPreview, setPlaytestDropPreview] = useState<PlaytestZoneDropPreview | null>(
     null
   );
@@ -981,6 +996,9 @@ function TableSetupScene({
           />
         );
       })}
+      {commandDestinationPreview ? (
+        <PlaytestCommandDestinationPreviewOverlay preview={commandDestinationPreview} />
+      ) : null}
       {playtestDropPreview && playtestSession ? (
         <PlaytestZoneDropPreviewOverlay
           preview={playtestDropPreview}
@@ -997,6 +1015,39 @@ type PlaytestZoneDropPreviewOverlayProps = {
   preview: PlaytestZoneDropPreview;
   zoneRectTransform?: ProjectObjectRectTransform;
 };
+
+type PlaytestCommandDestinationPreviewOverlayProps = {
+  preview: PlaytestCommandDestinationPreview;
+};
+
+function PlaytestCommandDestinationPreviewOverlay({
+  preview
+}: PlaytestCommandDestinationPreviewOverlayProps) {
+  if (!preview.targetRectTransform && !preview.destinationRectTransform) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-[990]"
+      data-export-exclude="true"
+    >
+      {preview.targetRectTransform ? (
+        <div
+          className="absolute rounded-lg border-2 border-amber-300/90 bg-amber-300/15 shadow-[0_0_0_4px_rgba(252,211,77,0.18),0_0_22px_rgba(252,211,77,0.22)]"
+          style={getRootRectTransformStyle(preview.targetRectTransform)}
+        />
+      ) : null}
+      {preview.destinationRectTransform ? (
+        <div
+          className="absolute rounded-md border-2 border-cyan-200 bg-cyan-200/25 shadow-[0_0_0_4px_rgba(103,232,249,0.2),0_0_18px_rgba(103,232,249,0.2)]"
+          style={getRootRectTransformStyle(preview.destinationRectTransform)}
+        />
+      ) : null}
+    </div>
+  );
+}
 
 function PlaytestZoneDropPreviewOverlay({
   preview,
