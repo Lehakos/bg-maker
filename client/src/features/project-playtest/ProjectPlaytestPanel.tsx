@@ -21,11 +21,12 @@ import {
   getProjectObjectNodeDie,
   getProjectObjectNodeScoreTrack
 } from "../project-objects/project-object-tree";
-import type {
-  PlaytestAction,
-  PlaytestCommandPreviewRequest,
-  PlaytestItem,
-  PlaytestSession
+import {
+  getPlaytestCommandTargetName,
+  type PlaytestAction,
+  type PlaytestCommandPreviewRequest,
+  type PlaytestItem,
+  type PlaytestSession
 } from "./project-playtest";
 
 type ProjectPlaytestPanelProps = {
@@ -86,7 +87,7 @@ export function ProjectPlaytestPanel({
     startY: number;
   } | null>(null);
   const actionButtons =
-    selectedItem && selectedObject
+    selectedItem && selectedObject && session
       ? getAvailablePlaytestActions({
           onAction,
           selectedCanFlip,
@@ -99,7 +100,8 @@ export function ProjectPlaytestPanel({
           selectedRotationStep,
           selectedInteractable,
           selectedItem,
-          selectedObjectKind: selectedObject.kind
+          selectedObjectKind: selectedObject.kind,
+          session
         })
       : [];
 
@@ -247,6 +249,7 @@ export function ProjectPlaytestPanel({
                 displayLabel={action.displayLabel}
                 icon={action.icon}
                 label={action.label}
+                subtitle={action.subtitle}
                 title={action.title}
                 onPreviewEnd={
                   action.preview ? () => onCommandPreviewChange?.(null) : undefined
@@ -319,6 +322,7 @@ function PlaytestActionButton({
   displayLabel,
   icon,
   label,
+  subtitle,
   title = label,
   onPreviewEnd,
   onPreviewStart,
@@ -328,6 +332,7 @@ function PlaytestActionButton({
   displayLabel?: string;
   icon: ReactNode;
   label: string;
+  subtitle?: string;
   title?: string;
   onPreviewEnd?: () => void;
   onPreviewStart?: () => void;
@@ -336,7 +341,7 @@ function PlaytestActionButton({
   return (
     <button
       aria-label={title}
-      className={`flex h-10 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 ${compact ? "w-11 min-w-0 px-0 text-base" : "min-w-20"}`}
+      className={`flex items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 ${subtitle && !compact ? "h-12" : "h-10"} ${compact ? "w-11 min-w-0 px-0 text-base" : "min-w-20"}`}
       title={title}
       type="button"
       onBlur={onPreviewEnd}
@@ -350,7 +355,14 @@ function PlaytestActionButton({
       onPointerLeave={onPreviewEnd}
     >
       {icon}
-      <span className={compact ? "sr-only" : "truncate"}>{displayLabel ?? label}</span>
+      <span className={compact ? "sr-only" : "flex min-w-0 flex-col text-left leading-tight"}>
+        <span className="truncate">{displayLabel ?? label}</span>
+        {subtitle && !compact ? (
+          <span className="truncate text-[10px] font-bold uppercase tracking-normal text-slate-400">
+            {subtitle}
+          </span>
+        ) : null}
+      </span>
     </button>
   );
 }
@@ -465,6 +477,7 @@ type PlaytestToolbarAction = {
   icon: ReactNode;
   label: string;
   preview?: PlaytestCommandPreviewRequest;
+  subtitle?: string;
   title: string;
   onClick: () => void;
 };
@@ -493,7 +506,8 @@ function getAvailablePlaytestActions({
   selectedRotationStep,
   selectedInteractable,
   selectedItem,
-  selectedObjectKind
+  selectedObjectKind,
+  session
 }: {
   onAction: (action: PlaytestAction) => void;
   selectedCanFlip: boolean;
@@ -507,6 +521,7 @@ function getAvailablePlaytestActions({
   selectedInteractable: boolean;
   selectedItem: PlaytestItem;
   selectedObjectKind: PlaytestItem["baseObject"]["kind"];
+  session: PlaytestSession;
 }): PlaytestToolbarAction[] {
   const actions: PlaytestToolbarAction[] = [];
 
@@ -523,6 +538,9 @@ function getAvailablePlaytestActions({
       continue;
     }
 
+    const targetName = getPlaytestCommandTargetName(command, session.itemsById);
+    const subtitle = targetName ? `-> ${targetName}` : undefined;
+
     actions.push({
       icon:
         command.type === "shuffleContainer" ? (
@@ -534,7 +552,8 @@ function getAvailablePlaytestActions({
       ),
       label: command.label,
       preview: getCommandPreviewRequest(selectedItem.id, command),
-      title: command.label,
+      subtitle,
+      title: subtitle ? `${command.label} ${subtitle}` : command.label,
       onClick: () =>
         onAction({
           commandId: command.id,

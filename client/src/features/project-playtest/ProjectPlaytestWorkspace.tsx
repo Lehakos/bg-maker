@@ -18,9 +18,11 @@ import { ProjectPlaytestPanel } from "./ProjectPlaytestPanel";
 import {
   getPlaytestSelectedItem,
   type PlaytestAction,
+  type PlaytestActionResult,
   type PlaytestCommandPreviewRequest,
   type PlaytestSession
 } from "./project-playtest";
+import { getPlaytestActionFeedbackMessage } from "./project-playtest-feedback";
 
 type ProjectPlaytestWorkspaceProps = {
   canRedo: boolean;
@@ -32,7 +34,7 @@ type ProjectPlaytestWorkspaceProps = {
   selectedObjectIds: string[];
   session: PlaytestSession;
   tableSetup: ProjectTableSetup;
-  onExecutePlaytestAction: (action: PlaytestAction) => void;
+  onExecutePlaytestAction: (action: PlaytestAction) => PlaytestActionResult | null;
   onRedo: () => void;
   onSelectObject: (objectId: string | null) => void;
   onSelectObjects: (objectIds: string[], primaryObjectId?: string | null) => void;
@@ -59,6 +61,7 @@ export function ProjectPlaytestWorkspace({
 }: ProjectPlaytestWorkspaceProps) {
   const workspaceRef = useRef<HTMLElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const feedbackTimeoutRef = useRef<number | null>(null);
   const spacePanPressedRef = useRef(false);
   const [panState, setPanState] = useState<{
     clientX: number;
@@ -74,6 +77,11 @@ export function ProjectPlaytestWorkspace({
     top: number;
   } | null>(null);
   const [commandPreview, setCommandPreview] = useState<PlaytestCommandPreviewRequest | null>(null);
+  const [feedback, setFeedback] = useState<{
+    id: number;
+    message: string;
+    status: Exclude<PlaytestActionResult["status"], "applied">;
+  } | null>(null);
   const imageAssets = useMemo(
     () => getProjectImageAssetOptions(project.id, fileTree),
     [fileTree, project.id]
@@ -99,6 +107,37 @@ export function ProjectPlaytestWorkspace({
     void surface;
     // The playtest workspace deliberately omits editor composition controls.
   }, []);
+  const showActionFeedback = useCallback((result: PlaytestActionResult) => {
+    if (result.status === "applied") {
+      return;
+    }
+
+    if (feedbackTimeoutRef.current !== null) {
+      window.clearTimeout(feedbackTimeoutRef.current);
+    }
+
+    setFeedback({
+      id: Date.now(),
+      message: getPlaytestActionFeedbackMessage(result.reason),
+      status: result.status
+    });
+    feedbackTimeoutRef.current = window.setTimeout(() => {
+      setFeedback(null);
+      feedbackTimeoutRef.current = null;
+    }, 2200);
+  }, []);
+  const handleExecutePlaytestAction = useCallback(
+    (action: PlaytestAction) => {
+      const result = onExecutePlaytestAction(action);
+
+      if (result) {
+        showActionFeedback(result);
+      }
+
+      return result;
+    },
+    [onExecutePlaytestAction, showActionFeedback]
+  );
   const updateActionToolbarPosition = useCallback(() => {
     if (!selectedItem || !workspaceRef.current || !scrollContainerRef.current) {
       setActionToolbarPosition(null);
@@ -144,6 +183,14 @@ export function ProjectPlaytestWorkspace({
 
     return () => window.cancelAnimationFrame(animationFrame);
   }, [session, selectedItem, updateActionToolbarPosition]);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current !== null) {
+        window.clearTimeout(feedbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
@@ -285,18 +332,32 @@ export function ProjectPlaytestWorkspace({
           tableSetup={tableSetup}
           onCompositionSurfaceChange={handleCompositionSurfaceChange}
           onExecuteCommand={noopExecuteCommand}
-          onExecutePlaytestAction={onExecutePlaytestAction}
+          onExecutePlaytestAction={handleExecutePlaytestAction}
           onSelectObject={onSelectObject}
           onSelectObjects={onSelectObjects}
         />
       </div>
+      {feedback ? (
+        <div
+          key={feedback.id}
+          aria-live="polite"
+          className={`pointer-events-none absolute left-1/2 top-4 z-[130] -translate-x-1/2 rounded-md border px-3 py-2 text-sm font-semibold shadow-xl backdrop-blur ${
+            feedback.status === "blocked"
+              ? "border-amber-200 bg-amber-50/95 text-amber-900 shadow-amber-950/10"
+              : "border-slate-200 bg-white/95 text-slate-700 shadow-slate-950/10"
+          }`}
+          role="status"
+        >
+          {feedback.message}
+        </div>
+      ) : null}
       <ProjectPlaytestPanel
         actionToolbarPosition={actionToolbarPosition}
         canRedo={canRedo}
         canUndo={canUndo}
         selectedItem={selectedItem}
         session={session}
-        onAction={onExecutePlaytestAction}
+        onAction={handleExecutePlaytestAction}
         onCommandPreviewChange={setCommandPreview}
         onRedo={onRedo}
         onStop={onStop}

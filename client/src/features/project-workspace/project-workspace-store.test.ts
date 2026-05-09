@@ -674,8 +674,11 @@ describe("project workspace store", () => {
     expect(store.getState().workspaceMode).toBe("playtest");
     expect(store.getState().playtestSession?.itemsById["deck-item"]?.contents).toHaveLength(1);
 
-    store.getState().executePlaytestAction({ itemId: "deck-item", type: "drawFromContainer" });
+    const result = store
+      .getState()
+      .executePlaytestAction({ itemId: "deck-item", type: "drawFromContainer" });
 
+    expect(result?.status).toBe("applied");
     expect(store.getState().playtestSession?.itemsById["deck-item"]?.contents).toHaveLength(0);
     expect(savedFileTrees).toEqual([]);
 

@@ -16,6 +16,7 @@ import {
   createPlaytestSession,
   executePlaytestAction,
   getPlaytestCommandDestinationPreview,
+  getPlaytestCommandTargetName,
   getCounterValueWithStep,
   getPlaytestItemGroupMoveTransforms,
   getPlaytestItemMovePreview,
@@ -27,6 +28,7 @@ import {
   redoPlaytestSession,
   undoPlaytestSession
 } from "./project-playtest";
+import { getPlaytestActionFeedbackMessage } from "./project-playtest-feedback";
 
 describe("project playtest runtime", () => {
   it("creates a local table snapshot and expands deck contents without mutating the file tree", () => {
@@ -103,14 +105,16 @@ describe("project playtest runtime", () => {
       itemId: "deck-item",
       type: "drawFromContainer"
     });
-    const drawnItemId = drawn.selectedItemId;
+    expect(drawn.status).toBe("applied");
+    const drawnSession = drawn.session;
+    const drawnItemId = drawnSession.selectedItemId;
 
-    expect(drawn.itemsById["deck-item"]?.contents).toHaveLength(1);
+    expect(drawnSession.itemsById["deck-item"]?.contents).toHaveLength(1);
     expect(drawnItemId).toBeTruthy();
-    expect(drawn.tableItemIds).toContain(drawnItemId);
-    expect(drawn.undoStack).toHaveLength(1);
+    expect(drawnSession.tableItemIds).toContain(drawnItemId);
+    expect(drawnSession.undoStack).toHaveLength(1);
 
-    const undone = undoPlaytestSession(drawn, {
+    const undone = undoPlaytestSession(drawnSession, {
       createId: createDeterministicId("undo"),
       now: () => "2026-05-05T00:01:00.000Z"
     });
@@ -136,41 +140,62 @@ describe("project playtest runtime", () => {
       { itemId: "deck-item", type: "shuffleContainer" },
       { random: () => 0 }
     );
+    expect(shuffled.status).toBe("applied");
+    const shuffledSession = shuffled.session;
 
-    expect(shuffled.itemsById["deck-item"]?.contents).toEqual([...deckContents].reverse());
+    expect(shuffledSession.itemsById["deck-item"]?.contents).toEqual([...deckContents].reverse());
 
-    const flipped = executePlaytestAction(shuffled, { itemId: "card-item", type: "flipItem" });
-    expect(flipped.itemsById["card-item"]?.activeSide).toBe("back");
+    const flipped = executePlaytestAction(shuffledSession, { itemId: "card-item", type: "flipItem" });
+    expect(flipped.status).toBe("applied");
+    const flippedSession = flipped.session;
+    expect(flippedSession.itemsById["card-item"]?.activeSide).toBe("back");
 
-    const hidden = executePlaytestAction(flipped, { itemId: "deck-item", type: "hideItem" });
-    expect(hidden.itemsById["deck-item"]).toMatchObject({ hidden: true, revealed: false });
+    const hidden = executePlaytestAction(flippedSession, { itemId: "deck-item", type: "hideItem" });
+    expect(hidden.status).toBe("applied");
+    const hiddenSession = hidden.session;
+    expect(hiddenSession.itemsById["deck-item"]).toMatchObject({ hidden: true, revealed: false });
 
-    const revealed = executePlaytestAction(hidden, { itemId: "deck-item", type: "revealItem" });
-    expect(revealed.itemsById["deck-item"]).toMatchObject({ hidden: false, revealed: true });
+    const revealed = executePlaytestAction(hiddenSession, { itemId: "deck-item", type: "revealItem" });
+    expect(revealed.status).toBe("applied");
+    const revealedSession = revealed.session;
+    expect(revealedSession.itemsById["deck-item"]).toMatchObject({ hidden: false, revealed: true });
 
     const rolled = executePlaytestAction(
-      revealed,
+      revealedSession,
       { itemId: "die-item", type: "rollDie" },
       { random: () => 0.99 }
     );
-    expect(rolled.itemsById["die-item"]?.dieFace).toBe(6);
+    expect(rolled.status).toBe("applied");
+    const rolledSession = rolled.session;
+    expect(rolledSession.itemsById["die-item"]?.dieFace).toBe(6);
 
-    const increased = executePlaytestAction(rolled, {
+    const increased = executePlaytestAction(rolledSession, {
       itemId: "counter-item",
       type: "incrementCounter"
     });
-    expect(increased.itemsById["counter-item"]?.counterValue).toBe(1);
+    expect(increased.status).toBe("applied");
+    expect(increased.session.itemsById["counter-item"]?.counterValue).toBe(1);
   });
 
   it("renders runtime overrides into project objects", () => {
     const session = createSession();
+    const increased = executePlaytestAction(session, {
+      itemId: "counter-item",
+      type: "incrementCounter"
+    });
+    expect(increased.status).toBe("applied");
     const next = executePlaytestAction(
-      executePlaytestAction(session, { itemId: "counter-item", type: "incrementCounter" }),
+      increased.session,
       { itemId: "die-item", type: "rollDie" },
       { random: () => 0.99 }
     );
-    const counter = getPlaytestRenderedObject(next.itemsById["counter-item"]!, next.itemsById);
-    const die = getPlaytestRenderedObject(next.itemsById["die-item"]!, next.itemsById);
+    expect(next.status).toBe("applied");
+    const nextSession = next.session;
+    const counter = getPlaytestRenderedObject(
+      nextSession.itemsById["counter-item"]!,
+      nextSession.itemsById
+    );
+    const die = getPlaytestRenderedObject(nextSession.itemsById["die-item"]!, nextSession.itemsById);
 
     expect(counter.components?.counter?.defaultValue).toBe(1);
     expect(die.components?.die?.activeFace).toBe(6);
@@ -194,14 +219,16 @@ describe("project playtest runtime", () => {
       itemTransforms: transforms,
       type: "moveItems"
     });
+    expect(moved.status).toBe("applied");
+    const movedSession = moved.session;
 
     expect(transforms).toMatchObject({
       "card-item": { x: -80, y: 40 },
       "die-item": { x: 160, y: 40 }
     });
-    expect(moved.itemsById["card-item"]?.rectTransform).toMatchObject({ x: -80, y: 40 });
-    expect(moved.itemsById["die-item"]?.rectTransform).toMatchObject({ x: 160, y: 40 });
-    expect(moved.itemsById["deck-item"]?.rectTransform).toMatchObject({ x: 0, y: 0 });
+    expect(movedSession.itemsById["card-item"]?.rectTransform).toMatchObject({ x: -80, y: 40 });
+    expect(movedSession.itemsById["die-item"]?.rectTransform).toMatchObject({ x: 160, y: 40 });
+    expect(movedSession.itemsById["deck-item"]?.rectTransform).toMatchObject({ x: 0, y: 0 });
   });
 
   it("rotates playtest items from configured toolbar step", () => {
@@ -240,18 +267,21 @@ describe("project playtest runtime", () => {
       itemId: "card-item",
       type: "rotateItem"
     });
-    const rotatedLeft = executePlaytestAction(rotatedRight, {
+    expect(rotatedRight.status).toBe("applied");
+    const rotatedRightSession = rotatedRight.session;
+    const rotatedLeft = executePlaytestAction(rotatedRightSession, {
       direction: -1,
       itemId: "card-item",
       type: "rotateItem"
     });
+    expect(rotatedLeft.status).toBe("applied");
 
     expect(getRotatedPlaytestItemRectTransform(session.itemsById["card-item"]!, 1)).toMatchObject({
       rotation: 45
     });
-    expect(rotatedRight.itemsById["card-item"]?.rectTransform.rotation).toBe(45);
-    expect(rotatedRight.actionLog.at(-1)?.label).toBe("Rotate Card");
-    expect(rotatedLeft.itemsById["card-item"]?.rectTransform.rotation).toBe(0);
+    expect(rotatedRightSession.itemsById["card-item"]?.rectTransform.rotation).toBe(45);
+    expect(rotatedRightSession.actionLog.at(-1)?.label).toBe("Rotate Card");
+    expect(rotatedLeft.session.itemsById["card-item"]?.rectTransform.rotation).toBe(0);
   });
 
   it("blocks playtest rotation when item behavior disables it", () => {
@@ -291,7 +321,11 @@ describe("project playtest runtime", () => {
       type: "rotateItem"
     });
 
-    expect(rotated).toBe(session);
+    expect(rotated).toMatchObject({
+      reason: "notMovable",
+      session,
+      status: "blocked"
+    });
   });
 
   it("applies counter bounds modes consistently", () => {
@@ -319,8 +353,9 @@ describe("project playtest runtime", () => {
       itemId: "stack-item",
       type: "drawFromContainer"
     });
-    expect(stacked.selectedItemId).toBe(stackContents[0]);
-    expect(stacked.itemsById["stack-item"]?.contents).toEqual([stackContents[1]]);
+    expect(stacked.status).toBe("applied");
+    expect(stacked.session.selectedItemId).toBe(stackContents[0]);
+    expect(stacked.session.itemsById["stack-item"]?.contents).toEqual([stackContents[1]]);
 
     const bagged = executePlaytestAction(
       session,
@@ -330,8 +365,12 @@ describe("project playtest runtime", () => {
       },
       { random: () => 0.5 }
     );
-    expect(bagged.selectedItemId).toBe(bagContents[1]);
-    expect(bagged.itemsById["bag-item"]?.contents).toEqual([bagContents[0], bagContents[2]]);
+    expect(bagged.status).toBe("applied");
+    expect(bagged.session.selectedItemId).toBe(bagContents[1]);
+    expect(bagged.session.itemsById["bag-item"]?.contents).toEqual([
+      bagContents[0],
+      bagContents[2]
+    ]);
   });
 
   it("uses container behavior for startup shuffle, movement, interaction, and drawn side", () => {
@@ -351,7 +390,10 @@ describe("project playtest runtime", () => {
       itemId: "deck-item",
       type: "drawFromContainer"
     });
-    const drawnItem = drawn.selectedItemId ? drawn.itemsById[drawn.selectedItemId] : null;
+    expect(drawn.status).toBe("applied");
+    const drawnItem = drawn.session.selectedItemId
+      ? drawn.session.itemsById[drawn.session.selectedItemId]
+      : null;
     expect(drawnItem).toMatchObject({ activeSide: "back", hidden: false, revealed: true });
 
     const lockedSession = createContainerSession({
@@ -374,8 +416,16 @@ describe("project playtest runtime", () => {
       type: "drawFromContainer"
     });
 
-    expect(moved).toBe(lockedSession);
-    expect(drawnFromLocked).toBe(lockedSession);
+    expect(moved).toMatchObject({
+      reason: "notMovable",
+      session: lockedSession,
+      status: "blocked"
+    });
+    expect(drawnFromLocked).toMatchObject({
+      reason: "notInteractable",
+      session: lockedSession,
+      status: "blocked"
+    });
   });
 
   it("executes configured draw commands to a table offset", () => {
@@ -400,12 +450,14 @@ describe("project playtest runtime", () => {
       itemId: "deck-item",
       type: "executeCommand"
     });
-    const [firstDrawnId, secondDrawnId] = drawn.selectedItemIds;
+    expect(drawn.status).toBe("applied");
+    const drawnSession = drawn.session;
+    const [firstDrawnId, secondDrawnId] = drawnSession.selectedItemIds;
 
-    expect(drawn.itemsById["deck-item"]?.contents).toHaveLength(1);
-    expect(drawn.selectedItemIds).toHaveLength(2);
-    expect(drawn.itemsById[firstDrawnId!]?.rectTransform).toMatchObject({ x: 20, y: 10 });
-    expect(drawn.itemsById[secondDrawnId!]?.rectTransform).toMatchObject({ x: 52, y: 42 });
+    expect(drawnSession.itemsById["deck-item"]?.contents).toHaveLength(1);
+    expect(drawnSession.selectedItemIds).toHaveLength(2);
+    expect(drawnSession.itemsById[firstDrawnId!]?.rectTransform).toMatchObject({ x: 20, y: 10 });
+    expect(drawnSession.itemsById[secondDrawnId!]?.rectTransform).toMatchObject({ x: 52, y: 42 });
   });
 
   it("executes configured draw commands to target zone slots", () => {
@@ -430,9 +482,13 @@ describe("project playtest runtime", () => {
       itemId: "deck-item",
       type: "executeCommand"
     });
+    expect(drawn.status).toBe("applied");
+    const drawnSession = drawn.session;
 
-    expect(drawn.itemsById["deck-item"]?.contents).toHaveLength(1);
-    expect(drawn.selectedItemIds.map((itemId) => drawn.itemsById[itemId]?.zonePlacement)).toEqual([
+    expect(drawnSession.itemsById["deck-item"]?.contents).toHaveLength(1);
+    expect(
+      drawnSession.selectedItemIds.map((itemId) => drawnSession.itemsById[itemId]?.zonePlacement)
+    ).toEqual([
       { slotIndex: 0, zoneItemId: "zone-item" },
       { slotIndex: 1, zoneItemId: "zone-item" }
     ]);
@@ -488,6 +544,52 @@ describe("project playtest runtime", () => {
     expect(session.tableItemIds).toEqual(["deck-item", "zone-item"]);
   });
 
+  it("formats configured command target names for toolbar display", () => {
+    const session = createCommandSession({
+      cardQuantity: 1,
+      deckBehavior: {
+        commands: [
+          {
+            count: 1,
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "draw-offset",
+            label: "Draw",
+            offset: { x: 20, y: 10 },
+            type: "drawFromContainerToTableOffset"
+          },
+          {
+            count: 1,
+            drawOrder: "top",
+            drawnItemSide: "front",
+            id: "draw-zone",
+            label: "Draw to Market",
+            targetItemId: "zone-item",
+            type: "drawFromContainerToTargetZone"
+          }
+        ]
+      }
+    });
+    const commands = session.itemsById["deck-item"]?.behavior.commands ?? [];
+
+    expect(getPlaytestCommandTargetName(commands[0]!, session.itemsById)).toBe("Table");
+    expect(getPlaytestCommandTargetName(commands[1]!, session.itemsById)).toBe("Zone");
+    expect(
+      getPlaytestCommandTargetName(
+        {
+          count: 1,
+          drawOrder: "top",
+          drawnItemSide: "front",
+          id: "draw-missing",
+          label: "Draw to Missing",
+          targetItemId: "missing-zone",
+          type: "drawFromContainerToTargetZone"
+        },
+        session.itemsById
+      )
+    ).toBe("Missing target");
+  });
+
   it("refills only empty target zone slots from a configured command", () => {
     const session = createCommandSession({
       cardQuantity: 3,
@@ -519,19 +621,22 @@ describe("project playtest runtime", () => {
       itemId: "deck-item",
       type: "executeCommand"
     });
-    const refilled = executePlaytestAction(withOccupiedSlot, {
+    expect(withOccupiedSlot.status).toBe("applied");
+    const refilled = executePlaytestAction(withOccupiedSlot.session, {
       commandId: "refill-zone",
       itemId: "deck-item",
       type: "executeCommand"
     });
-    const zoneSlotIndexes = Object.values(refilled.itemsById)
+    expect(refilled.status).toBe("applied");
+    const refilledSession = refilled.session;
+    const zoneSlotIndexes = Object.values(refilledSession.itemsById)
       .filter((item) => item.zonePlacement?.zoneItemId === "zone-item")
       .map((item) => item.zonePlacement?.slotIndex)
       .sort();
 
-    expect(refilled.itemsById["deck-item"]?.contents).toHaveLength(0);
+    expect(refilledSession.itemsById["deck-item"]?.contents).toHaveLength(0);
     expect(zoneSlotIndexes).toEqual([0, 1, 2]);
-    expect(refilled.selectedItemIds).toHaveLength(2);
+    expect(refilledSession.selectedItemIds).toHaveLength(2);
   });
 
   it("respects accepted zone rules for configured draw commands", () => {
@@ -558,7 +663,11 @@ describe("project playtest runtime", () => {
       type: "executeCommand"
     });
 
-    expect(rejected).toBe(session);
+    expect(rejected).toMatchObject({
+      reason: "zoneRejectedItem",
+      session,
+      status: "blocked"
+    });
   });
 
   it("applies drawn side before target zone side-on-enter for configured draw commands", () => {
@@ -584,7 +693,11 @@ describe("project playtest runtime", () => {
       itemId: "deck-item",
       type: "executeCommand"
     });
-    const drawnItem = drawn.selectedItemId ? drawn.itemsById[drawn.selectedItemId] : null;
+    expect(drawn.status).toBe("applied");
+    const drawnSession = drawn.session;
+    const drawnItem = drawnSession.selectedItemId
+      ? drawnSession.itemsById[drawnSession.selectedItemId]
+      : null;
 
     expect(drawnItem).toMatchObject({
       activeSide: "front",
@@ -634,14 +747,22 @@ describe("project playtest runtime", () => {
         itemId: "missing-source",
         type: "executeCommand"
       })
-    ).toBe(sourceSession);
+    ).toMatchObject({
+      reason: "missingSourceOrTarget",
+      session: sourceSession,
+      status: "noop"
+    });
     expect(
       executePlaytestAction(targetSession, {
         commandId: "missing-target",
         itemId: "deck-item",
         type: "executeCommand"
       })
-    ).toBe(targetSession);
+    ).toMatchObject({
+      reason: "missingSourceOrTarget",
+      session: targetSession,
+      status: "noop"
+    });
   });
 
   it("updates score track markers at runtime and supports undo", () => {
@@ -651,12 +772,14 @@ describe("project playtest runtime", () => {
       markerId: "player-1",
       type: "incrementScoreTrackMarker"
     });
-    const rendered = getPlaytestRenderedObject(increased.itemsById["score-item"]!);
+    expect(increased.status).toBe("applied");
+    const increasedSession = increased.session;
+    const rendered = getPlaytestRenderedObject(increasedSession.itemsById["score-item"]!);
 
-    expect(increased.itemsById["score-item"]?.scoreTrackMarkers?.[0]?.value).toBe(1);
+    expect(increasedSession.itemsById["score-item"]?.scoreTrackMarkers?.[0]?.value).toBe(1);
     expect(rendered.components?.scoreTrack?.markers[0]?.value).toBe(1);
 
-    const undone = undoPlaytestSession(increased);
+    const undone = undoPlaytestSession(increasedSession);
     expect(undone.itemsById["score-item"]?.scoreTrackMarkers?.[0]?.value).toBe(0);
 
     const redone = redoPlaytestSession(undone);
@@ -673,8 +796,8 @@ describe("project playtest runtime", () => {
       type: "incrementScoreTrackMarker"
     });
 
-    expect(clampedMin.itemsById["score-item"]?.scoreTrackMarkers?.[0]?.value).toBe(0);
-    expect(clampedMax.itemsById["score-item"]?.scoreTrackMarkers?.[1]?.value).toBe(2);
+    expect(clampedMin).toMatchObject({ reason: "noChange", session, status: "noop" });
+    expect(clampedMax).toMatchObject({ reason: "noChange", session, status: "noop" });
 
     const scoreTrack = session.itemsById["score-item"]!.baseObject.components!.scoreTrack!;
     expect(getScoreTrackMarkerValueWithStep(scoreTrack, 2, 1)).toBe(2);
@@ -692,22 +815,27 @@ describe("project playtest runtime", () => {
       },
       type: "moveItems"
     });
+    expect(moved.status).toBe("applied");
+    const movedSession = moved.session;
 
-    expect(moved.itemsById["card-item"]?.zonePlacement).toEqual({ zoneItemId: "zone-item" });
-    expect(moved.itemsById["card-item"]?.rectTransform).toMatchObject({ x: 120, y: 115 });
+    expect(movedSession.itemsById["card-item"]?.zonePlacement).toEqual({
+      zoneItemId: "zone-item"
+    });
+    expect(movedSession.itemsById["card-item"]?.rectTransform).toMatchObject({ x: 120, y: 115 });
 
-    const movedOut = executePlaytestAction(moved, {
+    const movedOut = executePlaytestAction(movedSession, {
       itemTransforms: {
         "card-item": {
-          ...moved.itemsById["card-item"]!.rectTransform,
+          ...movedSession.itemsById["card-item"]!.rectTransform,
           x: 0,
           y: 0
         }
       },
       type: "moveItems"
     });
+    expect(movedOut.status).toBe("applied");
 
-    expect(movedOut.itemsById["card-item"]?.zonePlacement).toBeUndefined();
+    expect(movedOut.session.itemsById["card-item"]?.zonePlacement).toBeUndefined();
   });
 
   it("renders placed items above their zone even when the zone started on top", () => {
@@ -722,13 +850,17 @@ describe("project playtest runtime", () => {
       },
       type: "moveItems"
     });
+    expect(moved.status).toBe("applied");
+    const movedSession = moved.session;
 
     expect(session.tableItemIds.indexOf("zone-item")).toBeGreaterThan(
       session.tableItemIds.indexOf("card-item")
     );
-    expect(moved.itemsById["card-item"]?.zonePlacement).toEqual({ zoneItemId: "zone-item" });
-    expect(moved.tableItemIds.indexOf("card-item")).toBeGreaterThan(
-      moved.tableItemIds.indexOf("zone-item")
+    expect(movedSession.itemsById["card-item"]?.zonePlacement).toEqual({
+      zoneItemId: "zone-item"
+    });
+    expect(movedSession.tableItemIds.indexOf("card-item")).toBeGreaterThan(
+      movedSession.tableItemIds.indexOf("zone-item")
     );
   });
 
@@ -744,19 +876,26 @@ describe("project playtest runtime", () => {
       },
       type: "moveItems"
     });
-    const movedZone = executePlaytestAction(movedCard, {
+    expect(movedCard.status).toBe("applied");
+    const movedCardSession = movedCard.session;
+    const movedZone = executePlaytestAction(movedCardSession, {
       itemTransforms: {
         "zone-item": {
-          ...movedCard.itemsById["zone-item"]!.rectTransform,
+          ...movedCardSession.itemsById["zone-item"]!.rectTransform,
           x: 200,
           y: 150
         }
       },
       type: "moveItems"
     });
+    expect(movedZone.status).toBe("applied");
+    const movedZoneSession = movedZone.session;
 
-    expect(movedZone.itemsById["zone-item"]?.rectTransform).toMatchObject({ x: 200, y: 150 });
-    expect(movedZone.itemsById["card-item"]).toMatchObject({
+    expect(movedZoneSession.itemsById["zone-item"]?.rectTransform).toMatchObject({
+      x: 200,
+      y: 150
+    });
+    expect(movedZoneSession.itemsById["card-item"]).toMatchObject({
       rectTransform: { x: 220, y: 165 },
       zonePlacement: { zoneItemId: "zone-item" }
     });
@@ -774,20 +913,25 @@ describe("project playtest runtime", () => {
       },
       type: "moveItems"
     });
-    const transforms = getPlaytestZoneContentMovePreviewTransforms(movedCard, "zone-item", {
-      ...movedCard.itemsById["zone-item"]!.rectTransform,
+    expect(movedCard.status).toBe("applied");
+    const movedCardSession = movedCard.session;
+    const transforms = getPlaytestZoneContentMovePreviewTransforms(movedCardSession, "zone-item", {
+      ...movedCardSession.itemsById["zone-item"]!.rectTransform,
       x: 200,
       y: 150
     });
 
     expect(transforms).toEqual({
       "card-item": {
-        ...movedCard.itemsById["card-item"]!.rectTransform,
+        ...movedCardSession.itemsById["card-item"]!.rectTransform,
         x: 220,
         y: 165
       }
     });
-    expect(movedCard.itemsById["card-item"]?.rectTransform).toMatchObject({ x: 120, y: 115 });
+    expect(movedCardSession.itemsById["card-item"]?.rectTransform).toMatchObject({
+      x: 120,
+      y: 115
+    });
   });
 
   it("previews selected playtest group movement with zone contents", () => {
@@ -802,9 +946,11 @@ describe("project playtest runtime", () => {
       },
       type: "moveItems"
     });
-    const zoneTransform = movedCard.itemsById["zone-item"]!.rectTransform;
+    expect(movedCard.status).toBe("applied");
+    const movedCardSession = movedCard.session;
+    const zoneTransform = movedCardSession.itemsById["zone-item"]!.rectTransform;
     const transforms = getPlaytestItemGroupMoveTransforms(
-      movedCard,
+      movedCardSession,
       ["zone-item", "token-item"],
       "zone-item",
       zoneTransform,
@@ -814,15 +960,21 @@ describe("project playtest runtime", () => {
         y: 150
       }
     );
-    const previewTransforms = getPlaytestMovePreviewTransforms(movedCard, transforms);
+    const previewTransforms = getPlaytestMovePreviewTransforms(movedCardSession, transforms);
 
     expect(previewTransforms).toMatchObject({
       "card-item": { x: 220, y: 165 },
       "token-item": { x: 100, y: 270 },
       "zone-item": { x: 200, y: 150 }
     });
-    expect(movedCard.itemsById["card-item"]?.rectTransform).toMatchObject({ x: 120, y: 115 });
-    expect(movedCard.itemsById["token-item"]?.rectTransform).toMatchObject({ x: 0, y: 220 });
+    expect(movedCardSession.itemsById["card-item"]?.rectTransform).toMatchObject({
+      x: 120,
+      y: 115
+    });
+    expect(movedCardSession.itemsById["token-item"]?.rectTransform).toMatchObject({
+      x: 0,
+      y: 220
+    });
   });
 
   it("blocks exit from no-remove zones", () => {
@@ -840,10 +992,12 @@ describe("project playtest runtime", () => {
       },
       type: "moveItems"
     });
-    const movedOut = executePlaytestAction(moved, {
+    expect(moved.status).toBe("applied");
+    const movedSession = moved.session;
+    const movedOut = executePlaytestAction(movedSession, {
       itemTransforms: {
         "card-item": {
-          ...moved.itemsById["card-item"]!.rectTransform,
+          ...movedSession.itemsById["card-item"]!.rectTransform,
           x: 0,
           y: 0
         }
@@ -851,8 +1005,14 @@ describe("project playtest runtime", () => {
       type: "moveItems"
     });
 
-    expect(moved.itemsById["card-item"]?.zonePlacement).toEqual({ zoneItemId: "zone-item" });
-    expect(movedOut).toBe(moved);
+    expect(movedSession.itemsById["card-item"]?.zonePlacement).toEqual({
+      zoneItemId: "zone-item"
+    });
+    expect(movedOut).toMatchObject({
+      reason: "removeBlocked",
+      session: movedSession,
+      status: "blocked"
+    });
   });
 
   it("snaps slot zones and rejects full single-occupancy slots", () => {
@@ -867,10 +1027,12 @@ describe("project playtest runtime", () => {
       },
       type: "moveItems"
     });
-    const rejectedToken = executePlaytestAction(movedCard, {
+    expect(movedCard.status).toBe("applied");
+    const movedCardSession = movedCard.session;
+    const rejectedToken = executePlaytestAction(movedCardSession, {
       itemTransforms: {
         "token-item": {
-          ...movedCard.itemsById["token-item"]!.rectTransform,
+          ...movedCardSession.itemsById["token-item"]!.rectTransform,
           x: 65,
           y: 100
         }
@@ -878,12 +1040,49 @@ describe("project playtest runtime", () => {
       type: "moveItems"
     });
 
-    expect(movedCard.itemsById["card-item"]?.zonePlacement).toEqual({
+    expect(movedCardSession.itemsById["card-item"]?.zonePlacement).toEqual({
       slotIndex: 0,
       zoneItemId: "zone-item"
     });
-    expect(movedCard.itemsById["card-item"]?.rectTransform).toMatchObject({ x: 63.5, y: 100 });
-    expect(rejectedToken).toBe(movedCard);
+    expect(movedCardSession.itemsById["card-item"]?.rectTransform).toMatchObject({
+      x: 63.5,
+      y: 100
+    });
+    expect(rejectedToken).toMatchObject({
+      reason: "slotOccupied",
+      session: movedCardSession,
+      status: "blocked"
+    });
+  });
+
+  it("returns rejected move previews with target context and feedback labels", () => {
+    const session = createZoneSession({ zoneMode: "slots" });
+    const movedCard = executePlaytestAction(session, {
+      itemTransforms: {
+        "card-item": {
+          ...session.itemsById["card-item"]!.rectTransform,
+          x: 65,
+          y: 100
+        }
+      },
+      type: "moveItems"
+    });
+
+    expect(movedCard.status).toBe("applied");
+
+    const preview = getPlaytestItemMovePreview(movedCard.session, "token-item", {
+      ...movedCard.session.itemsById["token-item"]!.rectTransform,
+      x: 65,
+      y: 100
+    });
+
+    expect(preview).toMatchObject({
+      accepted: false,
+      reason: "slotOccupied",
+      targetItemId: "zone-item",
+      targetRectTransform: { x: 100, y: 100 }
+    });
+    expect(getPlaytestActionFeedbackMessage("slotOccupied")).toBe("That slot is occupied.");
   });
 
   it("previews accepted item movement into zones", () => {
@@ -922,22 +1121,26 @@ describe("project playtest runtime", () => {
       },
       type: "moveItems"
     });
-    const movedToken = executePlaytestAction(movedCard, {
+    expect(movedCard.status).toBe("applied");
+    const movedCardSession = movedCard.session;
+    const movedToken = executePlaytestAction(movedCardSession, {
       itemTransforms: {
         "token-item": {
-          ...movedCard.itemsById["token-item"]!.rectTransform,
+          ...movedCardSession.itemsById["token-item"]!.rectTransform,
           x: 65,
           y: 100
         }
       },
       type: "moveItems"
     });
+    expect(movedToken.status).toBe("applied");
+    const movedTokenSession = movedToken.session;
 
-    expect(movedToken.itemsById["card-item"]?.zonePlacement).toEqual({
+    expect(movedTokenSession.itemsById["card-item"]?.zonePlacement).toEqual({
       slotIndex: 0,
       zoneItemId: "zone-item"
     });
-    expect(movedToken.itemsById["token-item"]?.zonePlacement).toEqual({
+    expect(movedTokenSession.itemsById["token-item"]?.zonePlacement).toEqual({
       slotIndex: 0,
       zoneItemId: "zone-item"
     });
@@ -969,8 +1172,15 @@ describe("project playtest runtime", () => {
       type: "moveItems"
     });
 
-    expect(rejectedCard).toBe(session);
-    expect(movedToken.itemsById["token-item"]?.zonePlacement).toEqual({ zoneItemId: "zone-item" });
+    expect(rejectedCard).toMatchObject({
+      reason: "zoneRejectedItem",
+      session,
+      status: "blocked"
+    });
+    expect(movedToken.status).toBe("applied");
+    expect(movedToken.session.itemsById["token-item"]?.zonePlacement).toEqual({
+      zoneItemId: "zone-item"
+    });
   });
 
   it("accepts specific project object files in zone filters", () => {
@@ -988,6 +1198,7 @@ describe("project playtest runtime", () => {
       },
       type: "moveItems"
     });
+    expect(movedCard.status).toBe("applied");
     const rejectedToken = executePlaytestAction(session, {
       itemTransforms: {
         "token-item": {
@@ -999,8 +1210,14 @@ describe("project playtest runtime", () => {
       type: "moveItems"
     });
 
-    expect(movedCard.itemsById["card-item"]?.zonePlacement).toEqual({ zoneItemId: "zone-item" });
-    expect(rejectedToken).toBe(session);
+    expect(movedCard.session.itemsById["card-item"]?.zonePlacement).toEqual({
+      zoneItemId: "zone-item"
+    });
+    expect(rejectedToken).toMatchObject({
+      reason: "zoneRejectedItem",
+      session,
+      status: "blocked"
+    });
   });
 
   it("applies side on enter and restores placement through undo and redo", () => {
@@ -1018,15 +1235,17 @@ describe("project playtest runtime", () => {
       },
       type: "moveItems"
     });
+    expect(moved.status).toBe("applied");
+    const movedSession = moved.session;
 
-    expect(moved.itemsById["card-item"]).toMatchObject({
+    expect(movedSession.itemsById["card-item"]).toMatchObject({
       activeSide: "back",
       hidden: false,
       revealed: true,
       zonePlacement: { zoneItemId: "zone-item" }
     });
 
-    const undone = undoPlaytestSession(moved);
+    const undone = undoPlaytestSession(movedSession);
     const redone = redoPlaytestSession(undone);
 
     expect(undone.itemsById["card-item"]).toMatchObject({

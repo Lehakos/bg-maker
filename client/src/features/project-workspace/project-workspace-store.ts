@@ -14,6 +14,7 @@ import {
   selectPlaytestItems,
   undoPlaytestSession,
   type PlaytestAction,
+  type PlaytestActionResult,
   type PlaytestSession,
   type ProjectWorkspaceMode
 } from "../project-playtest/project-playtest";
@@ -104,7 +105,7 @@ export type ProjectWorkspaceStoreState = {
   closeWorkspaceTab: (nodeId: string) => void;
   closeWorkspaceTabsToRight: (nodeId: string) => void;
   clipboard: ProjectWorkspaceClipboard;
-  executePlaytestAction: (action: PlaytestAction) => void;
+  executePlaytestAction: (action: PlaytestAction) => PlaytestActionResult | null;
   executeCommand: (command: ProjectEditorCommand) => void;
   fileTree: ProjectFileNode[];
   objectSideSelections: ProjectObjectSideSelections;
@@ -248,20 +249,23 @@ export function createProjectWorkspaceStore({
       const state = get();
 
       if (!state.playtestSession) {
-        return;
+        return null;
       }
 
-      const nextSession = executePlaytestRuntimeAction(state.playtestSession, action);
+      const result = executePlaytestRuntimeAction(state.playtestSession, action);
 
-      if (nextSession === state.playtestSession) {
-        return;
+      if (result.status !== "applied") {
+        return result;
       }
+
+      const nextSession = result.session;
 
       writeProjectWorkspacePlaytestSession(state.projectId, nextSession);
       set({
         playtestSession: nextSession,
         workspaceMode: "playtest"
       });
+      return result;
     },
     executeCommand: (command) => {
       const state = get();

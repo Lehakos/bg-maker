@@ -18,6 +18,7 @@ import {
   getPlaytestMovePreviewTransforms,
   getPlaytestRenderedObject,
   type PlaytestAction,
+  type PlaytestActionResultReason,
   type PlaytestCommandDestinationPreview,
   type PlaytestCommandPreviewRequest,
   type PlaytestSession
@@ -678,7 +679,9 @@ type TableSetupSceneProps = {
 
 type PlaytestZoneDropPreview = {
   itemId: string;
+  reason?: PlaytestActionResultReason;
   rectTransform: ProjectObjectRectTransform;
+  status: "accepted" | "rejected";
   zoneItemId: string;
 };
 
@@ -902,11 +905,28 @@ function TableSetupScene({
       : null;
 
     setPlaytestPreviewRectTransforms(new Map(Object.entries(previewTransforms)));
+
+    if (!movePreview.accepted) {
+      setPlaytestDropPreview(
+        movePreview.targetItemId
+          ? {
+              itemId: objectId,
+              reason: movePreview.reason,
+              rectTransform: after,
+              status: "rejected",
+              zoneItemId: movePreview.targetItemId
+            }
+          : null
+      );
+      return;
+    }
+
     setPlaytestDropPreview(
-      movePreview.accepted && zoneItemId
+      zoneItemId
         ? {
             itemId: objectId,
             rectTransform: movePreview.item.rectTransform,
+            status: "accepted",
             zoneItemId
           }
         : null
@@ -1064,11 +1084,21 @@ function PlaytestZoneDropPreviewOverlay({
       data-export-exclude="true"
     >
       <div
-        className="absolute rounded-lg border-2 border-emerald-300/80 bg-emerald-300/10 shadow-[0_0_0_3px_rgba(16,185,129,0.18),0_0_20px_rgba(16,185,129,0.18)]"
+        className={cx(
+          "absolute rounded-lg border-2 shadow-[0_0_0_3px_rgba(16,185,129,0.18),0_0_20px_rgba(16,185,129,0.18)]",
+          preview.status === "accepted"
+            ? "border-emerald-300/80 bg-emerald-300/10"
+            : "border-amber-300/90 bg-amber-300/15"
+        )}
         style={getRootRectTransformStyle(zoneRectTransform)}
       />
       <div
-        className="absolute rounded-md border-2 border-cyan-200 bg-cyan-200/20 shadow-[0_0_0_4px_rgba(103,232,249,0.2),0_0_18px_rgba(103,232,249,0.2)]"
+        className={cx(
+          "absolute rounded-md border-2 shadow-[0_0_0_4px_rgba(103,232,249,0.2),0_0_18px_rgba(103,232,249,0.2)]",
+          preview.status === "accepted"
+            ? "border-cyan-200 bg-cyan-200/20"
+            : "border-red-300 bg-red-300/15"
+        )}
         style={getRootRectTransformStyle(preview.rectTransform)}
       />
     </div>

@@ -62,15 +62,13 @@ River", вместо показа всех возможных container actions 
 
 ## P0 - UX Зон И Контейнеров В Плейтесте
 
-- [ ] Сделать capacity зоны и slot occupancy понятнее в инспекторе.
-- [ ] Ясно показывать target names команд в playtest toolbar.
-- [ ] Добавить простой способ понять, на какую zone/container указывает
-      configured command.
+- [x] Сделать capacity зоны и slot occupancy понятнее в инспекторе.
+- [x] Ясно показывать target names команд в playtest toolbar и preview.
 - [x] Добавить label команды в playtest action history.
-- [ ] Добавить feedback при move/drop в зону, когда команда размещает объекты в
-      slots.
-- [ ] Добавить поведение "empty slots first" для slot zones.
-- [ ] Добавить явный blocked/no-op result для отклоненных command moves, чтобы
+- [x] Добавить feedback при move/drop в зону, когда команда размещает объекты в
+      slots или действие блокируется.
+- [x] Добавить поведение "empty slots first" для configured slot-zone commands.
+- [x] Добавить явный blocked/no-op result для отклоненных command moves, чтобы
       тесты могли проверять намерение.
 
 ## P1 - Player Areas, Hands И Private Information

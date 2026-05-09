@@ -501,6 +501,13 @@ export function ProjectObjectInspectorPanel({
         : undefined,
     [selectedTableSetupItemObject]
   );
+  const selectedTableSetupItemZoneSlots = useMemo(
+    () =>
+      selectedTableSetupItemObject?.kind === "zone"
+        ? getProjectObjectNodeZone(selectedTableSetupItemObject).slots
+        : undefined,
+    [selectedTableSetupItemObject]
+  );
   const rectTransform = useMemo(
     () => (selectedObject ? getProjectObjectNodeRectTransform(selectedObject) : null),
     [selectedObject]
@@ -2729,6 +2736,7 @@ export function ProjectObjectInspectorPanel({
                   commandTargetOptions={commandTargetOptions}
                   fileTree={fileTree}
                   zoneMode={selectedTableSetupItemZoneMode}
+                  zoneSlots={selectedTableSetupItemZoneSlots}
                   onCommandsChange={updateTableSetupItemCommands}
                   onContainerDrawOrderChange={(value) =>
                     updateTableSetupItemContainerBehavior("drawOrder", value)
@@ -2813,6 +2821,7 @@ export function ProjectObjectInspectorPanel({
                   commandTargetOptions={commandTargetOptions}
                   fileTree={fileTree}
                   zoneMode={selectedTableSetupItemZoneMode}
+                  zoneSlots={selectedTableSetupItemZoneSlots}
                   onCommandsChange={updateTableSetupItemCommands}
                   onContainerDrawOrderChange={(value) =>
                     updateTableSetupItemContainerBehavior("drawOrder", value)

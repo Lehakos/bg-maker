@@ -107,6 +107,31 @@ export type PlaytestSession = PlaytestRuntimeState & {
   undoStack: PlaytestHistoryEntry[];
 };
 
+export type PlaytestActionResultReason =
+  | "emptySource"
+  | "missingSourceOrTarget"
+  | "noChange"
+  | "notInteractable"
+  | "notMovable"
+  | "removeBlocked"
+  | "slotOccupied"
+  | "zoneFull"
+  | "zoneRejectedItem";
+
+export type PlaytestActionFeedbackCode = PlaytestActionResultReason;
+
+export type PlaytestActionResult =
+  | {
+      session: PlaytestSession;
+      status: "applied";
+    }
+  | {
+      feedbackCode: PlaytestActionFeedbackCode;
+      reason: PlaytestActionResultReason;
+      session: PlaytestSession;
+      status: "blocked" | "noop";
+    };
+
 export type PlaytestCreateOptions = {
   createId?: () => string;
   now?: () => string;
@@ -180,9 +205,25 @@ type PlaytestActionContext = {
 
 const defaultDrawOffset = 32;
 
+type PlaytestRuntimeActionResult =
+  | {
+      runtime: PlaytestRuntimeState;
+      status: "applied";
+    }
+  | PlaytestRuntimeBlockedOrNoopActionResult;
+
+type PlaytestRuntimeBlockedOrNoopActionResult = {
+  reason: PlaytestActionResultReason;
+  runtime: PlaytestRuntimeState;
+  status: "blocked" | "noop";
+};
+
 export type PlaytestItemMovePreview =
   | {
       accepted: false;
+      reason: PlaytestActionResultReason;
+      targetItemId?: string;
+      targetRectTransform?: ProjectObjectRectTransform;
     }
   | {
       accepted: true;
@@ -273,7 +314,7 @@ export function executePlaytestAction(
   session: PlaytestSession,
   action: PlaytestAction,
   options: Partial<PlaytestActionContext> = {}
-): PlaytestSession {
+): PlaytestActionResult {
   const context: PlaytestActionContext = {
     createId: options.createId ?? createPlaytestId,
     now: options.now ?? createPlaytestTimestamp,
@@ -281,18 +322,28 @@ export function executePlaytestAction(
   };
 
   if (action.type === "selectItem" || action.type === "selectItems") {
-    return selectPlaytestItems(
+    const nextSession = selectPlaytestItems(
       session,
       getActionSelectedItemIds(session, action),
       action.type === "selectItem" ? action.itemId : action.primaryItemId
     );
+
+    return nextSession === session
+      ? createPlaytestActionResult(session, "noop", "noChange")
+      : { session: nextSession, status: "applied" };
   }
 
   const before = getPlaytestRuntimeState(session);
-  const nextRuntime = reducePlaytestAction(before, action, context);
+  const runtimeResult = reducePlaytestAction(before, action, context);
+
+  if (runtimeResult.status !== "applied") {
+    return createPlaytestActionResult(session, runtimeResult.status, runtimeResult.reason);
+  }
+
+  const nextRuntime = runtimeResult.runtime;
 
   if (nextRuntime === before || arePlaytestRuntimeStatesEqual(before, nextRuntime)) {
-    return session;
+    return createPlaytestActionResult(session, "noop", "noChange");
   }
 
   const createdAt = context.now();
@@ -306,18 +357,21 @@ export function executePlaytestAction(
   };
 
   return {
-    ...session,
-    ...nextRuntime,
-    actionLog: [
-      ...session.actionLog,
-      {
-        createdAt,
-        id: context.createId(),
-        label
-      }
-    ],
-    redoStack: [],
-    undoStack: [...session.undoStack, historyEntry]
+    session: {
+      ...session,
+      ...nextRuntime,
+      actionLog: [
+        ...session.actionLog,
+        {
+          createdAt,
+          id: context.createId(),
+          label
+        }
+      ],
+      redoStack: [],
+      undoStack: [...session.undoStack, historyEntry]
+    },
+    status: "applied"
   };
 }
 
@@ -377,6 +431,31 @@ export function redoPlaytestSession(
     redoStack: session.redoStack.slice(0, -1),
     undoStack: [...session.undoStack, entry]
   };
+}
+
+function createPlaytestActionResult(
+  session: PlaytestSession,
+  status: "blocked" | "noop",
+  reason: PlaytestActionResultReason
+): PlaytestActionResult {
+  return {
+    feedbackCode: reason,
+    reason,
+    session,
+    status
+  };
+}
+
+function createRuntimeAppliedResult(runtime: PlaytestRuntimeState): PlaytestRuntimeActionResult {
+  return { runtime, status: "applied" };
+}
+
+function createRuntimeActionResult(
+  runtime: PlaytestRuntimeState,
+  status: "blocked" | "noop",
+  reason: PlaytestActionResultReason
+): PlaytestRuntimeBlockedOrNoopActionResult {
+  return { reason, runtime, status };
 }
 
 export function selectPlaytestItems(
@@ -560,6 +639,21 @@ export function getPlaytestCommandDestinationPreview(
     : preview;
 }
 
+export function getPlaytestCommandTargetName(
+  command: ProjectTableSetupItemCommand,
+  itemsById: Record<string, PlaytestItem>
+): string | null {
+  if (command.type === "shuffleContainer") {
+    return null;
+  }
+
+  if (command.type === "drawFromContainerToTableOffset") {
+    return "Table";
+  }
+
+  return itemsById[command.targetItemId]?.name ?? "Missing target";
+}
+
 export function getCounterValueWithStep(
   counter: ProjectObjectCounter,
   currentValue: number,
@@ -598,7 +692,7 @@ function reducePlaytestAction(
   runtime: PlaytestRuntimeState,
   action: Exclude<PlaytestAction, { type: "selectItem" | "selectItems" }>,
   context: PlaytestActionContext
-): PlaytestRuntimeState {
+): PlaytestRuntimeActionResult {
   if (action.type === "moveItems") {
     return getRuntimeWithMovedItems(runtime, action.itemTransforms);
   }
@@ -606,65 +700,85 @@ function reducePlaytestAction(
   const item = runtime.itemsById[action.itemId];
 
   if (!item) {
-    return runtime;
+    return createRuntimeActionResult(runtime, "noop", "missingSourceOrTarget");
   }
 
   if (item.behavior.interaction?.interactableInPlaytest === false) {
-    return runtime;
+    return createRuntimeActionResult(runtime, "blocked", "notInteractable");
   }
 
   if (action.type === "flipItem") {
-    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) =>
-      hasProjectObjectSides(currentItem.baseObject.kind)
-        ? {
-            ...currentItem,
-            activeSide: currentItem.activeSide === "front" ? "back" : "front",
-            revealed: true
-          }
-        : currentItem
+    return createRuntimeAppliedResult(
+      getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) =>
+        hasProjectObjectSides(currentItem.baseObject.kind)
+          ? {
+              ...currentItem,
+              activeSide: currentItem.activeSide === "front" ? "back" : "front",
+              revealed: true
+            }
+          : currentItem
+      )
     );
   }
 
   if (action.type === "rotateItem") {
     if (item.behavior.rotation?.rotatableInPlaytest === false) {
-      return runtime;
+      return createRuntimeActionResult(runtime, "blocked", "notMovable");
     }
 
-    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
-      ...currentItem,
-      rectTransform: getRotatedPlaytestItemRectTransform(currentItem, action.direction)
-    }));
+    return createRuntimeAppliedResult(
+      getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
+        ...currentItem,
+        rectTransform: getRotatedPlaytestItemRectTransform(currentItem, action.direction)
+      }))
+    );
   }
 
   if (action.type === "hideItem") {
-    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
-      ...currentItem,
-      hidden: true,
-      revealed: false
-    }));
+    return createRuntimeAppliedResult(
+      getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
+        ...currentItem,
+        hidden: true,
+        revealed: false
+      }))
+    );
   }
 
   if (action.type === "revealItem") {
-    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
-      ...currentItem,
-      hidden: false,
-      revealed: true
-    }));
+    return createRuntimeAppliedResult(
+      getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
+        ...currentItem,
+        hidden: false,
+        revealed: true
+      }))
+    );
   }
 
   if (action.type === "shuffleContainer") {
-    if (!isRuntimeContainer(item) || item.contents.length < 2) {
-      return runtime;
+    if (!isRuntimeContainer(item) || item.contents.length === 0) {
+      return createRuntimeActionResult(runtime, "noop", "emptySource");
     }
 
-    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
-      ...currentItem,
-      contents: shuffleItems(currentItem.contents, context.random)
-    }));
+    if (item.contents.length < 2) {
+      return createRuntimeActionResult(runtime, "noop", "noChange");
+    }
+
+    return createRuntimeAppliedResult(
+      getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
+        ...currentItem,
+        contents: shuffleItems(currentItem.contents, context.random)
+      }))
+    );
   }
 
   if (action.type === "drawFromContainer") {
-    return getRuntimeWithDrawnContainerItem(runtime, item.id, context.random);
+    if (!isRuntimeContainer(item) || item.contents.length === 0) {
+      return createRuntimeActionResult(runtime, "noop", "emptySource");
+    }
+
+    return createRuntimeAppliedResult(
+      getRuntimeWithDrawnContainerItem(runtime, item.id, context.random)
+    );
   }
 
   if (action.type === "executeCommand") {
@@ -672,60 +786,80 @@ function reducePlaytestAction(
 
     return command
       ? getRuntimeWithExecutedCommand(runtime, item.id, command, context.random)
-      : runtime;
+      : createRuntimeActionResult(runtime, "noop", "missingSourceOrTarget");
   }
 
   if (action.type === "rollDie") {
     if (item.baseObject.kind !== "die") {
-      return runtime;
+      return createRuntimeActionResult(runtime, "noop", "noChange");
     }
 
     const die = getProjectObjectNodeDie(item.baseObject);
     const face = Math.floor(context.random() * die.faceCount) + 1;
 
-    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
-      ...currentItem,
-      dieFace: normalizeProjectObjectDieActiveFace(face, die.faceCount)
-    }));
+    return createRuntimeAppliedResult(
+      getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
+        ...currentItem,
+        dieFace: normalizeProjectObjectDieActiveFace(face, die.faceCount)
+      }))
+    );
   }
 
   if (action.type === "incrementCounter" || action.type === "decrementCounter") {
     if (item.baseObject.kind !== "counter") {
-      return runtime;
+      return createRuntimeActionResult(runtime, "noop", "noChange");
     }
 
     const counter = getProjectObjectNodeCounter(item.baseObject);
     const currentValue = item.counterValue ?? counter.defaultValue;
     const direction = action.type === "incrementCounter" ? 1 : -1;
+    const nextValue = getCounterValueWithStep(counter, currentValue, direction);
 
-    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
-      ...currentItem,
-      counterValue: getCounterValueWithStep(counter, currentValue, direction)
-    }));
+    if (nextValue === currentValue) {
+      return createRuntimeActionResult(runtime, "noop", "noChange");
+    }
+
+    return createRuntimeAppliedResult(
+      getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
+        ...currentItem,
+        counterValue: nextValue
+      }))
+    );
   }
 
   if (action.type === "incrementScoreTrackMarker" || action.type === "decrementScoreTrackMarker") {
     if (item.baseObject.kind !== "scoreTrack") {
-      return runtime;
+      return createRuntimeActionResult(runtime, "noop", "noChange");
     }
 
     const scoreTrack = getProjectObjectNodeScoreTrack(item.baseObject);
     const direction = action.type === "incrementScoreTrackMarker" ? 1 : -1;
+    const currentMarkers = item.scoreTrackMarkers ?? scoreTrack.markers;
+    const nextMarkers = currentMarkers.map((marker) =>
+      marker.id === action.markerId
+        ? {
+            ...marker,
+            value: getScoreTrackMarkerValueWithStep(scoreTrack, marker.value, direction)
+          }
+        : marker
+    );
 
-    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
-      ...currentItem,
-      scoreTrackMarkers: (currentItem.scoreTrackMarkers ?? scoreTrack.markers).map((marker) =>
-        marker.id === action.markerId
-          ? {
-              ...marker,
-              value: getScoreTrackMarkerValueWithStep(scoreTrack, marker.value, direction)
-            }
-          : marker
-      )
-    }));
+    if (
+      nextMarkers.every((marker, index) => marker.value === currentMarkers[index]?.value) ||
+      !currentMarkers.some((marker) => marker.id === action.markerId)
+    ) {
+      return createRuntimeActionResult(runtime, "noop", "noChange");
+    }
+
+    return createRuntimeAppliedResult(
+      getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
+        ...currentItem,
+        scoreTrackMarkers: nextMarkers
+      }))
+    );
   }
 
-  return runtime;
+  return createRuntimeActionResult(runtime, "noop", "noChange");
 }
 
 function createPlaytestItemFromTableSetupItem({
@@ -860,8 +994,12 @@ export function getPlaytestItemMovePreview(
 ): PlaytestItemMovePreview {
   const item = runtime.itemsById[itemId];
 
-  if (!item || item.behavior.movement?.movableInPlaytest === false) {
-    return { accepted: false };
+  if (!item) {
+    return { accepted: false, reason: "missingSourceOrTarget" };
+  }
+
+  if (item.behavior.movement?.movableInPlaytest === false) {
+    return { accepted: false, reason: "notMovable" };
   }
 
   return getPlaytestItemMoveResult(runtime, item, rectTransform);
@@ -966,19 +1104,29 @@ export function getRotatedPlaytestItemRectTransform(
 function getRuntimeWithMovedItems(
   runtime: PlaytestRuntimeState,
   itemTransforms: Record<string, ProjectObjectRectTransform>
-): PlaytestRuntimeState {
+): PlaytestRuntimeActionResult {
   let nextRuntime = runtime;
+  let blockedReason: PlaytestActionResultReason | null = null;
+  let sawTransform = false;
 
   for (const [itemId, rectTransform] of Object.entries(itemTransforms)) {
+    sawTransform = true;
     const item = nextRuntime.itemsById[itemId];
 
-    if (!item || item.behavior.movement?.movableInPlaytest === false) {
+    if (!item) {
+      blockedReason ??= "missingSourceOrTarget";
+      continue;
+    }
+
+    if (item.behavior.movement?.movableInPlaytest === false) {
+      blockedReason ??= "notMovable";
       continue;
     }
 
     const moveResult = getPlaytestItemMoveResult(nextRuntime, item, rectTransform);
 
     if (!moveResult.accepted) {
+      blockedReason ??= moveResult.reason;
       continue;
     }
 
@@ -1001,7 +1149,19 @@ function getRuntimeWithMovedItems(
     }
   }
 
-  return nextRuntime;
+  if (nextRuntime !== runtime) {
+    return createRuntimeAppliedResult(nextRuntime);
+  }
+
+  if (blockedReason) {
+    return createRuntimeActionResult(runtime, "blocked", blockedReason);
+  }
+
+  return createRuntimeActionResult(
+    runtime,
+    "noop",
+    sawTransform ? "noChange" : "missingSourceOrTarget"
+  );
 }
 
 function getRuntimeWithMovedZoneContents(
@@ -1089,6 +1249,9 @@ function getRuntimeWithItemPlacedAboveZone(
 type PlaytestItemMoveResult =
   | {
       accepted: false;
+      reason: PlaytestActionResultReason;
+      targetItemId?: string;
+      targetRectTransform?: ProjectObjectRectTransform;
     }
   | {
       accepted: true;
@@ -1115,7 +1278,7 @@ function getPlaytestItemMoveResult(
 
   if (!zoneItem) {
     if (!canMoveItemOutOfCurrentZone(runtime, item, null)) {
-      return { accepted: false };
+      return { accepted: false, reason: "removeBlocked" };
     }
 
     return {
@@ -1129,10 +1292,23 @@ function getPlaytestItemMoveResult(
   }
 
   if (
-    !canMoveItemOutOfCurrentZone(runtime, item, zoneItem.id) ||
-    !doesZoneAcceptItem(zoneItem, item)
+    !canMoveItemOutOfCurrentZone(runtime, item, zoneItem.id)
   ) {
-    return { accepted: false };
+    return {
+      accepted: false,
+      reason: "removeBlocked",
+      targetItemId: zoneItem.id,
+      targetRectTransform: zoneItem.rectTransform
+    };
+  }
+
+  if (!doesZoneAcceptItem(zoneItem, item)) {
+    return {
+      accepted: false,
+      reason: "zoneRejectedItem",
+      targetItemId: zoneItem.id,
+      targetRectTransform: zoneItem.rectTransform
+    };
   }
 
   const zone = getProjectObjectNodeZone(zoneItem.baseObject);
@@ -1141,14 +1317,24 @@ function getPlaytestItemMoveResult(
     const slotMove = getNearestZoneSlotMove(zoneItem, rectTransform);
 
     if (!slotMove) {
-      return { accepted: false };
+      return {
+        accepted: false,
+        reason: "zoneFull",
+        targetItemId: zoneItem.id,
+        targetRectTransform: zoneItem.rectTransform
+      };
     }
 
     if (
       zoneItem.behavior.zone?.slotOccupancy !== "stack" &&
       isZoneSlotOccupied(runtime, zoneItem.id, slotMove.slotIndex, item.id)
     ) {
-      return { accepted: false };
+      return {
+        accepted: false,
+        reason: "slotOccupied",
+        targetItemId: zoneItem.id,
+        targetRectTransform: zoneItem.rectTransform
+      };
     }
 
     return {
@@ -1419,18 +1605,24 @@ function getRuntimeWithExecutedCommand(
   containerItemId: string,
   command: ProjectTableSetupItemCommand,
   random: () => number
-): PlaytestRuntimeState {
+): PlaytestRuntimeActionResult {
   if (command.type === "shuffleContainer") {
     const item = runtime.itemsById[containerItemId];
 
-    if (!item || !isRuntimeContainer(item) || item.contents.length < 2) {
-      return runtime;
+    if (!item || !isRuntimeContainer(item) || item.contents.length === 0) {
+      return createRuntimeActionResult(runtime, "noop", "emptySource");
     }
 
-    return getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
-      ...currentItem,
-      contents: shuffleItems(currentItem.contents, random)
-    }));
+    if (item.contents.length < 2) {
+      return createRuntimeActionResult(runtime, "noop", "noChange");
+    }
+
+    return createRuntimeAppliedResult(
+      getRuntimeWithUpdatedItem(runtime, item.id, (currentItem) => ({
+        ...currentItem,
+        contents: shuffleItems(currentItem.contents, random)
+      }))
+    );
   }
 
   if (command.type === "drawFromContainerToTableOffset") {
@@ -1467,7 +1659,7 @@ function getRuntimeWithDrawnContainerItemsToTableOffset(
   containerItemId: string,
   command: ProjectTableSetupItemDrawFromContainerToTableOffsetCommand,
   random: () => number
-): PlaytestRuntimeState {
+): PlaytestRuntimeActionResult {
   let nextRuntime = runtime;
   const drawnItemIds: string[] = [];
 
@@ -1503,7 +1695,17 @@ function getRuntimeWithDrawnContainerItemsToTableOffset(
     drawnItemIds.push(draw.drawnItemId);
   }
 
-  return getRuntimeWithSelectedDrawnItems(nextRuntime, drawnItemIds, runtime);
+  if (!drawnItemIds.length) {
+    return createRuntimeActionResult(
+      runtime,
+      "noop",
+      runtime.itemsById[containerItemId] ? "emptySource" : "missingSourceOrTarget"
+    );
+  }
+
+  return createRuntimeAppliedResult(
+    getRuntimeWithSelectedDrawnItems(nextRuntime, drawnItemIds, runtime)
+  );
 }
 
 function getRuntimeWithDrawnContainerItemsToTargetZone(
@@ -1511,9 +1713,10 @@ function getRuntimeWithDrawnContainerItemsToTargetZone(
   containerItemId: string,
   command: ProjectTableSetupItemDrawFromContainerToTargetZoneCommand,
   random: () => number
-): PlaytestRuntimeState {
+): PlaytestRuntimeActionResult {
   let nextRuntime = runtime;
   const drawnItemIds: string[] = [];
+  let lastFailure: PlaytestRuntimeBlockedOrNoopActionResult | undefined;
 
   for (let index = 0; index < command.count; index += 1) {
     const result = getNextRuntimeWithDrawnContainerItemToTargetZone({
@@ -1526,7 +1729,8 @@ function getRuntimeWithDrawnContainerItemsToTargetZone(
       targetItemId: command.targetItemId
     });
 
-    if (!result) {
+    if (result.status !== "applied") {
+      lastFailure = result;
       break;
     }
 
@@ -1534,7 +1738,13 @@ function getRuntimeWithDrawnContainerItemsToTargetZone(
     drawnItemIds.push(result.drawnItemId);
   }
 
-  return getRuntimeWithSelectedDrawnItems(nextRuntime, drawnItemIds, runtime);
+  if (!drawnItemIds.length) {
+    return lastFailure ?? createRuntimeActionResult(runtime, "noop", "noChange");
+  }
+
+  return createRuntimeAppliedResult(
+    getRuntimeWithSelectedDrawnItems(nextRuntime, drawnItemIds, runtime)
+  );
 }
 
 function getRuntimeWithRefilledTargetZoneFromContainer(
@@ -1542,20 +1752,28 @@ function getRuntimeWithRefilledTargetZoneFromContainer(
   containerItemId: string,
   command: ProjectTableSetupItemRefillTargetZoneFromContainerCommand,
   random: () => number
-): PlaytestRuntimeState {
+): PlaytestRuntimeActionResult {
   let nextRuntime = runtime;
   const drawnItemIds: string[] = [];
+  let lastFailure: PlaytestRuntimeBlockedOrNoopActionResult | undefined;
 
   while (true) {
     const targetItem = nextRuntime.itemsById[command.targetItemId];
 
     if (!targetItem || targetItem.baseObject.kind !== "zone") {
+      lastFailure = createRuntimeActionResult(nextRuntime, "noop", "missingSourceOrTarget");
       break;
     }
 
     const zone = getProjectObjectNodeZone(targetItem.baseObject);
 
-    if (zone.mode !== "slots" || getFirstEmptyZoneSlotIndex(nextRuntime, targetItem) === null) {
+    if (zone.mode !== "slots") {
+      lastFailure = createRuntimeActionResult(nextRuntime, "noop", "noChange");
+      break;
+    }
+
+    if (getFirstEmptyZoneSlotIndex(nextRuntime, targetItem) === null) {
+      lastFailure = createRuntimeActionResult(nextRuntime, "blocked", "zoneFull");
       break;
     }
 
@@ -1569,7 +1787,8 @@ function getRuntimeWithRefilledTargetZoneFromContainer(
       targetItemId: command.targetItemId
     });
 
-    if (!result) {
+    if (result.status !== "applied") {
+      lastFailure = result;
       break;
     }
 
@@ -1577,7 +1796,13 @@ function getRuntimeWithRefilledTargetZoneFromContainer(
     drawnItemIds.push(result.drawnItemId);
   }
 
-  return getRuntimeWithSelectedDrawnItems(nextRuntime, drawnItemIds, runtime);
+  if (!drawnItemIds.length) {
+    return lastFailure ?? createRuntimeActionResult(runtime, "noop", "noChange");
+  }
+
+  return createRuntimeAppliedResult(
+    getRuntimeWithSelectedDrawnItems(nextRuntime, drawnItemIds, runtime)
+  );
 }
 
 function getNextRuntimeWithDrawnContainerItemToTargetZone({
@@ -1596,21 +1821,33 @@ function getNextRuntimeWithDrawnContainerItemToTargetZone({
   runtime: PlaytestRuntimeState;
   tableInsertOffset: number;
   targetItemId: string;
-}): { drawnItemId: string; runtime: PlaytestRuntimeState } | null {
+}):
+  | {
+      drawnItemId: string;
+      runtime: PlaytestRuntimeState;
+      status: "applied";
+    }
+  | PlaytestRuntimeBlockedOrNoopActionResult {
   const containerItem = runtime.itemsById[containerItemId];
   const targetItem = runtime.itemsById[targetItemId];
   const draw = containerItem
     ? getContainerDrawResult(runtime, containerItem, drawOrder, random)
     : null;
 
-  if (
-    !containerItem ||
-    !targetItem ||
-    targetItem.baseObject.kind !== "zone" ||
-    !draw ||
-    !doesZoneAcceptItem(targetItem, draw.drawnItem)
-  ) {
-    return null;
+  if (!containerItem) {
+    return createRuntimeActionResult(runtime, "noop", "missingSourceOrTarget");
+  }
+
+  if (!targetItem || targetItem.baseObject.kind !== "zone") {
+    return createRuntimeActionResult(runtime, "noop", "missingSourceOrTarget");
+  }
+
+  if (!draw) {
+    return createRuntimeActionResult(runtime, "noop", "emptySource");
+  }
+
+  if (!doesZoneAcceptItem(targetItem, draw.drawnItem)) {
+    return createRuntimeActionResult(runtime, "blocked", "zoneRejectedItem");
   }
 
   const placedItem = getDrawnItemForTargetZone({
@@ -1621,7 +1858,7 @@ function getNextRuntimeWithDrawnContainerItemToTargetZone({
   });
 
   if (!placedItem) {
-    return null;
+    return createRuntimeActionResult(runtime, "blocked", "zoneFull");
   }
 
   const withDrawnItem = getRuntimeWithCommittedContainerDraw(
@@ -1634,7 +1871,8 @@ function getNextRuntimeWithDrawnContainerItemToTargetZone({
 
   return {
     drawnItemId: draw.drawnItemId,
-    runtime: getRuntimeWithItemPlacedAboveZone(withDrawnItem, draw.drawnItemId, targetItem.id)
+    runtime: getRuntimeWithItemPlacedAboveZone(withDrawnItem, draw.drawnItemId, targetItem.id),
+    status: "applied"
   };
 }
 

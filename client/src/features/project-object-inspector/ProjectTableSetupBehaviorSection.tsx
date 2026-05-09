@@ -64,6 +64,7 @@ type ProjectTableSetupBehaviorSectionProps = {
   commandTargetOptions: readonly ProjectTableSetupCommandTargetOption[];
   fileTree: readonly ProjectFileNode[];
   zoneMode?: ProjectObjectZoneMode;
+  zoneSlots?: number;
   onCommandsChange: (commands: ProjectTableSetupItemCommand[]) => void;
   onContainerDrawOrderChange: (value: ProjectTableSetupItemContainerDrawOrder) => void;
   onContainerDrawnItemSideChange: (value: ProjectObjectSide) => void;
@@ -155,6 +156,7 @@ export function ProjectTableSetupBehaviorSection({
   commandTargetOptions,
   fileTree,
   zoneMode,
+  zoneSlots,
   onCommandsChange,
   onContainerDrawOrderChange,
   onContainerDrawnItemSideChange,
@@ -265,6 +267,11 @@ export function ProjectTableSetupBehaviorSection({
       ) : null}
       {behavior.zone ? (
         <>
+          <ZonePlacementSummary
+            slotOccupancy={behavior.zone.slotOccupancy}
+            zoneMode={zoneMode}
+            zoneSlots={zoneSlots}
+          />
           <AcceptedObjectsField
             acceptedObjectFileNodeIds={behavior.zone.acceptedObjectFileNodeIds ?? []}
             acceptedKinds={behavior.zone.acceptedKinds}
@@ -296,6 +303,40 @@ export function ProjectTableSetupBehaviorSection({
         </>
       ) : null}
     </InspectorSection>
+  );
+}
+
+function ZonePlacementSummary({
+  slotOccupancy,
+  zoneMode,
+  zoneSlots
+}: {
+  slotOccupancy: ProjectTableSetupItemZoneSlotOccupancy;
+  zoneMode?: ProjectObjectZoneMode;
+  zoneSlots?: number;
+}) {
+  const capacityLabel = zoneMode === "slots" ? `${zoneSlots ?? 0} slots` : "Free placement";
+  const occupancyLabel = slotOccupancy === "stack" ? "Stacked" : "Single per slot";
+
+  return (
+    <div
+      className={`grid gap-2 rounded-md border border-cyan-100 bg-cyan-50/60 p-2 ${
+        zoneMode === "slots" ? "grid-cols-2" : "grid-cols-1"
+      }`}
+    >
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-normal text-cyan-700">Capacity</p>
+        <p className="truncate text-xs font-semibold text-slate-800">{capacityLabel}</p>
+      </div>
+      {zoneMode === "slots" ? (
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-normal text-cyan-700">
+            Occupancy
+          </p>
+          <p className="truncate text-xs font-semibold text-slate-800">{occupancyLabel}</p>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
