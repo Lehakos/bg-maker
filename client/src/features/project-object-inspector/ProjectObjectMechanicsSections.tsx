@@ -8,15 +8,25 @@ import type {
 import { Copy, Dices, Hash, Plus, Trash2 } from "lucide-react";
 import type { ChangeEvent, DragEvent } from "react";
 import {
+  IconButton,
+  PanelActionButton,
+  PanelCard,
+  PanelEmptyState,
+  PanelNotice
+} from "../../components";
+import {
+  InspectorBehaviorNumberGrid,
   InspectorBehaviorNumberField,
   InspectorColorField,
   InspectorDoubleSidedControls,
   type InspectorFieldDefinition,
+  InspectorFieldGrid,
   InspectorInlineTextField,
   InspectorModeInfo,
   InspectorSection,
   InspectorSelectField,
-  InspectorSwitchField
+  InspectorSwitchField,
+  InspectorUploadField
 } from "./inspector-ui";
 import {
   counterNumberFieldSettings,
@@ -161,7 +171,7 @@ export function ProjectObjectCounterSection({
         onDraftChange={onDraftChange}
         onReset={onReset}
       />
-      <div className="grid grid-cols-2 gap-2">
+      <InspectorFieldGrid>
         <InspectorSelectField
           label="Bounds"
           info={<InspectorModeInfo items={counterBoundsModeInfoItems} />}
@@ -178,8 +188,8 @@ export function ProjectObjectCounterSection({
           options={counterDisplayModeOptions}
           onChange={(value) => onDraftChange("displayMode", value)}
         />
-      </div>
-      <div className="grid grid-cols-2 gap-2">
+      </InspectorFieldGrid>
+      <InspectorFieldGrid>
         <InspectorInlineTextField
           label="Prefix"
           value={draft.prefix}
@@ -190,7 +200,7 @@ export function ProjectObjectCounterSection({
           value={draft.suffix}
           onChange={(value) => onDraftChange("suffix", value)}
         />
-      </div>
+      </InspectorFieldGrid>
     </InspectorSection>
   );
 }
@@ -226,20 +236,16 @@ export function ProjectObjectScoreTrackSection({
 }: ProjectObjectScoreTrackSectionProps) {
   return (
     <InspectorSection icon={<Hash size={15} />} title="Score track">
-      <div className="grid grid-cols-3 gap-2">
-        {scoreTrackNumberFields.map((field) => (
-          <InspectorBehaviorNumberField
-            key={field.key}
-            field={field}
-            settings={scoreTrackNumberFieldSettings[field.key]}
-            value={draft[field.key]}
-            onCommit={onCommitNumberField}
-            onDraftChange={onDraftChange}
-            onReset={onReset}
-          />
-        ))}
-      </div>
-      <div className="grid grid-cols-2 gap-2">
+      <InspectorBehaviorNumberGrid
+        columns={3}
+        fields={scoreTrackNumberFields}
+        settingsByField={scoreTrackNumberFieldSettings}
+        value={draft}
+        onCommit={onCommitNumberField}
+        onDraftChange={onDraftChange}
+        onReset={onReset}
+      />
+      <InspectorFieldGrid>
         <InspectorSelectField
           label="Orientation"
           value={draft.orientation}
@@ -253,24 +259,24 @@ export function ProjectObjectScoreTrackSection({
             onChange={(event) => onDraftChange("showLabels", event.currentTarget.checked)}
           />
         </div>
-      </div>
+      </InspectorFieldGrid>
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-semibold text-slate-500">Markers</span>
-          <button
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-40"
+          <PanelActionButton
+            iconOnly
+            size="field"
             disabled={!canAddMarker}
             title="Add marker"
-            type="button"
             onClick={onAddMarker}
           >
             <Plus size={15} />
-          </button>
+          </PanelActionButton>
         </div>
         {draft.markers.length ? (
           <div className="space-y-2">
             {draft.markers.map((marker) => (
-              <div
+              <PanelCard
                 key={marker.id}
                 className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2"
               >
@@ -282,16 +288,14 @@ export function ProjectObjectScoreTrackSection({
                       onChange={(value) => onMarkerFieldChange(marker.id, "label", value)}
                     />
                   </div>
-                  <button
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-600"
-                    title="Remove marker"
-                    type="button"
+                  <IconButton
+                    icon={<Trash2 size={14} />}
+                    label="Remove marker"
+                    variant="danger"
                     onClick={() => onRemoveMarker(marker.id)}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <InspectorFieldGrid>
                   <InspectorColorField
                     field={scoreTrackMarkerColorField}
                     value={marker.color}
@@ -305,14 +309,12 @@ export function ProjectObjectScoreTrackSection({
                     onDraftChange={(_, value) => onMarkerFieldChange(marker.id, "value", value)}
                     onReset={() => onResetMarkerValue(marker.id)}
                   />
-                </div>
-              </div>
+                </InspectorFieldGrid>
+              </PanelCard>
             ))}
           </div>
         ) : (
-          <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-500">
-            No markers assigned.
-          </p>
+          <PanelEmptyState>No markers assigned.</PanelEmptyState>
         )}
       </div>
     </InspectorSection>
@@ -410,24 +412,20 @@ export function ProjectObjectDieSection({
                 onChange={(value) => onFaceFieldChange("imageAssetId", value)}
               />
               {activeFace.imageAssetId && activeFaceImageMissing ? (
-                <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                <PanelNotice className="mt-0">
                   Selected image is no longer in the file tree.
-                </p>
+                </PanelNotice>
               ) : null}
-              <label className="flex h-9 cursor-pointer items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 text-sm font-medium text-slate-700 hover:border-sky-400 hover:bg-sky-50">
-                <input
-                  accept="image/jpeg,image/png,image/webp"
-                  className="sr-only"
-                  disabled={uploadingImage}
-                  type="file"
-                  onChange={onImageUpload}
-                />
-                {uploadingImage ? "Uploading..." : "Upload image"}
-              </label>
+              <InspectorUploadField
+                accept="image/jpeg,image/png,image/webp"
+                disabled={uploadingImage}
+                label={uploadingImage ? "Uploading..." : "Upload image"}
+                onChange={onImageUpload}
+              />
               {uploadError ? (
-                <p className="rounded-md border border-red-100 bg-red-50 px-2 py-1.5 text-xs text-red-700">
+                <PanelNotice className="mt-0" variant="danger">
                   {uploadError}
-                </p>
+                </PanelNotice>
               ) : null}
             </div>
           ) : (
@@ -459,18 +457,13 @@ function CounterNumberGrid({
   onReset
 }: CounterNumberGridProps) {
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {fields.map((field) => (
-        <InspectorBehaviorNumberField
-          key={field.key}
-          field={field}
-          settings={counterNumberFieldSettings[field.key]}
-          value={value[field.key]}
-          onCommit={onCommit}
-          onDraftChange={onDraftChange}
-          onReset={onReset}
-        />
-      ))}
-    </div>
+    <InspectorBehaviorNumberGrid
+      fields={fields}
+      settingsByField={counterNumberFieldSettings}
+      value={value}
+      onCommit={onCommit}
+      onDraftChange={onDraftChange}
+      onReset={onReset}
+    />
   );
 }

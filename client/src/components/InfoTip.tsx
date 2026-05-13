@@ -1,3 +1,4 @@
+import { clsx as cx } from "clsx";
 import { CircleHelp } from "lucide-react";
 import { type ReactNode, useId } from "react";
 
@@ -30,9 +31,11 @@ export function InfoTip({
         className={cx(
           "pointer-events-none absolute top-full z-[90] mt-1.5 w-60 rounded-md border border-slate-200 bg-slate-950 px-2.5 py-2 text-left text-xs font-medium leading-snug text-white opacity-0 shadow-lg shadow-slate-900/15 transition-opacity group-focus-within/infotip:opacity-100 group-hover/infotip:opacity-100",
           "normal-case tracking-normal",
-          align === "start" && "left-0",
-          align === "center" && "left-1/2 -translate-x-1/2",
-          align === "end" && "right-0"
+          {
+            "left-0": align === "start",
+            "left-1/2 -translate-x-1/2": align === "center",
+            "right-0": align === "end"
+          }
         )}
         id={tooltipId}
         role="tooltip"
@@ -41,8 +44,4 @@ export function InfoTip({
       </span>
     </span>
   );
-}
-
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
 }

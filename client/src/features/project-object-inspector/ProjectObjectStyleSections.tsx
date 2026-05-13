@@ -22,9 +22,11 @@ import {
   type LucideIcon
 } from "lucide-react";
 import {
+  InspectorBehaviorNumberGrid,
   InspectorBehaviorNumberField,
   InspectorColorField,
   type InspectorFieldDefinition,
+  InspectorFieldGrid,
   InspectorIconSegmentedField,
   InspectorNumberGrid,
   InspectorSection,
@@ -211,7 +213,7 @@ export function ProjectObjectAppearanceSection({
 
   return (
     <InspectorSection icon={<Palette size={15} />} title="Appearance">
-      <div className="grid grid-cols-2 gap-2">
+      <InspectorFieldGrid>
         <InspectorColorField
           disabled={backgroundColorBound}
           field={appearanceFillColorField}
@@ -227,8 +229,8 @@ export function ProjectObjectAppearanceSection({
           onDraftChange={onDraftChange}
           onReset={onReset}
         />
-      </div>
-      <div className="grid grid-cols-2 gap-2">
+      </InspectorFieldGrid>
+      <InspectorFieldGrid>
         <InspectorColorField
           disabled={borderColorBound}
           field={appearanceBorderColorField}
@@ -244,7 +246,7 @@ export function ProjectObjectAppearanceSection({
           onDraftChange={onDraftChange}
           onReset={onReset}
         />
-      </div>
+      </InspectorFieldGrid>
       <InspectorSelectField
         label="Border style"
         value={draft.borderStyle}
@@ -297,7 +299,7 @@ export function ProjectObjectLayoutSection({
       {layoutAuto ? (
         <>
           {showLayoutAlignmentControls ? (
-            <div className="grid grid-cols-2 gap-2">
+            <InspectorFieldGrid>
               <InspectorIconSegmentedField
                 label={layoutMainAxisLabel}
                 value={draft.justifyContent}
@@ -310,7 +312,7 @@ export function ProjectObjectLayoutSection({
                 options={layoutAlignOptions}
                 onChange={(value) => onDraftChange("alignItems", value)}
               />
-            </div>
+            </InspectorFieldGrid>
           ) : null}
           {layoutNumberFields.length ? (
             <LayoutNumberGrid
@@ -417,19 +419,14 @@ function AppearanceNumberGrid({
   onReset
 }: AppearanceNumberGridProps) {
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {fields.map((field) => (
-        <InspectorBehaviorNumberField
-          key={field.key}
-          field={field}
-          settings={appearanceNumberFieldSettings[field.key]}
-          value={value[field.key]}
-          onCommit={onCommit}
-          onDraftChange={onDraftChange}
-          onReset={onReset}
-        />
-      ))}
-    </div>
+    <InspectorBehaviorNumberGrid
+      fields={fields}
+      settingsByField={appearanceNumberFieldSettings}
+      value={value}
+      onCommit={onCommit}
+      onDraftChange={onDraftChange}
+      onReset={onReset}
+    />
   );
 }
 
@@ -449,19 +446,14 @@ function LayoutNumberGrid({
   onReset
 }: LayoutNumberGridProps) {
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {fields.map((field) => (
-        <InspectorBehaviorNumberField
-          key={field.key}
-          field={field}
-          settings={layoutNumberFieldSettings[field.key]}
-          value={value[field.key]}
-          onCommit={onCommit}
-          onDraftChange={onDraftChange}
-          onReset={onReset}
-        />
-      ))}
-    </div>
+    <InspectorBehaviorNumberGrid
+      fields={fields}
+      settingsByField={layoutNumberFieldSettings}
+      value={value}
+      onCommit={onCommit}
+      onDraftChange={onDraftChange}
+      onReset={onReset}
+    />
   );
 }
 

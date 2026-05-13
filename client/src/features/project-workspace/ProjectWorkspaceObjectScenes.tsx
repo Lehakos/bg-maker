@@ -23,6 +23,7 @@ import {
   type PlaytestCommandPreviewRequest,
   type PlaytestSession
 } from "../project-playtest/project-playtest";
+import { PanelEmptyState } from "../../components";
 import {
   type CSSProperties,
   type DragEvent,
@@ -450,9 +451,9 @@ export function TableLayoutWorkspace({
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center p-8">
-                <div className="flex h-28 w-52 items-center justify-center rounded-md border border-white/30 bg-white/10 text-center text-sm font-medium text-white/85">
+                <PanelEmptyState className="flex h-28 w-52 items-center justify-center border-solid border-white/30 bg-white/10 text-sm text-white/85">
                   Empty table layout
-                </div>
+                </PanelEmptyState>
               </div>
             )}
             {marqueeState ? (
@@ -530,8 +531,10 @@ export function ObjectFileWorkspace({
   }
 
   return (
-    <div className="flex h-full min-h-0 items-center justify-center p-8 text-sm font-medium text-slate-500">
-      No object preview
+    <div className="flex h-full min-h-0 items-center justify-center p-8">
+      <PanelEmptyState className="text-sm" center>
+        No object preview
+      </PanelEmptyState>
     </div>
   );
 }
@@ -752,7 +755,11 @@ function TableSetupScene({
                     concealed:
                       item.hidden && !item.revealed && !hasProjectObjectSides(item.baseObject.kind),
                     id: item.id,
-                    object: getPlaytestRenderedObject(item, playtestSession.itemsById, playtestSession),
+                    object: getPlaytestRenderedObject(
+                      item,
+                      playtestSession.itemsById,
+                      playtestSession
+                    ),
                     resizeMode: "size" as const
                   }
                 ]

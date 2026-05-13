@@ -4,11 +4,9 @@ import type {
   ProjectTableSetupItemGameBinding
 } from "@bg-maker/shared";
 import { Link2 } from "lucide-react";
+import { FormInput, FormSelect, PanelActionButton } from "../../components";
 import { InfoTip } from "../../components/InfoTip";
-import { InspectorSection } from "./inspector-ui";
-
-const bindingActionButtonClass =
-  "inline-flex h-7 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-[11px] font-medium leading-none text-slate-600 outline-none transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 focus-visible:ring-2 focus-visible:ring-red-100";
+import { InspectorFieldGrid, InspectorSection } from "./inspector-ui";
 
 type ProjectTableSetupGameBindingSectionProps = {
   gameBinding?: ProjectTableSetupItemGameBinding;
@@ -45,7 +43,7 @@ export function ProjectTableSetupGameBindingSection({
       title="Game binding"
     >
       {supportsRole ? (
-        <div className="grid grid-cols-2 gap-2">
+        <InspectorFieldGrid>
           <label className="block">
             <span className="mb-1 flex min-h-5 items-center gap-1.5 text-[10px] font-bold uppercase tracking-normal text-slate-500">
               Role
@@ -54,8 +52,8 @@ export function ProjectTableSetupGameBindingSection({
                 example Hand, Deck, Play area, or Discard.
               </InfoTip>
             </span>
-            <input
-              className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            <FormInput
+              className="w-full text-slate-900"
               placeholder="Hand"
               value={gameBinding?.role ?? ""}
               onChange={(event) =>
@@ -74,8 +72,8 @@ export function ProjectTableSetupGameBindingSection({
                 Shared for the common table.
               </InfoTip>
             </span>
-            <select
-              className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            <FormSelect
+              className="w-full text-xs font-semibold text-slate-700"
               value={ownerSelectValue(gameBinding?.owner)}
               onChange={(event) =>
                 onChange({
@@ -90,13 +88,13 @@ export function ProjectTableSetupGameBindingSection({
                   {player.name}
                 </option>
               ))}
-            </select>
+            </FormSelect>
           </label>
-        </div>
+        </InspectorFieldGrid>
       ) : null}
 
       {supportsCounter ? (
-        <div className="grid grid-cols-2 gap-2">
+        <InspectorFieldGrid>
           <label className="block">
             <span className="mb-1 flex min-h-5 items-center gap-1.5 text-[10px] font-bold uppercase tracking-normal text-slate-500">
               Counter
@@ -105,8 +103,8 @@ export function ProjectTableSetupGameBindingSection({
                 Round.
               </InfoTip>
             </span>
-            <select
-              className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            <FormSelect
+              className="w-full text-xs font-semibold text-slate-700"
               value={gameBinding?.counterId ?? ""}
               onChange={(event) => {
                 const nextCounter = gameConfig.counters.find(
@@ -126,7 +124,7 @@ export function ProjectTableSetupGameBindingSection({
                   {counter.label}
                 </option>
               ))}
-            </select>
+            </FormSelect>
           </label>
           <label className="block">
             <span className="mb-1 flex min-h-5 items-center gap-1.5 text-[10px] font-bold uppercase tracking-normal text-slate-500">
@@ -135,8 +133,8 @@ export function ProjectTableSetupGameBindingSection({
                 Choose whose value is shown here: one player or the shared game value.
               </InfoTip>
             </span>
-            <select
-              className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            <FormSelect
+              className="w-full text-xs font-semibold text-slate-700"
               value={ownerSelectValue(gameBinding?.counterOwner)}
               onChange={(event) =>
                 onChange({
@@ -157,17 +155,13 @@ export function ProjectTableSetupGameBindingSection({
                   {player.name}
                 </option>
               ))}
-            </select>
+            </FormSelect>
           </label>
-        </div>
+        </InspectorFieldGrid>
       ) : null}
-      <button
-        className={bindingActionButtonClass}
-        type="button"
-        onClick={() => onChange(undefined)}
-      >
+      <PanelActionButton className="w-full" variant="danger" onClick={() => onChange(undefined)}>
         Clear binding
-      </button>
+      </PanelActionButton>
     </InspectorSection>
   );
 }

@@ -1,10 +1,10 @@
 import type { ProjectFileNode, ProjectObjectTemplate } from "@bg-maker/shared";
-import { Alert, Button, FileInput, Group, Modal, Stack, Textarea } from "@mantine/core";
+import { Alert, FileInput, Modal, Stack, Textarea } from "@mantine/core";
 import { AlertCircle, FileSpreadsheet, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
+import { ModalFooterActions } from "../../components/ModalFooterActions";
 import {
   stickyModalBodyClassName,
-  stickyModalFooterClassName,
   stickyModalFormClassName,
   stickyModalStyles
 } from "../../components/modal-layout";
@@ -79,6 +79,7 @@ export function VariantImportModal({
   return (
     <Modal
       centered
+      data-testid="variant-import-modal"
       opened={opened}
       radius="sm"
       size="xl"
@@ -119,9 +120,7 @@ export function VariantImportModal({
                         <th className="border-b border-slate-200 px-2 py-1.5 font-semibold">
                           Path
                         </th>
-                        <th className="border-b border-slate-200 px-2 py-1.5 font-semibold">
-                          ID
-                        </th>
+                        <th className="border-b border-slate-200 px-2 py-1.5 font-semibold">ID</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -165,9 +164,7 @@ export function VariantImportModal({
                       <th className="w-16 border-b border-slate-200 px-2 py-1.5 font-semibold">
                         Row
                       </th>
-                      <th className="border-b border-slate-200 px-2 py-1.5 font-semibold">
-                        Name
-                      </th>
+                      <th className="border-b border-slate-200 px-2 py-1.5 font-semibold">Name</th>
                       <th className="w-24 border-b border-slate-200 px-2 py-1.5 font-semibold">
                         Status
                       </th>
@@ -195,18 +192,14 @@ export function VariantImportModal({
             ) : null}
           </Stack>
         </div>
-        <Group className={stickyModalFooterClassName} justify="flex-end" gap="sm">
-          <Button variant="subtle" color="gray" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            disabled={!canImport}
-            leftSection={<FileSpreadsheet size={16} />}
-            onClick={handleImport}
-          >
-            Import
-          </Button>
-        </Group>
+        <ModalFooterActions
+          confirmDisabled={!canImport}
+          confirmIcon={<FileSpreadsheet size={16} />}
+          confirmLabel="Import"
+          testId="variant-import-modal-actions"
+          onCancel={onClose}
+          onConfirm={handleImport}
+        />
       </div>
     </Modal>
   );

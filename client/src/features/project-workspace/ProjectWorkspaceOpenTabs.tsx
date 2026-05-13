@@ -2,6 +2,8 @@ import type { ProjectFileNode } from "@bg-maker/shared";
 import { CopyX, Ellipsis, PanelRightClose, PanelTopClose, X } from "lucide-react";
 import { type MouseEvent, type PointerEvent, useState } from "react";
 import { ContextMenu, type ContextMenuAction } from "../../components/ContextMenu";
+import { IconButton } from "../../components/IconButton";
+import { TreeIconButton } from "../../components/TreeControls";
 import { findProjectFileNode } from "../project-files/project-file-tree";
 import { ProjectFileNodeIcon } from "../project-files/project-file-tree-ui";
 import { cx } from "./project-workspace-css";
@@ -115,10 +117,10 @@ export function ProjectWorkspaceOpenTabs({
                   />
                   <span className="min-w-0 truncate">{tab.name}</span>
                 </button>
-                <button
+                <TreeIconButton
                   aria-label={`Close ${tab.name}`}
-                  className="mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900"
-                  type="button"
+                  className="mr-1"
+                  size="xs"
                   title="Close tab"
                   onClick={(event) => {
                     event.preventDefault();
@@ -127,21 +129,20 @@ export function ProjectWorkspaceOpenTabs({
                   }}
                 >
                   <X size={13} />
-                </button>
+                </TreeIconButton>
               </div>
             );
           })}
         </div>
-        <button
-          aria-label="Open tab actions"
+        <IconButton
           className="mx-1 my-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-slate-200 bg-white/70 text-slate-500 shadow-sm shadow-slate-900/5 hover:bg-white hover:text-slate-900"
+          icon={<Ellipsis size={15} />}
+          label="Open tab actions"
           title="Tab actions"
-          type="button"
+          variant="neutral"
           onClick={(event) => openContextMenu(event, activeTab?.id ?? null)}
           onContextMenu={(event) => openContextMenu(event, activeTab?.id ?? null)}
-        >
-          <Ellipsis size={15} />
-        </button>
+        />
       </div>
 
       <ContextMenu

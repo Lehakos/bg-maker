@@ -1,6 +1,7 @@
 import type { ProjectFileNode } from "@bg-maker/shared";
 import { Boxes, FolderTree, Images, type LucideIcon } from "lucide-react";
 import { useState } from "react";
+import { PanelShell, PanelToolbar } from "../../components";
 import { ProjectFileTreePanel } from "../project-files/ProjectFileTreePanel";
 import { cx } from "../project-workspace/project-workspace-css";
 import { AssetBrowserPanel } from "./AssetBrowserPanel";
@@ -42,13 +43,8 @@ export function ProjectWorkspaceLeftPanel({
   const [activeTab, setActiveTab] = useState<WorkspaceLeftPanelTab>("explorer");
 
   return (
-    <aside
-      className={cx(
-        "flex min-h-0 flex-col overflow-hidden border-b border-slate-200 bg-white text-slate-700 md:border-b-0 md:border-r",
-        className
-      )}
-    >
-      <div className="grid h-10 shrink-0 grid-cols-3 border-b border-slate-200 bg-slate-50 p-1">
+    <PanelShell as="aside" border="bottomRightResponsive" className={className}>
+      <PanelToolbar className="grid h-10 grid-cols-3 p-1" dense>
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -72,7 +68,7 @@ export function ProjectWorkspaceLeftPanel({
             </button>
           );
         })}
-      </div>
+      </PanelToolbar>
 
       <div className="min-h-0 flex-1">
         {activeTab === "explorer" ? (
@@ -108,6 +104,6 @@ export function ProjectWorkspaceLeftPanel({
           />
         ) : null}
       </div>
-    </aside>
+    </PanelShell>
   );
 }

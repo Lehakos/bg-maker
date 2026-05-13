@@ -39,12 +39,17 @@ import {
   type CSSProperties,
   type FocusEvent,
   type HTMLAttributes,
-  type ReactNode,
   useEffect,
   useState
 } from "react";
+import {
+  FloatingPanel,
+  FormInput,
+  IconButton,
+  PanelActionButton,
+  PanelEmptyState
+} from "../../components";
 import type { TableSetupPositionPreset } from "../project-table-setup/project-table-setup-geometry";
-import { cx } from "./project-workspace-css";
 import {
   getProjectCompositionSettingsWithField,
   getProjectCompositionSettingsWithGuideAdded,
@@ -97,15 +102,6 @@ type ProjectWorkspaceGuideControls = {
   disabled?: boolean;
   onCompositionChange: (composition: ProjectCompositionSettings, label: string) => void;
   onGuideHover: (guideId: string | null) => void;
-};
-
-type ToolbarIconButtonProps = {
-  active?: boolean;
-  disabled?: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-  title?: string;
 };
 
 const workspaceTools = [
@@ -213,18 +209,8 @@ export function ProjectWorkspaceToolbar({
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-3">
       <div className="flex items-center gap-1" aria-label="Command history">
-        <ToolbarIconButton
-          disabled={!canUndo}
-          icon={<Undo2 size={17} />}
-          label="Undo"
-          onClick={onUndo}
-        />
-        <ToolbarIconButton
-          disabled={!canRedo}
-          icon={<Redo2 size={17} />}
-          label="Redo"
-          onClick={onRedo}
-        />
+        <ToolbarIconButton disabled={!canUndo} icon={Undo2} label="Undo" onClick={onUndo} />
+        <ToolbarIconButton disabled={!canRedo} icon={Redo2} label="Redo" onClick={onRedo} />
       </div>
       <span className="h-6 w-px bg-slate-200" aria-hidden />
       <nav className="flex items-center gap-1" aria-label="Workspace tools">
@@ -236,7 +222,7 @@ export function ProjectWorkspaceToolbar({
             <ToolbarIconButton
               key={tool.id}
               active={selected}
-              icon={<Icon size={17} />}
+              icon={Icon}
               label={tool.label}
               title={`${tool.label} (${tool.shortcut})`}
               onClick={() => onToolChange(tool.id)}
@@ -246,27 +232,21 @@ export function ProjectWorkspaceToolbar({
       </nav>
       <ToolbarIconButton
         active={resizeAspectLocked}
-        icon={resizeAspectLocked ? <Lock size={17} /> : <Unlock size={17} />}
+        icon={resizeAspectLocked ? Lock : Unlock}
         label="Lock resize aspect ratio"
         title="Lock resize aspect ratio"
         onClick={() => onResizeAspectLockedChange(!resizeAspectLocked)}
       />
-      <button
+      <IconButton
         ref={setGuideMenuReference}
+        active={guideButtonActive}
+        className="relative"
+        disabled={!guideMenuEnabled}
+        label={guideButtonLabel}
+        title={guideButtonLabel}
         {...getGuideReferenceProps({
           "aria-expanded": effectiveGuideMenuOpen,
           "aria-haspopup": "menu",
-          "aria-label": guideButtonLabel,
-          className: cx(
-            "relative flex h-8 w-8 items-center justify-center rounded-md border text-slate-600 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-sky-100",
-            guideButtonActive
-              ? "border-sky-500 bg-sky-100 text-sky-800 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.18)]"
-              : "border-transparent hover:border-slate-200 hover:bg-white hover:text-slate-950",
-            !guideMenuEnabled &&
-              "cursor-not-allowed opacity-40 hover:border-transparent hover:bg-transparent"
-          ),
-          disabled: !guideMenuEnabled,
-          title: guideButtonLabel,
           type: "button"
         })}
       >
@@ -279,15 +259,14 @@ export function ProjectWorkspaceToolbar({
             {guideCount > 9 ? "9+" : guideCount}
           </span>
         ) : null}
-      </button>
+      </IconButton>
       {effectiveGuideMenuOpen && guideControls ? (
         <FloatingPortal>
           <FloatingFocusManager context={guideMenuContext} initialFocus={-1} modal={false}>
             <ProjectWorkspaceGuideMenu
               floatingProps={getGuideMenuFloatingProps({
                 "aria-label": "Manage guides",
-                className:
-                  "z-[120] w-80 rounded-md border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/15 outline-none"
+                className: "z-[120] w-80"
               })}
               floatingRef={setGuideMenuFloating}
               floatingStyle={guideMenuFloatingStyles}
@@ -300,27 +279,20 @@ export function ProjectWorkspaceToolbar({
         <>
           <span className="h-6 w-px bg-slate-200" aria-hidden />
           <div className="flex items-center gap-1" aria-label="Arrange selected items">
-            <button
+            <IconButton
               ref={setPositionMenuReference}
+              active={positionButtonActive}
+              disabled={!canAlign}
+              label={positionButtonLabel}
+              title={positionButtonLabel}
               {...getReferenceProps({
                 "aria-expanded": effectivePositionMenuOpen,
                 "aria-haspopup": "menu",
-                "aria-label": positionButtonLabel,
-                className: cx(
-                  "flex h-8 w-8 items-center justify-center rounded-md border text-slate-600 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-sky-100",
-                  positionButtonActive
-                    ? "border-sky-500 bg-sky-100 text-sky-800 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.18)]"
-                    : "border-transparent hover:border-slate-200 hover:bg-white hover:text-slate-950",
-                  !canAlign &&
-                    "cursor-not-allowed opacity-40 hover:border-transparent hover:bg-transparent"
-                ),
-                disabled: !canAlign,
-                title: positionButtonLabel,
                 type: "button"
               })}
             >
               <TablePositionPresetIcon position={activePositionPreset ?? "middle-center"} />
-            </button>
+            </IconButton>
             {effectivePositionMenuOpen ? (
               <FloatingPortal>
                 <FloatingFocusManager context={positionMenuContext} initialFocus={-1} modal={false}>
@@ -329,35 +301,31 @@ export function ProjectWorkspaceToolbar({
                     style={positionMenuFloatingStyles}
                     {...getPositionMenuFloatingProps({
                       "aria-label": "Position selected item",
-                      className:
-                        "z-[120] rounded-md border border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/15 outline-none"
+                      className: "z-[120] outline-none"
                     })}
                   >
-                    <div className="grid grid-cols-3 gap-1">
-                      {positionPresetOptions.map((option) => {
-                        const active = activePositionPreset === option.value;
+                    <FloatingPanel className="p-1" variant="popover">
+                      <div className="grid grid-cols-3 gap-1">
+                        {positionPresetOptions.map((option) => {
+                          const active = activePositionPreset === option.value;
 
-                        return (
-                          <button
-                            key={option.value}
-                            aria-checked={active}
-                            aria-label={`Place selected at ${option.label.toLowerCase()}`}
-                            className={cx(
-                              "flex h-8 w-8 items-center justify-center rounded-md border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sky-100",
-                              active
-                                ? "border-sky-500 bg-sky-100 text-sky-800"
-                                : "border-transparent text-slate-500 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900"
-                            )}
-                            role="menuitemradio"
-                            title={`Place selected at ${option.label.toLowerCase()}`}
-                            type="button"
-                            onClick={() => selectPosition(option.value)}
-                          >
-                            <TablePositionPresetIcon position={option.value} />
-                          </button>
-                        );
-                      })}
-                    </div>
+                          return (
+                            <IconButton
+                              key={option.value}
+                              active={active}
+                              aria-checked={active}
+                              aria-label={`Place selected at ${option.label.toLowerCase()}`}
+                              role="menuitemradio"
+                              title={`Place selected at ${option.label.toLowerCase()}`}
+                              variant="ghost"
+                              onClick={() => selectPosition(option.value)}
+                            >
+                              <TablePositionPresetIcon position={option.value} />
+                            </IconButton>
+                          );
+                        })}
+                      </div>
+                    </FloatingPanel>
                   </div>
                 </FloatingFocusManager>
               </FloatingPortal>
@@ -369,7 +337,7 @@ export function ProjectWorkspaceToolbar({
       <div className="flex items-center gap-1" aria-label="Playtest mode">
         <ToolbarIconButton
           disabled={!canStartPlaytest}
-          icon={<Play size={17} />}
+          icon={Play}
           label="Start playtest"
           onClick={onStartPlaytest}
         />
@@ -378,7 +346,7 @@ export function ProjectWorkspaceToolbar({
       <div className="flex items-center gap-1" aria-label="Canvas zoom">
         <ToolbarIconButton
           disabled={canvasScale <= minCanvasScale}
-          icon={<ZoomOut size={17} />}
+          icon={ZoomOut}
           label="Zoom out"
           onClick={() => onCanvasScaleChange(normalizeCanvasScale(canvasScale - canvasScaleStep))}
         />
@@ -392,23 +360,23 @@ export function ProjectWorkspaceToolbar({
         </button>
         <ToolbarIconButton
           disabled={canvasScale >= maxCanvasScale}
-          icon={<ZoomIn size={17} />}
+          icon={ZoomIn}
           label="Zoom in"
           onClick={() => onCanvasScaleChange(normalizeCanvasScale(canvasScale + canvasScaleStep))}
         />
-        <ToolbarIconButton icon={<Scan size={17} />} label="Zoom to fit" onClick={onZoomToFit} />
+        <ToolbarIconButton icon={Scan} label="Zoom to fit" onClick={onZoomToFit} />
       </div>
       <span className="h-6 w-px bg-slate-200" aria-hidden />
       <div className="flex items-center gap-1" aria-label="Export">
         <ToolbarIconButton
           disabled={!canExport}
-          icon={<Download size={17} />}
+          icon={Download}
           label="Export PNG"
           onClick={onExportPng}
         />
         <ToolbarIconButton
           disabled={!canPrint}
-          icon={<Printer size={17} />}
+          icon={Printer}
           label="Print sheets"
           onClick={onPrintSheets}
         />
@@ -477,102 +445,96 @@ function ProjectWorkspaceGuideMenu({
 
   return (
     <div ref={floatingRef} style={floatingStyle} {...floatingProps}>
-      <div className="border-b border-slate-100 px-1 pb-2">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Guides</p>
-          <p className="text-[11px] text-slate-400">{composition.guides.length} total</p>
+      <FloatingPanel variant="popover">
+        <div className="border-b border-slate-100 px-1 pb-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Guides</p>
+            <p className="text-[11px] text-slate-400">{composition.guides.length} total</p>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Snap to
+            </span>
+            <GuideMenuTextToggle
+              active={composition.snapToGuides}
+              label="Guides"
+              title="Snap objects to visible guides and axes"
+              onClick={() => updateBooleanField("snapToGuides", !composition.snapToGuides)}
+            />
+            <GuideMenuTextToggle
+              active={composition.snapToObjects}
+              label="Objects"
+              title="Snap objects to other visible objects"
+              onClick={() => updateBooleanField("snapToObjects", !composition.snapToObjects)}
+            />
+          </div>
         </div>
-        <div className="mt-2 flex items-center gap-2">
-          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-            Snap to
-          </span>
-          <GuideMenuTextToggle
-            active={composition.snapToGuides}
-            label="Guides"
-            title="Snap objects to visible guides and axes"
-            onClick={() => updateBooleanField("snapToGuides", !composition.snapToGuides)}
-          />
-          <GuideMenuTextToggle
-            active={composition.snapToObjects}
-            label="Objects"
-            title="Snap objects to other visible objects"
-            onClick={() => updateBooleanField("snapToObjects", !composition.snapToObjects)}
-          />
-        </div>
-      </div>
 
-      <div className="mt-2 flex gap-2">
-        <button
-          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800"
-          type="button"
-          onClick={() => addGuide("vertical")}
-        >
-          <Plus size={14} />
-          Vertical
-        </button>
-        <button
-          className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800"
-          type="button"
-          onClick={() => addGuide("horizontal")}
-        >
-          <Plus size={14} />
-          Horizontal
-        </button>
-      </div>
-
-      {composition.guides.length ? (
-        <div className="mt-2 max-h-72 space-y-1.5 overflow-auto pr-0.5">
-          {composition.guides.map((guide) => (
-            <div
-              key={guide.id}
-              className="grid grid-cols-[minmax(0,1fr)_72px_auto_auto_auto] items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 transition-colors hover:border-sky-200 hover:bg-sky-50/70 focus-within:border-sky-300 focus-within:bg-sky-50/70"
-              onBlur={handleGuideRowBlur}
-              onFocus={() => onGuideHover(guide.id)}
-              onMouseEnter={() => onGuideHover(guide.id)}
-              onMouseLeave={() => onGuideHover(null)}
-            >
-              <span className="truncate px-1 text-xs font-semibold text-slate-600">
-                {guide.axis === "vertical" ? "Vertical" : "Horizontal"}
-              </span>
-              <input
-                className="h-7 min-w-0 rounded border border-slate-200 bg-white px-1.5 text-xs tabular-nums text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                inputMode="decimal"
-                type="number"
-                value={String(guide.position)}
-                onChange={(event) => {
-                  const position = Number(event.currentTarget.value);
-
-                  if (Number.isFinite(position)) {
-                    updateGuide(guide, { position });
-                  }
-                }}
-              />
-              <GuideMenuIconButton
-                active={guide.visible}
-                icon={guide.visible ? Eye : EyeOff}
-                label={guide.visible ? "Hide guide" : "Show guide"}
-                onClick={() => updateGuide(guide, { visible: !guide.visible })}
-              />
-              <GuideMenuIconButton
-                active={guide.locked}
-                icon={guide.locked ? Lock : Unlock}
-                label={guide.locked ? "Unlock guide" : "Lock guide"}
-                onClick={() => updateGuide(guide, { locked: !guide.locked })}
-              />
-              <GuideMenuIconButton
-                destructive
-                icon={Trash2}
-                label="Delete guide"
-                onClick={() => deleteGuide(guide)}
-              />
-            </div>
-          ))}
+        <div className="mt-2 flex gap-2">
+          <PanelActionButton className="flex-1" size="field" onClick={() => addGuide("vertical")}>
+            <Plus size={14} />
+            Vertical
+          </PanelActionButton>
+          <PanelActionButton className="flex-1" size="field" onClick={() => addGuide("horizontal")}>
+            <Plus size={14} />
+            Horizontal
+          </PanelActionButton>
         </div>
-      ) : (
-        <div className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs font-medium text-slate-400">
-          No guides
-        </div>
-      )}
+
+        {composition.guides.length ? (
+          <div className="mt-2 max-h-72 space-y-1.5 overflow-auto pr-0.5">
+            {composition.guides.map((guide) => (
+              <div
+                key={guide.id}
+                className="grid grid-cols-[minmax(0,1fr)_72px_auto_auto_auto] items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 transition-colors hover:border-sky-200 hover:bg-sky-50/70 focus-within:border-sky-300 focus-within:bg-sky-50/70"
+                onBlur={handleGuideRowBlur}
+                onFocus={() => onGuideHover(guide.id)}
+                onMouseEnter={() => onGuideHover(guide.id)}
+                onMouseLeave={() => onGuideHover(null)}
+              >
+                <span className="truncate px-1 text-xs font-semibold text-slate-600">
+                  {guide.axis === "vertical" ? "Vertical" : "Horizontal"}
+                </span>
+                <FormInput
+                  className="h-7 rounded px-1.5 text-xs tabular-nums"
+                  inputMode="decimal"
+                  type="number"
+                  value={String(guide.position)}
+                  onChange={(event) => {
+                    const position = Number(event.currentTarget.value);
+
+                    if (Number.isFinite(position)) {
+                      updateGuide(guide, { position });
+                    }
+                  }}
+                />
+                <GuideMenuIconButton
+                  active={guide.visible}
+                  icon={guide.visible ? Eye : EyeOff}
+                  label={guide.visible ? "Hide guide" : "Show guide"}
+                  onClick={() => updateGuide(guide, { visible: !guide.visible })}
+                />
+                <GuideMenuIconButton
+                  active={guide.locked}
+                  icon={guide.locked ? Lock : Unlock}
+                  label={guide.locked ? "Unlock guide" : "Lock guide"}
+                  onClick={() => updateGuide(guide, { locked: !guide.locked })}
+                />
+                <GuideMenuIconButton
+                  destructive
+                  icon={Trash2}
+                  label="Delete guide"
+                  onClick={() => deleteGuide(guide)}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <PanelEmptyState className="mt-2 text-slate-400" spacious>
+            No guides
+          </PanelEmptyState>
+        )}
+      </FloatingPanel>
     </div>
   );
 }
@@ -588,27 +550,22 @@ type GuideMenuIconButtonProps = {
 function GuideMenuIconButton({
   active = false,
   destructive = false,
-  icon: Icon,
+  icon,
   label,
   onClick
 }: GuideMenuIconButtonProps) {
+  const Icon = icon;
+
   return (
-    <button
-      aria-label={label}
-      aria-pressed={active || undefined}
-      className={cx(
-        "flex h-7 w-7 items-center justify-center rounded border text-slate-500 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sky-100",
-        active
-          ? "border-sky-300 bg-sky-50 text-sky-700"
-          : "border-transparent hover:border-slate-200 hover:bg-white hover:text-slate-900",
-        destructive && "hover:border-red-200 hover:bg-red-50 hover:text-red-700"
-      )}
+    <IconButton
+      active={active}
+      icon={<Icon size={14} />}
+      label={label}
+      size="sm"
       title={label}
-      type="button"
+      variant={destructive ? "danger" : "ghost"}
       onClick={onClick}
-    >
-      <Icon size={14} />
-    </button>
+    />
   );
 }
 
@@ -624,20 +581,15 @@ function GuideMenuTextToggle({
   onClick: () => void;
 }) {
   return (
-    <button
+    <PanelActionButton
       aria-pressed={active}
-      className={cx(
-        "h-7 rounded border px-2 text-[11px] font-semibold transition-colors",
-        active
-          ? "border-sky-300 bg-sky-50 text-sky-700"
-          : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-900"
-      )}
+      active={active}
+      size="default"
       title={title}
-      type="button"
       onClick={onClick}
     >
       {label}
-    </button>
+    </PanelActionButton>
   );
 }
 
@@ -648,25 +600,23 @@ function ToolbarIconButton({
   label,
   onClick,
   title = label
-}: ToolbarIconButtonProps) {
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  title?: string;
+}) {
   return (
-    <button
-      aria-label={label}
-      aria-pressed={active || undefined}
-      className={cx(
-        "flex h-8 w-8 items-center justify-center rounded-md border text-slate-600 transition-colors",
-        active
-          ? "border-sky-500 bg-sky-100 text-sky-800 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.18)]"
-          : "border-transparent hover:border-slate-200 hover:bg-white hover:text-slate-950",
-        disabled && "cursor-not-allowed opacity-40 hover:border-transparent hover:bg-transparent"
-      )}
+    <IconButton
+      active={active}
       disabled={disabled}
+      icon={<Icon size={17} />}
+      label={label}
       title={title}
-      type="button"
       onClick={onClick}
-    >
-      {Icon}
-    </button>
+    />
   );
 }
 

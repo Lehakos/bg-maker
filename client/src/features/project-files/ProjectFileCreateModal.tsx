@@ -4,12 +4,14 @@ import {
   type ProjectFileKind,
   type ProjectObjectKind
 } from "@bg-maker/shared";
-import { Button, Group, Modal, Stack, TextInput } from "@mantine/core";
+import { clsx as cx } from "clsx";
+import { Modal, Stack, TextInput } from "@mantine/core";
 import { Link2, Plus } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { ModalFooterActions } from "../../components/ModalFooterActions";
+import { SelectableSurface } from "../../components/SelectableSurface";
 import {
   stickyModalBodyClassName,
-  stickyModalFooterClassName,
   stickyModalFormClassName,
   stickyModalStyles
 } from "../../components/modal-layout";
@@ -70,8 +72,7 @@ export function ProjectFileCreateModal({
 
     onCreate({
       name,
-      objectRootKind:
-        type === "object" && !sourceObjectFileNodeId ? objectRootKind : undefined,
+      objectRootKind: type === "object" && !sourceObjectFileNodeId ? objectRootKind : undefined,
       sourceObjectFileNodeId:
         type === "object" && sourceObjectFileNodeId ? sourceObjectFileNodeId : undefined
     });
@@ -97,6 +98,7 @@ export function ProjectFileCreateModal({
 
   return (
     <Modal
+      data-testid="project-file-create-modal"
       opened={opened}
       onClose={onClose}
       title={getCreateTitle(type)}
@@ -137,18 +139,13 @@ export function ProjectFileCreateModal({
           </Stack>
         </div>
 
-        <Group
-          className={stickyModalFooterClassName}
-          justify="flex-end"
-          gap="sm"
-        >
-          <Button variant="subtle" color="gray" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" leftSection={<Plus size={16} />}>
-            Create
-          </Button>
-        </Group>
+        <ModalFooterActions
+          confirmIcon={<Plus size={16} />}
+          confirmLabel="Create"
+          confirmType="submit"
+          testId="project-file-create-modal-actions"
+          onCancel={onClose}
+        />
       </form>
     </Modal>
   );
@@ -179,18 +176,16 @@ function ObjectRootKindPicker({
             const label = getProjectObjectKindLabel(kind);
 
             return (
-              <button
+              <SelectableSurface
                 key={kind}
                 aria-checked={selected}
                 className={cx(
-                  "flex h-10 items-center gap-2 rounded-md border px-3 text-left text-sm font-medium transition-colors",
-                  selected
-                    ? "border-sky-500 bg-sky-50 text-slate-950 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.18)]"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                  "flex h-10 items-center gap-2 px-3 text-left text-sm font-medium",
+                  selected ? "text-slate-950" : "text-slate-700"
                 )}
                 role="radio"
+                selected={selected}
                 title={label}
-                type="button"
                 onClick={() => onChange(kind)}
               >
                 <ProjectObjectKindIcon
@@ -199,7 +194,7 @@ function ObjectRootKindPicker({
                   size={16}
                 />
                 <span className="truncate">{label}</span>
-              </button>
+              </SelectableSurface>
             );
           })}
         </div>
@@ -216,18 +211,16 @@ function ObjectRootKindPicker({
               }`;
 
               return (
-                <button
+                <SelectableSurface
                   key={option.id}
                   aria-checked={selected}
                   className={cx(
-                    "flex h-11 min-w-0 items-center gap-2 rounded-md border px-3 text-left transition-colors",
-                    selected
-                      ? "border-sky-500 bg-sky-50 text-slate-950 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.18)]"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                    "flex h-11 min-w-0 items-center gap-2 px-3 text-left",
+                    selected ? "text-slate-950" : "text-slate-700"
                   )}
                   role="radio"
+                  selected={selected}
                   title={option.name}
-                  type="button"
                   onClick={() => onSourceChange(option)}
                 >
                   <Link2 className="shrink-0 text-sky-700" size={16} />
@@ -238,7 +231,7 @@ function ObjectRootKindPicker({
                       {propertyCountLabel}
                     </span>
                   </span>
-                </button>
+                </SelectableSurface>
               );
             })}
           </div>
@@ -262,10 +255,6 @@ function getCreateTitle(type: ProjectFileCreateType) {
   }
 
   return "New item";
-}
-
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
 }
 
 function getDefaultCreateName(type: ProjectFileCreateType) {

@@ -7,8 +7,22 @@ import type {
 import { projectObjectVariableTypes } from "@bg-maker/shared";
 import { ExternalLink, Link2, Plus, Trash2, Variable } from "lucide-react";
 import type { ChangeEvent, DragEvent } from "react";
-import { cx } from "./class-names";
-import { InspectorSection, InspectorSelectField } from "./inspector-ui";
+import {
+  FormInput,
+  FormSelect,
+  IconButton,
+  PanelActionButton,
+  PanelCard,
+  PanelEmptyState,
+  PanelNotice
+} from "../../components";
+import {
+  InspectorColorField,
+  type InspectorFieldDefinition,
+  InspectorSection,
+  InspectorSelectField,
+  InspectorUploadField
+} from "./inspector-ui";
 import {
   getProjectImageAssetDragPayload,
   hasProjectImageAssetDragData
@@ -57,14 +71,9 @@ export function ProjectObjectTemplateSection({
         <span className="text-xs font-semibold text-slate-500">
           {template.variables.length} propert{template.variables.length === 1 ? "y" : "ies"}
         </span>
-        <button
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700"
-          title="Add property"
-          type="button"
-          onClick={onAddVariable}
-        >
+        <PanelActionButton iconOnly size="field" title="Add property" onClick={onAddVariable}>
           <Plus size={15} />
-        </button>
+        </PanelActionButton>
       </div>
 
       {template.variables.length ? (
@@ -85,9 +94,7 @@ export function ProjectObjectTemplateSection({
           ))}
         </div>
       ) : (
-        <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-500">
-          No properties defined.
-        </p>
+        <PanelEmptyState>No properties defined.</PanelEmptyState>
       )}
     </InspectorSection>
   );
@@ -121,15 +128,13 @@ export function ProjectObjectLinkedObjectSection({
       <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
         <p className="min-w-0 truncate font-semibold text-slate-800">{sourceName}</p>
         {onOpenSource ? (
-          <button
-            aria-label="Open template"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800"
-            title="Open template"
-            type="button"
+          <IconButton
+            icon={<ExternalLink size={13} />}
+            label="Open template"
+            size="sm"
+            variant="neutral"
             onClick={onOpenSource}
-          >
-            <ExternalLink size={13} />
-          </button>
+          />
         ) : null}
       </div>
       {template.variables.length ? (
@@ -148,9 +153,7 @@ export function ProjectObjectLinkedObjectSection({
           ))}
         </div>
       ) : (
-        <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-500">
-          Source object has no properties.
-        </p>
+        <PanelEmptyState>Source object has no properties.</PanelEmptyState>
       )}
     </InspectorSection>
   );
@@ -180,15 +183,15 @@ function VariableRow({
   uploading
 }: VariableRowProps) {
   return (
-    <div className="rounded-md border border-slate-200 bg-white p-1.5">
+    <PanelCard className="bg-white p-1.5">
       <div className="flex items-center gap-1.5">
-        <input
-          className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 px-2 text-sm text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        <FormInput
+          className="flex-1"
           value={variable.name}
           onChange={(event) => onNameChange(variable.id, event.currentTarget.value)}
         />
-        <select
-          className="h-8 w-24 shrink-0 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        <FormSelect
+          className="w-24 shrink-0 text-xs font-medium text-slate-700"
           value={variable.type}
           onChange={(event) =>
             onTypeChange(variable.id, event.currentTarget.value as ProjectObjectVariableType)
@@ -199,15 +202,13 @@ function VariableRow({
               {getVariableTypeLabel(type)}
             </option>
           ))}
-        </select>
-        <button
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-red-100 text-red-500 hover:border-red-200 hover:bg-red-50 hover:text-red-700"
-          title="Remove property"
-          type="button"
+        </FormSelect>
+        <IconButton
+          icon={<Trash2 size={14} />}
+          label="Remove property"
+          variant="danger"
           onClick={() => onRemove(variable.id)}
-        >
-          <Trash2 size={14} />
-        </button>
+        />
       </div>
       <div className="mt-1.5">
         <VariableValueField
@@ -221,7 +222,7 @@ function VariableRow({
           onImageUpload={onImageUpload}
         />
       </div>
-    </div>
+    </PanelCard>
   );
 }
 
@@ -301,28 +302,18 @@ function VariableValueField({
           onChange={onChange}
         />
         {onImageUpload ? (
-          <label
-            className={cx(
-              "flex h-8 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 text-xs font-medium text-slate-700",
-              uploading
-                ? "cursor-not-allowed opacity-60"
-                : "cursor-pointer hover:border-sky-400 hover:bg-sky-50"
-            )}
-          >
-            <input
-              accept="image/jpeg,image/png,image/webp"
-              className="sr-only"
-              disabled={uploading}
-              type="file"
-              onChange={handleImageUpload}
-            />
-            {uploading ? "Uploading..." : "Upload image"}
-          </label>
+          <InspectorUploadField
+            accept="image/jpeg,image/png,image/webp"
+            className="h-8 text-xs"
+            disabled={uploading}
+            label={uploading ? "Uploading..." : "Upload image"}
+            onChange={handleImageUpload}
+          />
         ) : null}
         {uploadError ? (
-          <p className="rounded-md border border-red-100 bg-red-50 px-2 py-1.5 text-xs text-red-700">
+          <PanelNotice className="mt-0" variant="danger">
             {uploadError}
-          </p>
+          </PanelNotice>
         ) : null}
       </div>
     );
@@ -330,26 +321,19 @@ function VariableValueField({
 
   if (variable.type === "color") {
     return (
-      <label className="block text-xs font-medium text-slate-500">
-        <span>{fieldLabel}</span>
-        <span className="mt-1 flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2">
-          <input
-            className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
-            type="color"
-            value={value}
-            onChange={(event) => onChange(event.currentTarget.value)}
-          />
-          <span className="truncate text-xs tabular-nums text-slate-600">{value}</span>
-        </span>
-      </label>
+      <InspectorColorField
+        field={{ key: "value", label: fieldLabel } satisfies InspectorFieldDefinition<"value">}
+        value={value}
+        onChange={(_, nextValue) => onChange(nextValue)}
+      />
     );
   }
 
   return (
     <label className="block text-xs font-medium text-slate-500">
       <span>{fieldLabel}</span>
-      <input
-        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+      <FormInput
+        className="mt-1 w-full"
         inputMode={variable.type === "number" ? "decimal" : undefined}
         type={variable.type === "number" ? "number" : "text"}
         value={value}

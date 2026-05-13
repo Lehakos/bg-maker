@@ -1,9 +1,9 @@
-import { Alert, Button, Group, Modal, Stack, Textarea, TextInput } from "@mantine/core";
+import { Alert, Modal, Stack, Textarea, TextInput } from "@mantine/core";
 import { AlertCircle, Plus } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { ModalFooterActions } from "../../components/ModalFooterActions";
 import {
   stickyModalBodyClassName,
-  stickyModalFooterClassName,
   stickyModalFormClassName,
   stickyModalStyles
 } from "../../components/modal-layout";
@@ -51,6 +51,7 @@ export function CreateProjectModal({ opened, onClose }: CreateProjectModalProps)
 
   return (
     <Modal
+      data-testid="create-project-modal"
       opened={opened}
       onClose={closeModal}
       title="New project"
@@ -58,10 +59,7 @@ export function CreateProjectModal({ opened, onClose }: CreateProjectModalProps)
       radius="sm"
       styles={stickyModalStyles}
     >
-      <form
-        className={stickyModalFormClassName}
-        onSubmit={(event) => void handleSubmit(event)}
-      >
+      <form className={stickyModalFormClassName} onSubmit={(event) => void handleSubmit(event)}>
         <div className={stickyModalBodyClassName}>
           <Stack gap="md">
             {createProject.isError ? (
@@ -88,22 +86,14 @@ export function CreateProjectModal({ opened, onClose }: CreateProjectModalProps)
           </Stack>
         </div>
 
-        <Group
-          className={stickyModalFooterClassName}
-          justify="flex-end"
-          gap="sm"
-        >
-          <Button variant="subtle" color="gray" onClick={closeModal}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            leftSection={<Plus size={16} />}
-            loading={createProject.isPending}
-          >
-            Create
-          </Button>
-        </Group>
+        <ModalFooterActions
+          confirmIcon={<Plus size={16} />}
+          confirmLabel="Create"
+          confirmLoading={createProject.isPending}
+          confirmType="submit"
+          testId="create-project-modal-actions"
+          onCancel={closeModal}
+        />
       </form>
     </Modal>
   );

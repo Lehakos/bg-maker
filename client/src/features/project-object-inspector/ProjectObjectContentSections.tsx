@@ -20,16 +20,20 @@ import {
   type LucideIcon
 } from "lucide-react";
 import type { ChangeEvent, DragEvent } from "react";
+import { PanelNotice } from "../../components";
 import { cx } from "./class-names";
 import {
+  InspectorBehaviorNumberGrid,
   InspectorBehaviorNumberField,
   InspectorColorField,
   type InspectorFieldDefinition,
+  InspectorFieldGrid,
   InspectorIconSegmentedField,
   InspectorSection,
   InspectorSelectField,
   InspectorSwitchField,
   InspectorTextareaField,
+  InspectorUploadField,
   TextStyleToggleField
 } from "./inspector-ui";
 import {
@@ -218,7 +222,7 @@ export function ProjectObjectTextSection({
         value={draft.content}
         onChange={(value) => onDraftChange("content", value)}
       />
-      <div className="grid grid-cols-2 gap-2">
+      <InspectorFieldGrid>
         <InspectorColorField
           disabled={textColorBound}
           field={textColorFields[0]}
@@ -232,8 +236,8 @@ export function ProjectObjectTextSection({
           options={textFontFamilyOptions}
           onChange={(value) => onDraftChange("fontFamily", value)}
         />
-      </div>
-      <div className="grid grid-cols-2 gap-2">
+      </InspectorFieldGrid>
+      <InspectorFieldGrid>
         <TextStyleToggleField
           isBold={isBold}
           isItalic={isItalic}
@@ -247,7 +251,7 @@ export function ProjectObjectTextSection({
           options={textAlignOptions}
           onChange={(value) => onDraftChange("textAlign", value)}
         />
-      </div>
+      </InspectorFieldGrid>
       <InspectorIconSegmentedField
         iconSize={18}
         label="Vertical"
@@ -267,7 +271,7 @@ export function ProjectObjectTextSection({
         onDraftChange={onDraftChange}
         onReset={onReset}
       />
-      <div className="grid grid-cols-2 gap-2">
+      <InspectorFieldGrid>
         <InspectorSelectField
           label="Effect"
           value={draft.effectMode}
@@ -280,7 +284,7 @@ export function ProjectObjectTextSection({
           value={draft.effectColor}
           onChange={onDraftChange}
         />
-      </div>
+      </InspectorFieldGrid>
       {draft.effectMode !== "none" ? (
         <InspectorBehaviorNumberField
           field={textEffectStrengthField}
@@ -367,31 +371,18 @@ export function ProjectObjectImageSection({
         />
       </div>
       {imageAssetId && imageAssetMissing ? (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
-          Selected image is no longer in the file tree.
-        </p>
+        <PanelNotice className="mt-0">Selected image is no longer in the file tree.</PanelNotice>
       ) : null}
-      <label
-        className={cx(
-          "flex h-9 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 text-sm font-medium text-slate-700",
-          assetBound
-            ? "cursor-not-allowed opacity-60"
-            : "cursor-pointer hover:border-sky-400 hover:bg-sky-50"
-        )}
-      >
-        <input
-          accept="image/jpeg,image/png,image/webp"
-          className="sr-only"
-          disabled={uploadingImage || assetBound}
-          type="file"
-          onChange={onImageUpload}
-        />
-        {uploadingImage ? "Uploading..." : "Upload image"}
-      </label>
+      <InspectorUploadField
+        accept="image/jpeg,image/png,image/webp"
+        disabled={uploadingImage || assetBound}
+        label={uploadingImage ? "Uploading..." : "Upload image"}
+        onChange={onImageUpload}
+      />
       {uploadError ? (
-        <p className="rounded-md border border-red-100 bg-red-50 px-2 py-1.5 text-xs text-red-700">
+        <PanelNotice className="mt-0" variant="danger">
           {uploadError}
-        </p>
+        </PanelNotice>
       ) : null}
       <InspectorSelectField
         label="Fit"
@@ -465,7 +456,7 @@ export function ProjectObjectIconSection({
           })}
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <InspectorFieldGrid>
         <InspectorColorField
           disabled={colorBound}
           field={iconColorFields[0]}
@@ -477,7 +468,7 @@ export function ProjectObjectIconSection({
           value={draft.style}
           onChange={(value) => onDraftChange("style", value)}
         />
-      </div>
+      </InspectorFieldGrid>
     </InspectorSection>
   );
 }
@@ -539,19 +530,14 @@ type TextNumberGridProps = {
 
 function TextNumberGrid({ fields, value, onCommit, onDraftChange, onReset }: TextNumberGridProps) {
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {fields.map((field) => (
-        <InspectorBehaviorNumberField
-          key={field.key}
-          field={field}
-          settings={textNumberFieldSettings[field.key]}
-          value={value[field.key]}
-          onCommit={onCommit}
-          onDraftChange={onDraftChange}
-          onReset={onReset}
-        />
-      ))}
-    </div>
+    <InspectorBehaviorNumberGrid
+      fields={fields}
+      settingsByField={textNumberFieldSettings}
+      value={value}
+      onCommit={onCommit}
+      onDraftChange={onDraftChange}
+      onReset={onReset}
+    />
   );
 }
 
@@ -571,19 +557,14 @@ function ImageNumberGrid({
   onReset
 }: ImageNumberGridProps) {
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {fields.map((field) => (
-        <InspectorBehaviorNumberField
-          key={field.key}
-          field={field}
-          settings={imageNumberFieldSettings[field.key]}
-          value={value[field.key]}
-          onCommit={onCommit}
-          onDraftChange={onDraftChange}
-          onReset={onReset}
-        />
-      ))}
-    </div>
+    <InspectorBehaviorNumberGrid
+      fields={fields}
+      settingsByField={imageNumberFieldSettings}
+      value={value}
+      onCommit={onCommit}
+      onDraftChange={onDraftChange}
+      onReset={onReset}
+    />
   );
 }
 

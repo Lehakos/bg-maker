@@ -1,6 +1,7 @@
-import type { ChangeEvent, FocusEvent, KeyboardEvent, ReactNode } from "react";
+import type { ChangeEvent, FocusEvent, InputHTMLAttributes, KeyboardEvent, ReactNode } from "react";
 import { useId } from "react";
 import { Bold, Italic, type LucideIcon } from "lucide-react";
+import { FormInput, FormSelect } from "../../components";
 import { InfoTip } from "../../components/InfoTip";
 import { cx } from "./class-names";
 import {
@@ -64,8 +65,8 @@ export function InspectorTextField({
   return (
     <label className="block text-xs font-medium text-slate-500">
       <span className="flex min-h-5 items-center">{label}</span>
-      <input
-        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+      <FormInput
+        className="mt-1 w-full"
         value={value}
         onBlur={(event) => onBlur(event.currentTarget.value)}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -89,8 +90,8 @@ export function InspectorInlineTextField({
   return (
     <label className="block text-xs font-medium text-slate-500">
       <span className="flex min-h-5 items-center">{label}</span>
-      <input
-        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+      <FormInput
+        className="mt-1 w-full"
         value={value}
         onChange={(event) => onChange(event.currentTarget.value)}
       />
@@ -208,7 +209,7 @@ export function InspectorColorGrid<TField extends string>({
   onChange
 }: InspectorColorGridProps<TField>) {
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <InspectorFieldGrid>
       {fields.map((field) => (
         <InspectorColorField
           key={field.key}
@@ -217,7 +218,7 @@ export function InspectorColorGrid<TField extends string>({
           onChange={onChange}
         />
       ))}
-    </div>
+    </InspectorFieldGrid>
   );
 }
 
@@ -447,12 +448,9 @@ export function InspectorSelectField<TValue extends string>({
         {info ? <InfoTip align={infoAlign}>{info}</InfoTip> : null}
         {labelAction}
       </span>
-      <select
+      <FormSelect
         id={selectId}
-        className={cx(
-          "mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100",
-          disabled && "cursor-not-allowed bg-slate-50 text-slate-500"
-        )}
+        className={cx("mt-1 w-full", disabled && "cursor-not-allowed bg-slate-50 text-slate-500")}
         disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.currentTarget.value as TValue)}
@@ -462,7 +460,7 @@ export function InspectorSelectField<TValue extends string>({
             {option.label}
           </option>
         ))}
-      </select>
+      </FormSelect>
     </div>
   );
 }
@@ -519,8 +517,8 @@ export function InspectorBehaviorNumberField<TFieldKey extends string>({
   return (
     <label className="block min-w-0 text-xs font-medium text-slate-500">
       <span className="flex min-h-5 items-center">{field.label}</span>
-      <input
-        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm tabular-nums text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+      <FormInput
+        className="mt-1 w-full tabular-nums"
         inputMode="decimal"
         max={settings.max}
         min={settings.min}
@@ -555,7 +553,7 @@ export function InspectorNumberGrid({
   onReset
 }: InspectorNumberGridProps) {
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <InspectorFieldGrid>
       {fields.map((field) => (
         <InspectorNumberField
           key={field.key}
@@ -568,7 +566,7 @@ export function InspectorNumberGrid({
           onReset={onReset}
         />
       ))}
-    </div>
+    </InspectorFieldGrid>
   );
 }
 
@@ -614,9 +612,9 @@ function InspectorNumberField({
       title={disabled ? disabledTitle : undefined}
     >
       <span className="flex min-h-5 items-center">{field.label}</span>
-      <input
+      <FormInput
         className={cx(
-          "mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm tabular-nums text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100",
+          "mt-1 w-full tabular-nums",
           disabled && "cursor-not-allowed bg-slate-100 text-slate-400"
         )}
         disabled={disabled}
@@ -630,6 +628,91 @@ function InspectorNumberField({
         onChange={(event) => onDraftChange(field.key, event.currentTarget.value)}
         onKeyDown={handleKeyDown}
       />
+    </label>
+  );
+}
+
+type InspectorFieldGridProps = {
+  children: ReactNode;
+  columns?: 2 | 3;
+  className?: string;
+};
+
+export function InspectorFieldGrid({ children, className, columns = 2 }: InspectorFieldGridProps) {
+  return (
+    <div
+      className={cx(columns === 3 ? "grid grid-cols-3 gap-2" : "grid grid-cols-2 gap-2", className)}
+    >
+      {children}
+    </div>
+  );
+}
+
+type InspectorBehaviorNumberGridProps<
+  TFieldKey extends string,
+  TDraft extends Record<TFieldKey, string>
+> = {
+  fields: readonly InspectorFieldDefinition<TFieldKey>[];
+  settingsByField: Record<TFieldKey, { max: number; min: number; step: number }>;
+  value: TDraft;
+  columns?: 2 | 3;
+  onCommit: (fieldKey: TFieldKey, value: string) => void;
+  onDraftChange: (fieldKey: TFieldKey, value: string) => void;
+  onReset: (fieldKey: TFieldKey) => void;
+};
+
+export function InspectorBehaviorNumberGrid<
+  TFieldKey extends string,
+  TDraft extends Record<TFieldKey, string>
+>({
+  columns,
+  fields,
+  settingsByField,
+  value,
+  onCommit,
+  onDraftChange,
+  onReset
+}: InspectorBehaviorNumberGridProps<TFieldKey, TDraft>) {
+  return (
+    <InspectorFieldGrid columns={columns}>
+      {fields.map((field) => (
+        <InspectorBehaviorNumberField
+          key={field.key}
+          field={field}
+          settings={settingsByField[field.key]}
+          value={value[field.key]}
+          onCommit={onCommit}
+          onDraftChange={onDraftChange}
+          onReset={onReset}
+        />
+      ))}
+    </InspectorFieldGrid>
+  );
+}
+
+type InspectorUploadFieldProps = InputHTMLAttributes<HTMLInputElement> & {
+  disabled?: boolean;
+  label: string;
+};
+
+export function InspectorUploadField({
+  className,
+  disabled = false,
+  label,
+  ...inputProps
+}: InspectorUploadFieldProps) {
+  return (
+    <label
+      className={cx(
+        "flex h-9 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 text-sm font-medium text-slate-700",
+        disabled
+          ? "cursor-not-allowed opacity-60"
+          : "cursor-pointer hover:border-sky-400 hover:bg-sky-50",
+        className
+      )}
+    >
+      <input {...inputProps} className="sr-only" disabled={disabled} type="file" />
+      {label}
     </label>
   );
 }

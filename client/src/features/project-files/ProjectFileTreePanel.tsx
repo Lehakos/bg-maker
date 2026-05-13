@@ -17,10 +17,9 @@ import {
   useSensors
 } from "@dnd-kit/core";
 import type { ProjectFileNode } from "@bg-maker/shared";
+import { clsx as cx } from "clsx";
 import {
   Boxes,
-  ChevronDown,
-  ChevronRight,
   CopyPlus,
   FileSpreadsheet,
   Folder,
@@ -42,6 +41,8 @@ import {
   useState
 } from "react";
 import { ContextMenu, type ContextMenuAction } from "../../components/ContextMenu";
+import { PanelShell } from "../../components/PanelShell";
+import { TreeDisclosureButton, TreeRenameInput } from "../../components/TreeControls";
 import {
   appendProjectFileNode,
   createFolderNode,
@@ -140,12 +141,10 @@ export function ProjectFileTreePanel({
   const [overDropTargetId, setOverDropTargetId] = useState<string | null>(null);
   const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
-  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(
-    () => (selectedNodeId ? [selectedNodeId] : [])
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(() =>
+    selectedNodeId ? [selectedNodeId] : []
   );
-  const [selectionAnchorNodeId, setSelectionAnchorNodeId] = useState<string | null>(
-    selectedNodeId
-  );
+  const [selectionAnchorNodeId, setSelectionAnchorNodeId] = useState<string | null>(selectedNodeId);
   const sortedFileTree = useMemo(() => sortProjectFileTree(fileTree), [fileTree]);
   const flattenedFileTree = useMemo(
     () => flattenProjectFileTree(sortedFileTree, expandedFolderIds),
@@ -164,9 +163,7 @@ export function ProjectFileTreePanel({
       return [];
     }
 
-    return validSelectedNodeIds.includes(selectedNodeId)
-      ? validSelectedNodeIds
-      : [selectedNodeId];
+    return validSelectedNodeIds.includes(selectedNodeId) ? validSelectedNodeIds : [selectedNodeId];
   }, [fileTree, selectedNodeId, validSelectedNodeIds]);
   const effectiveSelectionAnchorNodeId =
     selectionAnchorNodeId && findProjectFileNode(fileTree, selectionAnchorNodeId)
@@ -209,8 +206,8 @@ export function ProjectFileTreePanel({
     canDelete: editableContextMenuSelectedNodes.length > 0,
     canDetachLinkedObject: Boolean(
       singleContextMenuNode?.type === "file" &&
-        singleContextMenuNode.kind === "object" &&
-        singleContextMenuNode.sourceRef
+      singleContextMenuNode.kind === "object" &&
+      singleContextMenuNode.sourceRef
     ),
     canDuplicate: editableContextMenuSelectedNodes.length > 0,
     canImportVariants: canImportVariantsFromObjectFile(fileTree, singleContextMenuNode),
@@ -558,12 +555,11 @@ export function ProjectFileTreePanel({
   }
 
   return (
-    <aside
+    <PanelShell
+      as="aside"
       aria-label="Project file tree"
-      className={cx(
-        "flex min-h-0 flex-col overflow-hidden border-b border-slate-200 bg-white text-slate-700 md:border-b-0 md:border-r",
-        className
-      )}
+      border="bottomRightResponsive"
+      className={className}
       onContextMenu={(event) => handleContextMenu(event)}
     >
       <DndContext
@@ -635,7 +631,7 @@ export function ProjectFileTreePanel({
           onImport={handleImportVariants}
         />
       ) : null}
-    </aside>
+    </PanelShell>
   );
 }
 
@@ -880,9 +876,9 @@ function ProjectFileTreeNode({
                   ? "bg-teal-50 text-teal-950 outline outline-1 -outline-offset-1 outline-teal-200"
                   : selected
                     ? "bg-sky-50 text-slate-950 outline outline-1 -outline-offset-1 outline-sky-200"
-                : protectedNode
-                  ? "bg-teal-50 text-teal-950 hover:bg-teal-100"
-                  : "text-slate-700 hover:bg-slate-100"
+                    : protectedNode
+                      ? "bg-teal-50 text-teal-950 hover:bg-teal-100"
+                      : "text-slate-700 hover:bg-slate-100"
         )}
         style={{ paddingLeft: `${8 + depth * indentationWidth}px` }}
         onContextMenu={(event) => onContextMenu(event, node.id)}
@@ -893,14 +889,11 @@ function ProjectFileTreeNode({
         }}
       >
         {hasChildren ? (
-          <button
-            aria-label={expanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-            type="button"
+          <TreeDisclosureButton
+            expanded={expanded}
+            label={expanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
             onClick={handleToggle}
-          >
-            {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </button>
+          />
         ) : (
           <span className="h-5 w-5 shrink-0" />
         )}
@@ -912,9 +905,8 @@ function ProjectFileTreeNode({
               node={node}
               projectId={projectId}
             />
-            <input
+            <TreeRenameInput
               ref={renameInputRef}
-              className="h-5 min-w-32 flex-1 rounded border border-sky-500 bg-white px-1 text-[13px] text-slate-950 outline-none"
               value={renameDraft}
               onBlur={handleRenameBlur}
               onChange={(event) => onRenameDraftChange(event.currentTarget.value)}
@@ -1387,8 +1379,4 @@ function getProjectFileNodeIconClassName(node: ProjectFileNode) {
   }
 
   return "text-slate-500";
-}
-
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
 }

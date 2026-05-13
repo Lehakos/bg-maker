@@ -1,9 +1,9 @@
-import { Button, Group, Modal, Stack, TextInput } from "@mantine/core";
+import { Modal, Stack, TextInput } from "@mantine/core";
 import { Boxes, Plus } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { ModalFooterActions } from "../../components/ModalFooterActions";
 import {
   stickyModalBodyClassName,
-  stickyModalFooterClassName,
   stickyModalFormClassName,
   stickyModalStyles
 } from "../../components/modal-layout";
@@ -41,6 +41,7 @@ export function ReusableObjectNameModal({
   return (
     <Modal
       centered
+      data-testid="reusable-object-name-modal"
       opened={opened}
       radius="sm"
       styles={stickyModalStyles}
@@ -60,14 +61,13 @@ export function ReusableObjectNameModal({
             />
           </Stack>
         </div>
-        <Group className={stickyModalFooterClassName} justify="flex-end" gap="sm">
-          <Button variant="subtle" color="gray" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" leftSection={<Plus size={16} />}>
-            Create
-          </Button>
-        </Group>
+        <ModalFooterActions
+          confirmIcon={<Plus size={16} />}
+          confirmLabel="Create"
+          confirmType="submit"
+          testId="reusable-object-name-modal-actions"
+          onCancel={onClose}
+        />
       </form>
     </Modal>
   );

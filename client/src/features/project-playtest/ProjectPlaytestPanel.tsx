@@ -17,6 +17,14 @@ import {
 } from "lucide-react";
 import { type PointerEvent, type ReactNode, useRef, useState } from "react";
 import {
+  Chip,
+  FloatingPanel,
+  FormSelect,
+  IconButton,
+  PanelActionButton,
+  PanelEmptyState
+} from "../../components";
+import {
   getProjectObjectNodeCounter,
   getProjectObjectNodeDie,
   getProjectObjectNodeScoreTrack
@@ -177,7 +185,7 @@ export function ProjectPlaytestPanel({
       data-export-exclude="true"
       data-playtest-overlay-root="true"
     >
-      <div className="pointer-events-auto absolute right-3 top-3 flex max-w-[calc(100%-24px)] items-center gap-2 rounded-md border border-slate-900/15 bg-white/95 px-2 py-2 shadow-xl shadow-slate-900/15 backdrop-blur">
+      <FloatingPanel className="pointer-events-auto absolute right-3 top-3 flex max-w-[calc(100%-24px)] items-center gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white">
             <Play size={16} />
@@ -193,9 +201,10 @@ export function ProjectPlaytestPanel({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {session?.gameConfigSnapshot.players.length ? (
-            <select
+            <FormSelect
               aria-label="Active player"
-              className="h-8 max-w-36 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+              className="max-w-36 text-xs font-semibold text-slate-700"
+              tone="emerald"
               value={session.activePlayerId ?? ""}
               onChange={(event) =>
                 onAction({
@@ -209,32 +218,36 @@ export function ProjectPlaytestPanel({
                   {player.name}
                 </option>
               ))}
-            </select>
+            </FormSelect>
           ) : null}
-          <PlaytestIconButton
+          <IconButton
             disabled={!canUndo}
             icon={<Undo2 size={15} />}
             label="Undo"
+            tone="emerald"
+            variant="neutral"
             onClick={onUndo}
           />
-          <PlaytestIconButton
+          <IconButton
             disabled={!canRedo}
             icon={<Redo2 size={15} />}
             label="Redo"
+            tone="emerald"
+            variant="neutral"
             onClick={onRedo}
           />
-          <PlaytestIconButton
-            destructive
+          <IconButton
             icon={<Square size={15} />}
             label="Stop playtest"
+            variant="danger"
             onClick={onStop}
           />
         </div>
-      </div>
+      </FloatingPanel>
 
       {selectedItem && actionToolbarPosition ? (
-        <section
-          className="pointer-events-auto absolute flex max-w-[calc(100%-24px)] flex-wrap items-center gap-3 rounded-md border border-slate-900/15 bg-white/95 p-2 shadow-xl shadow-slate-900/20 backdrop-blur"
+        <FloatingPanel
+          className="pointer-events-auto absolute flex max-w-[calc(100%-24px)] flex-wrap items-center gap-3 shadow-slate-900/20"
           style={{
             left: actionToolbarPosition.left,
             top: actionToolbarPosition.top,
@@ -247,9 +260,7 @@ export function ProjectPlaytestPanel({
           <div className="min-w-40 max-w-60 px-1">
             <div className="flex items-center gap-1.5">
               <p className="truncate text-sm font-semibold text-slate-950">{selectedItem.name}</p>
-              <span className="shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-normal text-slate-500">
-                {selectedItem.baseObject.kind}
-              </span>
+              <Chip>{selectedItem.baseObject.kind}</Chip>
             </div>
             {selectedIsContainer ? (
               <p className="mt-0.5 text-xs font-medium text-slate-500">
@@ -303,12 +314,13 @@ export function ProjectPlaytestPanel({
               />
             ) : null}
           </div>
-        </section>
+        </FloatingPanel>
       ) : null}
 
-      <section
+      <FloatingPanel
         aria-label="Playtest action history"
-        className="pointer-events-auto absolute w-[min(360px,calc(100%-24px))] rounded-md border border-slate-900/15 bg-white/95 p-3 shadow-xl shadow-slate-900/15 backdrop-blur"
+        className="pointer-events-auto absolute w-[min(360px,calc(100%-24px))]"
+        padding="md"
         role="region"
         style={{ left: historyPosition.x, top: historyPosition.y }}
       >
@@ -341,11 +353,9 @@ export function ProjectPlaytestPanel({
               ))}
           </ol>
         ) : (
-          <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs font-medium text-slate-500">
-            No actions yet
-          </div>
+          <PanelEmptyState spacious>No actions yet</PanelEmptyState>
         )}
-      </section>
+      </FloatingPanel>
     </div>
   );
 }
@@ -372,11 +382,13 @@ function PlaytestActionButton({
   onClick: () => void;
 }) {
   return (
-    <button
+    <PanelActionButton
       aria-label={title}
-      className={`flex items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 ${subtitle && !compact ? "h-12" : "h-10"} ${compact ? "w-11 min-w-0 px-0 text-base" : "min-w-20"}`}
+      className={`${subtitle && !compact ? "h-12" : "h-10"} ${compact ? "w-11 min-w-0 px-0 text-base" : "min-w-20 px-3 text-sm font-semibold"} shadow-sm`}
+      iconOnly={compact}
+      size="field"
       title={title}
-      type="button"
+      tone="emerald"
       onBlur={onPreviewEnd}
       onClick={() => {
         onPreviewEnd?.();
@@ -396,7 +408,7 @@ function PlaytestActionButton({
           </span>
         ) : null}
       </span>
-    </button>
+    </PanelActionButton>
   );
 }
 
@@ -422,11 +434,11 @@ function ScoreTrackMarkerControls({
           <span className="w-9 rounded border border-slate-100 bg-slate-50 px-1 py-0.5 text-center text-xs font-bold tabular-nums text-slate-700">
             {marker.value}
           </span>
-          <button
+          <PanelActionButton
             aria-label={`Decrease ${marker.label || marker.id}`}
-            className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+            iconOnly
             title={`Decrease ${marker.label || marker.id}`}
-            type="button"
+            tone="emerald"
             onClick={() =>
               onAction({
                 itemId,
@@ -436,12 +448,12 @@ function ScoreTrackMarkerControls({
             }
           >
             <Minus size={15} />
-          </button>
-          <button
+          </PanelActionButton>
+          <PanelActionButton
             aria-label={`Increase ${marker.label || marker.id}`}
-            className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+            iconOnly
             title={`Increase ${marker.label || marker.id}`}
-            type="button"
+            tone="emerald"
             onClick={() =>
               onAction({
                 itemId,
@@ -451,41 +463,10 @@ function ScoreTrackMarkerControls({
             }
           >
             <Plus size={15} />
-          </button>
+          </PanelActionButton>
         </div>
       ))}
     </div>
-  );
-}
-
-function PlaytestIconButton({
-  destructive = false,
-  disabled = false,
-  icon,
-  label,
-  onClick
-}: {
-  destructive?: boolean;
-  disabled?: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      aria-label={label}
-      className={`flex h-8 w-8 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-        destructive
-          ? "border-red-100 bg-red-50 text-red-700 hover:border-red-200 hover:bg-red-100"
-          : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
-      }`}
-      disabled={disabled}
-      title={label}
-      type="button"
-      onClick={onClick}
-    >
-      {icon}
-    </button>
   );
 }
 

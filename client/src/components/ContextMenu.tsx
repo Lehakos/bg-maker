@@ -1,3 +1,4 @@
+import { clsx as cx } from "clsx";
 import {
   autoUpdate,
   flip,
@@ -169,8 +170,4 @@ function ContextMenuActionButton({ action, onOpenChange }: ContextMenuActionButt
       ) : null}
     </div>
   );
-}
-
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
 }

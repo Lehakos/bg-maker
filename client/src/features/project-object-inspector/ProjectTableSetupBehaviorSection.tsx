@@ -28,7 +28,9 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { PanelActionButton } from "../../components/PanelActionButton";
+import { PanelCard, PanelEmptyState } from "../../components/PanelSurfaces";
 import {
   getProjectObjectKindIconClassName,
   getProjectObjectKindLabel
@@ -330,9 +332,7 @@ function ZonePlacementSummary({
       </div>
       {zoneMode === "slots" ? (
         <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase tracking-normal text-cyan-700">
-            Occupancy
-          </p>
+          <p className="text-[10px] font-bold uppercase tracking-normal text-cyan-700">Occupancy</p>
           <p className="truncate text-xs font-semibold text-slate-800">{occupancyLabel}</p>
         </div>
       ) : null}
@@ -347,11 +347,23 @@ type RotationStepFieldProps = {
 
 function RotationStepField({ value, onChange }: RotationStepFieldProps) {
   const formattedValue = formatRotationStepValue(value);
-  const [draft, setDraft] = useState(formattedValue);
 
-  useEffect(() => {
-    setDraft(formattedValue);
-  }, [formattedValue]);
+  return (
+    <RotationStepDraftField
+      key={formattedValue}
+      formattedValue={formattedValue}
+      onChange={onChange}
+    />
+  );
+}
+
+type RotationStepDraftFieldProps = {
+  formattedValue: string;
+  onChange: (value: number) => void;
+};
+
+function RotationStepDraftField({ formattedValue, onChange }: RotationStepDraftFieldProps) {
+  const [draft, setDraft] = useState(formattedValue);
 
   function commitRotationStep(_fieldKey: RotationBehaviorNumberFieldKey, draftValue: string) {
     const normalizedValue = parseRotationStepDraftValue(draftValue);
@@ -406,7 +418,12 @@ type CommandDraftCache = Record<
 >;
 
 function CommandListField({ commands, container, targetOptions, onChange }: CommandListFieldProps) {
-  const [draftCache, setDraftCache] = useState<CommandDraftCache>({});
+  const [draftCacheByCommandId, setDraftCacheByCommandId] = useState<CommandDraftCache>({});
+  const commandIds = useMemo(() => new Set(commands.map((command) => command.id)), [commands]);
+  const draftCache = useMemo(
+    () => getCommandDraftCacheForCommandIds(draftCacheByCommandId, commandIds),
+    [commandIds, draftCacheByCommandId]
+  );
   const availableTypeOptions = useMemo(
     () =>
       targetOptions.length
@@ -418,20 +435,6 @@ function CommandListField({ commands, container, targetOptions, onChange }: Comm
           ),
     [targetOptions.length]
   );
-
-  useEffect(() => {
-    const commandIds = new Set(commands.map((command) => command.id));
-
-    setDraftCache((currentCache) => {
-      const nextCache = Object.fromEntries(
-        Object.entries(currentCache).filter(([commandId]) => commandIds.has(commandId))
-      );
-
-      return Object.keys(nextCache).length === Object.keys(currentCache).length
-        ? currentCache
-        : nextCache;
-    });
-  }, [commands]);
 
   function addCommand() {
     onChange([
@@ -462,13 +465,17 @@ function CommandListField({ commands, container, targetOptions, onChange }: Comm
   }
 
   function rememberCommandDraft(command: ProjectTableSetupItemCommand) {
-    setDraftCache((currentCache) => ({
-      ...currentCache,
-      [command.id]: {
-        ...currentCache[command.id],
-        [command.type]: command
-      }
-    }));
+    setDraftCacheByCommandId((currentCache) => {
+      const activeCache = getCommandDraftCacheForCommandIds(currentCache, commandIds);
+
+      return {
+        ...activeCache,
+        [command.id]: {
+          ...activeCache[command.id],
+          [command.type]: command
+        }
+      };
+    });
   }
 
   function getCommandForType(
@@ -522,22 +529,14 @@ function CommandListField({ commands, container, targetOptions, onChange }: Comm
     <div className="space-y-2 pt-1">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-slate-500">Commands</span>
-        <button
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700"
-          title="Add command"
-          type="button"
-          onClick={addCommand}
-        >
+        <PanelActionButton iconOnly size="field" title="Add command" onClick={addCommand}>
           <Plus size={15} />
-        </button>
+        </PanelActionButton>
       </div>
       {commands.length ? (
         <div className="space-y-2">
           {commands.map((command) => (
-            <div
-              key={command.id}
-              className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2"
-            >
+            <PanelCard key={command.id} className="space-y-2">
               <div className="flex items-end gap-2">
                 <div className="min-w-0 flex-1">
                   <InspectorSelectField
@@ -547,14 +546,15 @@ function CommandListField({ commands, container, targetOptions, onChange }: Comm
                     onChange={(type) => changeCommandType(command, type)}
                   />
                 </div>
-                <button
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-600"
+                <PanelActionButton
+                  iconOnly
+                  size="field"
                   title="Remove command"
-                  type="button"
+                  variant="danger"
                   onClick={() => removeCommand(command.id)}
                 >
                   <Trash2 size={14} />
-                </button>
+                </PanelActionButton>
               </div>
               <InspectorInlineTextField
                 label="Label"
@@ -566,16 +566,25 @@ function CommandListField({ commands, container, targetOptions, onChange }: Comm
                 targetOptions={targetOptions}
                 onChange={updateCommand}
               />
-            </div>
+            </PanelCard>
           ))}
         </div>
       ) : (
-        <p className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-500">
-          No commands assigned.
-        </p>
+        <PanelEmptyState>No commands assigned.</PanelEmptyState>
       )}
     </div>
   );
+}
+
+function getCommandDraftCacheForCommandIds(
+  draftCache: CommandDraftCache,
+  commandIds: ReadonlySet<string>
+): CommandDraftCache {
+  const entries = Object.entries(draftCache).filter(([commandId]) => commandIds.has(commandId));
+
+  return entries.length === Object.keys(draftCache).length
+    ? draftCache
+    : Object.fromEntries(entries);
 }
 
 type CommandSettingsProps = {
@@ -661,11 +670,13 @@ type DrawToTableOffsetSettingsProps = {
 };
 
 function DrawToTableOffsetSettings({ command, onChange }: DrawToTableOffsetSettingsProps) {
-  const [previewOffset, setPreviewOffset] = useState(command.offset);
+  const offsetKey = `${command.offset.x}:${command.offset.y}`;
 
-  useEffect(() => {
-    setPreviewOffset(command.offset);
-  }, [command.offset]);
+  return <DrawToTableOffsetDraftSettings key={offsetKey} command={command} onChange={onChange} />;
+}
+
+function DrawToTableOffsetDraftSettings({ command, onChange }: DrawToTableOffsetSettingsProps) {
+  const [previewOffset, setPreviewOffset] = useState(command.offset);
 
   function updateOffset(axis: "x" | "y", value: number) {
     const offset = {
@@ -765,7 +776,11 @@ type CommandNumberFieldProps = {
   onDraftChange?: (value: string) => void;
 };
 
-function CommandNumberField({
+function CommandNumberField({ value, ...props }: CommandNumberFieldProps) {
+  return <CommandNumberDraftField key={String(value)} value={value} {...props} />;
+}
+
+function CommandNumberDraftField({
   label,
   max,
   min,
@@ -775,10 +790,6 @@ function CommandNumberField({
   onDraftChange
 }: CommandNumberFieldProps) {
   const [draft, setDraft] = useState(String(value));
-
-  useEffect(() => {
-    setDraft(String(value));
-  }, [value]);
 
   function commitDraft() {
     const parsedValue = Number(draft);
@@ -847,45 +858,34 @@ function AcceptedObjectsField({
   const acceptedKindsKey = acceptedKinds.join("\0");
   const acceptedObjectFileNodeIdsKey = acceptedObjectFileNodeIds.join("\0");
   const objectFileOptions = useMemo(() => getAcceptedObjectFileOptions(fileTree), [fileTree]);
-  const [mode, setMode] = useState<AcceptedObjectsMode>(() =>
-    getAcceptedObjectsMode(acceptedKinds, acceptedObjectFileNodeIds)
+  const objectFileOptionsKey = objectFileOptions.map((option) => option.value).join("\0");
+  const [acceptedObjectsState, setAcceptedObjectsState] = useState<AcceptedObjectsState>(() =>
+    createAcceptedObjectsState({
+      acceptedKinds,
+      acceptedKindsKey,
+      acceptedObjectFileNodeIds,
+      acceptedObjectFileNodeIdsKey,
+      objectFileOptions,
+      objectFileOptionsKey
+    })
   );
-  const [drafts, setDrafts] = useState<AcceptedObjectsDrafts>(() =>
-    createAcceptedObjectsDrafts(acceptedKinds, acceptedObjectFileNodeIds, objectFileOptions)
+  const resolvedAcceptedObjectsState = getAcceptedObjectsStateForExternalSelection(
+    acceptedObjectsState,
+    {
+      acceptedKinds,
+      acceptedKindsKey,
+      acceptedObjectFileNodeIds,
+      acceptedObjectFileNodeIdsKey,
+      objectFileOptions,
+      objectFileOptionsKey
+    }
   );
+  const { drafts, mode } = resolvedAcceptedObjectsState;
   const [selectOpen, setSelectOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    const nextMode = getAcceptedObjectsMode(acceptedKinds, acceptedObjectFileNodeIds);
-
-    setMode((currentMode) =>
-      nextMode === "all" && currentMode !== "all" ? currentMode : nextMode
-    );
-    setDrafts((currentDrafts) =>
-      getDraftsWithExternalSelection(
-        currentDrafts,
-        nextMode,
-        {
-          acceptedKinds,
-          acceptedObjectFileNodeIds
-        },
-        objectFileOptions
-      )
-    );
-  }, [
-    acceptedKinds,
-    acceptedKindsKey,
-    acceptedObjectFileNodeIds,
-    acceptedObjectFileNodeIdsKey,
-    objectFileOptions
-  ]);
-
   const activeSelection = getAcceptedObjectsSelectionForMode(mode, drafts);
-  const selectOptions = useMemo(
-    () => getAcceptedObjectsSelectOptions(mode, objectFileOptions),
-    [mode, objectFileOptions]
-  );
+  const selectOptions = getAcceptedObjectsSelectOptions(mode, objectFileOptions);
   const selectedOptions = selectOptions.filter((option) =>
     isAcceptedObjectOptionSelected(option, activeSelection)
   );
@@ -897,7 +897,10 @@ function AcceptedObjectsField({
   function handleModeChange(nextMode: AcceptedObjectsMode) {
     const nextSelection = getAcceptedObjectsSelectionForMode(nextMode, drafts);
 
-    setMode(nextMode);
+    setAcceptedObjectsState({
+      ...resolvedAcceptedObjectsState,
+      mode: nextMode
+    });
     setSearchQuery("");
     setSelectOpen(nextMode !== "all");
     emitAcceptedObjectsChange(nextMode, nextSelection);
@@ -911,7 +914,10 @@ function AcceptedObjectsField({
       objectFileOptions
     );
 
-    setDrafts((currentDrafts) => getDraftsWithSelection(currentDrafts, mode, nextSelection));
+    setAcceptedObjectsState({
+      ...resolvedAcceptedObjectsState,
+      drafts: getDraftsWithSelection(drafts, mode, nextSelection)
+    });
     emitAcceptedObjectsChange(mode, nextSelection);
   }
 
@@ -1170,6 +1176,23 @@ type AcceptedObjectsDrafts = {
   objects: string[];
 };
 
+type AcceptedObjectsState = {
+  acceptedKindsKey: string;
+  acceptedObjectFileNodeIdsKey: string;
+  drafts: AcceptedObjectsDrafts;
+  mode: AcceptedObjectsMode;
+  objectFileOptionsKey: string;
+};
+
+type AcceptedObjectsExternalSelection = {
+  acceptedKinds: readonly ProjectObjectKind[];
+  acceptedKindsKey: string;
+  acceptedObjectFileNodeIds: readonly string[];
+  acceptedObjectFileNodeIdsKey: string;
+  objectFileOptions: readonly AcceptedObjectFileOption[];
+  objectFileOptionsKey: string;
+};
+
 type AcceptedObjectsSelectOption = {
   kind: ProjectObjectKind;
   label: string;
@@ -1179,6 +1202,61 @@ type AcceptedObjectsSelectOption = {
   type: "kind" | "object";
   value: string;
 };
+
+function createAcceptedObjectsState({
+  acceptedKinds,
+  acceptedKindsKey,
+  acceptedObjectFileNodeIds,
+  acceptedObjectFileNodeIdsKey,
+  objectFileOptions,
+  objectFileOptionsKey
+}: AcceptedObjectsExternalSelection): AcceptedObjectsState {
+  return {
+    acceptedKindsKey,
+    acceptedObjectFileNodeIdsKey,
+    drafts: createAcceptedObjectsDrafts(
+      acceptedKinds,
+      acceptedObjectFileNodeIds,
+      objectFileOptions
+    ),
+    mode: getAcceptedObjectsMode(acceptedKinds, acceptedObjectFileNodeIds),
+    objectFileOptionsKey
+  };
+}
+
+function getAcceptedObjectsStateForExternalSelection(
+  state: AcceptedObjectsState,
+  externalSelection: AcceptedObjectsExternalSelection
+): AcceptedObjectsState {
+  if (
+    state.acceptedKindsKey === externalSelection.acceptedKindsKey &&
+    state.acceptedObjectFileNodeIdsKey === externalSelection.acceptedObjectFileNodeIdsKey &&
+    state.objectFileOptionsKey === externalSelection.objectFileOptionsKey
+  ) {
+    return state;
+  }
+
+  const nextMode = getAcceptedObjectsMode(
+    externalSelection.acceptedKinds,
+    externalSelection.acceptedObjectFileNodeIds
+  );
+
+  return {
+    acceptedKindsKey: externalSelection.acceptedKindsKey,
+    acceptedObjectFileNodeIdsKey: externalSelection.acceptedObjectFileNodeIdsKey,
+    drafts: getDraftsWithExternalSelection(
+      state.drafts,
+      nextMode,
+      {
+        acceptedKinds: externalSelection.acceptedKinds,
+        acceptedObjectFileNodeIds: externalSelection.acceptedObjectFileNodeIds
+      },
+      externalSelection.objectFileOptions
+    ),
+    mode: nextMode === "all" && state.mode !== "all" ? state.mode : nextMode,
+    objectFileOptionsKey: externalSelection.objectFileOptionsKey
+  };
+}
 
 function getAcceptedObjectsMode(
   acceptedKinds: readonly ProjectObjectKind[],

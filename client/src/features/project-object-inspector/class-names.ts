@@ -1,3 +1,1 @@
-export function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
-}
+export { clsx as cx } from "clsx";

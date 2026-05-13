@@ -1,6 +1,11 @@
 import type { ProjectFileNode, ProjectImageAsset } from "@bg-maker/shared";
-import { ImageIcon, RefreshCw, Search, Upload } from "lucide-react";
+import { ImageIcon, RefreshCw, Upload } from "lucide-react";
 import { type ChangeEvent, useMemo, useState } from "react";
+import { PanelShell } from "../../components/PanelShell";
+import { PanelToolbar } from "../../components/PanelToolbar";
+import { PanelEmptyState, PanelNotice } from "../../components/PanelSurfaces";
+import { SearchInput } from "../../components/SearchInput";
+import { SelectableSurface } from "../../components/SelectableSurface";
 import {
   appendProjectImageAssetFileNodes,
   rememberTemporaryProjectImageAssetUrl,
@@ -127,24 +132,14 @@ export function AssetBrowserPanel({
   }
 
   return (
-    <section
-      className={cx("flex min-h-0 flex-col overflow-hidden bg-white text-slate-700", className)}
-    >
-      <div className="shrink-0 space-y-2 border-b border-slate-200 bg-slate-50 p-2">
-        <label className="relative block">
-          <Search
-            aria-hidden
-            className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-400"
-            size={15}
-          />
-          <input
-            aria-label="Search assets"
-            className="h-8 w-full rounded-md border border-slate-200 bg-white pl-8 pr-2 text-sm text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-            placeholder="Search assets"
-            value={search}
-            onChange={(event) => setSearch(event.currentTarget.value)}
-          />
-        </label>
+    <PanelShell className={className}>
+      <PanelToolbar>
+        <SearchInput
+          aria-label="Search assets"
+          placeholder="Search assets"
+          value={search}
+          onChange={(event) => setSearch(event.currentTarget.value)}
+        />
         <label
           className={cx(
             "flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-2 text-sm font-semibold text-slate-700 transition-colors hover:border-sky-300 hover:text-sky-700",
@@ -169,7 +164,7 @@ export function AssetBrowserPanel({
             ))}
           </div>
         ) : null}
-      </div>
+      </PanelToolbar>
 
       <div className="min-h-0 flex-1 overflow-auto p-2">
         {visibleItems.length ? (
@@ -188,12 +183,10 @@ export function AssetBrowserPanel({
             ))}
           </div>
         ) : (
-          <div className="flex h-full min-h-32 items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs font-medium text-slate-500">
-            No assets
-          </div>
+          <PanelEmptyState fullHeight>No assets</PanelEmptyState>
         )}
       </div>
-    </section>
+    </PanelShell>
   );
 }
 
@@ -217,14 +210,11 @@ function AssetBrowserCard({
   onSelectNode
 }: AssetBrowserCardProps) {
   return (
-    <div
-      className={cx(
-        "min-w-0 rounded-md border bg-white p-1.5 transition-colors",
-        selected
-          ? "border-sky-500 bg-sky-50 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.18)]"
-          : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-      )}
+    <SelectableSurface
+      as="div"
+      className="min-w-0 p-1.5"
       draggable
+      selected={selected}
       onClick={() => onSelectNode(item.fileNodeId)}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = "copy";
@@ -273,10 +263,10 @@ function AssetBrowserCard({
         />
       </label>
       {error ? (
-        <p className="mt-1 rounded border border-red-100 bg-red-50 px-1.5 py-1 text-[11px] text-red-700">
+        <PanelNotice className="mt-1 px-1.5 py-1 text-[11px]" variant="danger">
           {error}
-        </p>
+        </PanelNotice>
       ) : null}
-    </div>
+    </SelectableSurface>
   );
 }

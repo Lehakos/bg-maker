@@ -33,7 +33,6 @@ import {
   getProjectObjectNodeImage,
   getProjectObjectNodeLayout,
   getProjectObjectNodeMeeple,
-  getProjectObjectNodeRectTransform,
   getProjectObjectNodeScoreTrack,
   getProjectObjectNodeShape,
   getProjectObjectNodeStackDisplay,

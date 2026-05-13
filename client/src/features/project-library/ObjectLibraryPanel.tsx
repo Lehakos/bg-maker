@@ -8,9 +8,14 @@ import {
   type ProjectObjectRectTransform
 } from "@bg-maker/shared";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { BoxSelect, Link2, Search } from "lucide-react";
+import { BoxSelect, Link2 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useMemo, useRef, useState } from "react";
+import { PanelShell } from "../../components/PanelShell";
+import { PanelToolbar } from "../../components/PanelToolbar";
+import { PanelEmptyState } from "../../components/PanelSurfaces";
+import { SearchInput } from "../../components/SearchInput";
+import { SelectableSurface } from "../../components/SelectableSurface";
 import { getProjectImageAssetOptions } from "../project-assets/project-image-assets";
 import { getProjectObjectLayoutRectTransformOverrides } from "../project-objects/project-object-layout";
 import { ProjectObjectSurface } from "../project-objects/ProjectObjectSurface";
@@ -78,31 +83,23 @@ export function ObjectLibraryPanel({
   );
 
   return (
-    <section
-      className={cx("flex min-h-0 flex-col overflow-hidden bg-white text-slate-700", className)}
-    >
-      <div className="shrink-0 space-y-2 border-b border-slate-200 bg-slate-50 p-2">
-        <label className="relative block">
-          <Search
-            aria-hidden
-            className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-400"
-            size={15}
-          />
-          <input
-            aria-label="Search object library"
-            className="h-8 w-full rounded-md border border-slate-200 bg-white pl-8 pr-2 text-sm text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-            placeholder="Search objects"
-            value={search}
-            onChange={(event) => setSearch(event.currentTarget.value)}
-          />
-        </label>
+    <PanelShell className={className}>
+      <PanelToolbar>
+        <SearchInput
+          aria-label="Search object library"
+          placeholder="Search objects"
+          value={search}
+          onChange={(event) => setSearch(event.currentTarget.value)}
+        />
         <label className="block text-xs font-medium text-slate-500">
           <span className="sr-only">Object type</span>
           <select
             aria-label="Object type"
             className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-slate-700 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
             value={rootKind}
-            onChange={(event) => setRootKind(event.currentTarget.value as ProjectObjectKind | "all")}
+            onChange={(event) =>
+              setRootKind(event.currentTarget.value as ProjectObjectKind | "all")
+            }
           >
             <option value="all">All types</option>
             {projectObjectKinds.map((kind) => (
@@ -112,14 +109,11 @@ export function ObjectLibraryPanel({
             ))}
           </select>
         </label>
-      </div>
+      </PanelToolbar>
 
       <div ref={scrollParentRef} className="min-h-0 flex-1 overflow-auto p-2">
         {visibleItems.length ? (
-          <div
-            className="relative"
-            style={{ height: `${objectVirtualizer.getTotalSize()}px` }}
-          >
+          <div className="relative" style={{ height: `${objectVirtualizer.getTotalSize()}px` }}>
             {objectVirtualizer.getVirtualItems().map((virtualItem) => {
               const item = visibleItems[virtualItem.index];
 
@@ -147,12 +141,10 @@ export function ObjectLibraryPanel({
             })}
           </div>
         ) : (
-          <div className="flex h-full min-h-32 items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs font-medium text-slate-500">
-            No objects
-          </div>
+          <PanelEmptyState fullHeight>No objects</PanelEmptyState>
         )}
       </div>
-    </section>
+    </PanelShell>
   );
 }
 
@@ -174,15 +166,10 @@ function ObjectLibraryCard({
   const rootObject = item.objectTree[0];
 
   return (
-    <button
-      className={cx(
-        "grid min-h-24 w-full grid-cols-[88px_minmax(0,1fr)] gap-2 rounded-md border bg-white p-2 text-left transition-colors",
-        selected
-          ? "border-sky-500 bg-sky-50 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.18)]"
-          : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-      )}
+    <SelectableSurface
+      className="grid min-h-24 w-full grid-cols-[88px_minmax(0,1fr)] gap-2 p-2 text-left"
       draggable
-      type="button"
+      selected={selected}
       onClick={() => onSelectNode(item.fileNodeId)}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = "copy";
@@ -215,14 +202,12 @@ function ObjectLibraryCard({
           ) : null}
           <span className="truncate text-sm font-semibold text-slate-900">{item.name}</span>
         </span>
-        <span className="mt-1 truncate text-xs text-slate-500">
-          {item.parentPath || "Project"}
-        </span>
+        <span className="mt-1 truncate text-xs text-slate-500">{item.parentPath || "Project"}</span>
         <span className="mt-1 truncate text-[11px] font-medium text-slate-400">
           {item.rootKind ? getProjectObjectKindLabel(item.rootKind) : "Object"}
         </span>
       </span>
-    </button>
+    </SelectableSurface>
   );
 }
 
@@ -302,11 +287,7 @@ function ObjectThumbnailFrame({
       className={root ? "relative h-full w-full" : "absolute overflow-visible"}
       style={getObjectThumbnailFrameStyle(rectTransform, root, siblingIndex)}
     >
-      <ProjectObjectSurface
-        fileTree={fileTree}
-        imageAssetById={imageAssetById}
-        object={object}
-      />
+      <ProjectObjectSurface fileTree={fileTree} imageAssetById={imageAssetById} object={object} />
       <div
         className={cx("absolute inset-0", clipsChildren ? "overflow-hidden" : "overflow-visible")}
         style={{ borderRadius: `${appearance.borderRadius}px` }}

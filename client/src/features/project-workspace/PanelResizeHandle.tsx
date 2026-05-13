@@ -1,7 +1,5 @@
-import type {
-  KeyboardEvent as ReactKeyboardEvent,
-  PointerEvent as ReactPointerEvent
-} from "react";
+import { clsx as cx } from "clsx";
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useEffect, useState } from "react";
 import {
   getNormalizedPanelSizeBounds,
@@ -207,8 +205,4 @@ function getResizeHandlePositionClassName(edge: ResizablePanelEdge) {
   }
 
   return "bottom-0 left-0 h-3 w-full translate-y-1/2 cursor-row-resize";
-}
-
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
 }

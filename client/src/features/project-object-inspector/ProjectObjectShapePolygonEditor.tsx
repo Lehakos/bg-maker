@@ -9,6 +9,8 @@ import {
   useRef,
   useState
 } from "react";
+import { FormInput, IconButton, PanelActionButton, PanelCard } from "../../components";
+import { cx } from "./class-names";
 import {
   formatShapePolygonPointValue,
   normalizeShapePolygonPointValue,
@@ -179,11 +181,7 @@ export function ProjectObjectShapePolygonEditor({
     );
   }
 
-  function updatePointFromPointer(
-    pointIndex: number,
-    clientX: number,
-    clientY: number
-  ) {
+  function updatePointFromPointer(pointIndex: number, clientX: number, clientY: number) {
     const point = getSvgPointFromClientPosition(clientX, clientY);
 
     if (!point) {
@@ -276,10 +274,7 @@ export function ProjectObjectShapePolygonEditor({
     };
   }
 
-  function handlePointPointerDown(
-    pointIndex: number,
-    event: PointerEvent<SVGCircleElement>
-  ) {
+  function handlePointPointerDown(pointIndex: number, event: PointerEvent<SVGCircleElement>) {
     event.preventDefault();
     event.stopPropagation();
 
@@ -325,7 +320,7 @@ export function ProjectObjectShapePolygonEditor({
 
   return (
     <div className="space-y-2">
-      <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
+      <PanelCard>
         <svg
           ref={svgRef}
           aria-label="Custom shape points"
@@ -361,30 +356,27 @@ export function ProjectObjectShapePolygonEditor({
           ))}
         </svg>
         <div className="mt-2 flex items-center gap-2">
-          <button
+          <PanelActionButton
+            size="field"
             className={cx(
-              "inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 transition-colors hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800",
+              "min-w-0 flex-1",
               !canAddPoint && "cursor-not-allowed opacity-45 hover:border-slate-200 hover:bg-white"
             )}
             disabled={!canAddPoint}
             title="Add point"
-            type="button"
             onClick={onAddPoint}
           >
             <Plus className="shrink-0" size={15} />
             <span className="truncate">Add point</span>
-          </button>
-          <button
-            aria-label="Reset custom shape"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-950"
-            title="Reset custom shape"
-            type="button"
+          </PanelActionButton>
+          <IconButton
+            icon={<RotateCcw size={15} />}
+            label="Reset custom shape"
+            variant="neutral"
             onClick={onReset}
-          >
-            <RotateCcw size={15} />
-          </button>
+          />
         </div>
-      </div>
+      </PanelCard>
 
       <div className="space-y-2">
         {pointDrafts.map((draft, index) => (
@@ -413,19 +405,18 @@ export function ProjectObjectShapePolygonEditor({
               onDraftChange={updatePointDraft}
               onReset={resetPointDraft}
             />
-            <button
-              aria-label={`Remove point ${index + 1}`}
+            <IconButton
               className={cx(
-                "mb-0 flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700",
-                !canRemovePoint && "cursor-not-allowed opacity-45 hover:border-slate-200 hover:bg-white hover:text-slate-500"
+                "mb-0",
+                !canRemovePoint &&
+                  "cursor-not-allowed opacity-45 hover:border-slate-200 hover:bg-white hover:text-slate-500"
               )}
               disabled={!canRemovePoint}
-              title={`Remove point ${index + 1}`}
-              type="button"
+              icon={<Trash2 size={15} />}
+              label={`Remove point ${index + 1}`}
+              variant="danger"
               onClick={() => onRemovePoint(index)}
-            >
-              <Trash2 size={15} />
-            </button>
+            />
           </div>
         ))}
       </div>
@@ -438,16 +429,8 @@ type ShapePointNumberFieldProps = {
   label: string;
   pointIndex: number;
   value: string;
-  onCommit: (
-    pointIndex: number,
-    fieldKey: ShapePolygonPointFieldKey,
-    value: string
-  ) => void;
-  onDraftChange: (
-    pointIndex: number,
-    fieldKey: ShapePolygonPointFieldKey,
-    value: string
-  ) => void;
+  onCommit: (pointIndex: number, fieldKey: ShapePolygonPointFieldKey, value: string) => void;
+  onDraftChange: (pointIndex: number, fieldKey: ShapePolygonPointFieldKey, value: string) => void;
   onReset: (pointIndex: number, fieldKey: ShapePolygonPointFieldKey) => void;
 };
 
@@ -480,8 +463,8 @@ function ShapePointNumberField({
   return (
     <label className="block min-w-0 text-xs font-medium text-slate-500">
       <span>{label}</span>
-      <input
-        className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm tabular-nums text-slate-950 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+      <FormInput
+        className="mt-1 w-full tabular-nums"
         inputMode="decimal"
         max={settings.max}
         min={settings.min}
@@ -509,8 +492,4 @@ function clonePoints(points: readonly ProjectObjectShapePoint[]): ProjectObjectS
 
 function getPolygonPointsAttribute(points: readonly ProjectObjectShapePoint[]) {
   return points.map((point) => `${point.x},${point.y}`).join(" ");
-}
-
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
 }

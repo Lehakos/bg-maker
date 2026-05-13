@@ -22,6 +22,7 @@ import {
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppHeaderContent } from "../../app/app-header-context";
 import { ContextMenu, type ContextMenuAction } from "../../components/ContextMenu";
+import { IconButton } from "../../components/IconButton";
 import { PanelResizeHandle } from "./PanelResizeHandle";
 import { ProjectWorkspaceLeftPanel } from "../project-library/ProjectWorkspaceLeftPanel";
 import { ProjectObjectInspectorPanel } from "../project-object-inspector/ProjectObjectInspectorPanel";
@@ -1590,14 +1591,13 @@ function ProjectWorkspaceHeader({
   return (
     <div className="flex w-full min-w-0 items-center justify-between gap-4">
       <div className="flex min-w-0 items-center gap-4">
-        <button
-          aria-label="Back to projects"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-          type="button"
+        <IconButton
+          className="shrink-0 border-transparent hover:bg-slate-100"
+          icon={<ArrowLeft size={24} />}
+          label="Back to projects"
+          size="lg"
           onClick={onBack}
-        >
-          <ArrowLeft size={24} />
-        </button>
+        />
         <div className="min-w-0">
           <h1 className="truncate text-xl font-semibold uppercase leading-tight tracking-[0.12em] text-slate-600">
             {playtestActive ? "Playtest" : "File tree"}
@@ -1613,14 +1613,15 @@ function ProjectWorkspaceHeader({
         <p className="hidden text-sm text-slate-500 sm:block">
           Updated {formatProjectDate(project.updatedAt)}
         </p>
-        <button
-          className="inline-flex h-9 w-9 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+        <IconButton
+          icon={<Settings size={17} />}
+          label="Game settings"
+          size="lg"
           title="Game settings"
-          type="button"
+          tone="emerald"
+          variant="neutral"
           onClick={onOpenGameSettings}
-        >
-          <Settings size={17} />
-        </button>
+        />
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ import {
   useSensor,
   useSensors
 } from "@dnd-kit/core";
+import { clsx as cx } from "clsx";
 import {
   getProjectTableSetupItemId,
   getProjectTableSetupItemLocked,
@@ -34,8 +35,6 @@ import {
   ArrowDown,
   ArrowUp,
   Boxes,
-  ChevronDown,
-  ChevronRight,
   Clipboard,
   Copy,
   CopyPlus,
@@ -61,6 +60,12 @@ import {
   useState
 } from "react";
 import { ContextMenu, type ContextMenuAction } from "../../components/ContextMenu";
+import { PanelShell } from "../../components/PanelShell";
+import {
+  TreeDisclosureButton,
+  TreeIconButton,
+  TreeRenameInput
+} from "../../components/TreeControls";
 import {
   appendProjectObjectNode,
   cloneProjectObjectNode,
@@ -791,11 +796,9 @@ function ProjectObjectNodeTreePanel({
   }
 
   return (
-    <aside
-      className={cx(
-        "flex min-h-0 flex-1 basis-0 flex-col overflow-hidden bg-white text-slate-700",
-        className
-      )}
+    <PanelShell
+      as="aside"
+      className={cx("flex-1 basis-0", className)}
       onContextMenu={(event) => handleContextMenu(event)}
     >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
@@ -881,7 +884,7 @@ function ProjectObjectNodeTreePanel({
           onCreate={handleCreateReusableObject}
         />
       ) : null}
-    </aside>
+    </PanelShell>
   );
 
   function updateExpansionState(
@@ -1006,9 +1009,7 @@ function ProjectTableSetupTreePanel({
   const contextMenuActions = createTableSetupTreeContextMenuActions({
     disabled: saving || readOnly || !tableSetup,
     itemId: contextMenu?.itemId ?? null,
-    canDetachLinkedObject: Boolean(
-      onFileTreeChange && contextMenuItem?.type === "linkedObject"
-    ),
+    canDetachLinkedObject: Boolean(onFileTreeChange && contextMenuItem?.type === "linkedObject"),
     canOpen: Boolean(contextMenuItem),
     canPaste: clipboard?.type === "tableSetupItems",
     canSaveReusable: Boolean(onFileTreeChange && contextMenuItem?.type === "localObject"),
@@ -1304,11 +1305,9 @@ function ProjectTableSetupTreePanel({
   }
 
   return (
-    <aside
-      className={cx(
-        "flex min-h-0 flex-1 basis-0 flex-col overflow-hidden bg-white text-slate-700",
-        className
-      )}
+    <PanelShell
+      as="aside"
+      className={cx("flex-1 basis-0", className)}
       onContextMenu={(event) => handleContextMenu(event)}
     >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-slate-50 px-2">
@@ -1393,9 +1392,9 @@ function ProjectTableSetupTreePanel({
                   />
                 )}
                 {renaming ? (
-                  <input
+                  <TreeRenameInput
                     autoFocus
-                    className="ml-2 h-5 min-w-32 flex-1 rounded border border-sky-500 bg-white px-1 text-[13px] text-slate-950 outline-none"
+                    className="ml-2"
                     value={renameDraft}
                     onBlur={() => commitRename(itemId)}
                     onChange={(event) => setRenameDraft(event.currentTarget.value)}
@@ -1413,12 +1412,11 @@ function ProjectTableSetupTreePanel({
                 ) : (
                   <span className="ml-2 min-w-32 flex-1 truncate">{itemName}</span>
                 )}
-                <button
+                <TreeIconButton
                   aria-label={`Move ${itemName} up`}
-                  className="ml-2 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
+                  className="ml-2"
                   disabled={readOnly || saving || itemLocked || index === 0}
                   title="Move up"
-                  type="button"
                   onClick={(event) => {
                     event.stopPropagation();
                     if (tableSetup) {
@@ -1430,13 +1428,11 @@ function ProjectTableSetupTreePanel({
                   }}
                 >
                   <ArrowUp size={14} />
-                </button>
-                <button
+                </TreeIconButton>
+                <TreeIconButton
                   aria-label={`Move ${itemName} down`}
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
                   disabled={readOnly || saving || itemLocked || index === items.length - 1}
                   title="Move down"
-                  type="button"
                   onClick={(event) => {
                     event.stopPropagation();
                     if (tableSetup) {
@@ -1448,12 +1444,10 @@ function ProjectTableSetupTreePanel({
                   }}
                 >
                   <ArrowDown size={14} />
-                </button>
-                <button
+                </TreeIconButton>
+                <TreeIconButton
                   aria-label={itemLocked ? `Unlock ${itemName}` : `Lock ${itemName}`}
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900"
                   title={itemLocked ? "Unlock item" : "Lock item"}
-                  type="button"
                   onClick={(event) => {
                     event.stopPropagation();
                     if (tableSetup) {
@@ -1465,12 +1459,10 @@ function ProjectTableSetupTreePanel({
                   }}
                 >
                   {itemLocked ? <Lock size={15} /> : <LockOpen size={15} />}
-                </button>
-                <button
+                </TreeIconButton>
+                <TreeIconButton
                   aria-label={itemVisible ? `Hide ${itemName}` : `Show ${itemName}`}
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900"
                   title={itemVisible ? "Hide item" : "Show item"}
-                  type="button"
                   onClick={(event) => {
                     event.stopPropagation();
                     if (tableSetup) {
@@ -1482,20 +1474,19 @@ function ProjectTableSetupTreePanel({
                   }}
                 >
                   {itemVisible ? <Eye size={15} /> : <EyeOff size={15} />}
-                </button>
-                <button
+                </TreeIconButton>
+                <TreeIconButton
                   aria-label={`Delete ${itemName}`}
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-35"
                   disabled={readOnly || saving}
                   title="Delete item"
-                  type="button"
+                  variant="danger"
                   onClick={(event) => {
                     event.stopPropagation();
                     handleDeleteItem(itemId);
                   }}
                 >
                   <Trash2 size={14} />
-                </button>
+                </TreeIconButton>
               </div>
             );
           })}
@@ -1522,7 +1513,7 @@ function ProjectTableSetupTreePanel({
           onCreate={handleSaveReusableObject}
         />
       ) : null}
-    </aside>
+    </PanelShell>
   );
 }
 
@@ -1668,19 +1659,14 @@ function ProjectObjectTreeRootRow({
       onContextMenu={(event) => onContextMenu(event, null)}
     >
       {hasChildren ? (
-        <button
-          aria-label={
-            expanded ? `Collapse ${contentFileNode.name}` : `Expand ${contentFileNode.name}`
-          }
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-          type="button"
+        <TreeDisclosureButton
+          expanded={expanded}
+          label={expanded ? `Collapse ${contentFileNode.name}` : `Expand ${contentFileNode.name}`}
           onClick={(event) => {
             event.stopPropagation();
             onExpandedChange(!expanded);
           }}
-        >
-          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        </button>
+        />
       ) : (
         <span className="h-5 w-5 shrink-0" />
       )}
@@ -1837,18 +1823,15 @@ function ProjectObjectTreeNode({
         }}
       >
         {hasChildren ? (
-          <button
-            aria-label={expanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-200 hover:text-slate-900"
-            type="button"
+          <TreeDisclosureButton
+            expanded={expanded}
+            label={expanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
               onToggleObjectExpanded(node.id);
             }}
-          >
-            {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </button>
+          />
         ) : (
           <span className="h-5 w-5 shrink-0" />
         )}
@@ -1860,9 +1843,8 @@ function ProjectObjectTreeNode({
               object={node}
               size={17}
             />
-            <input
+            <TreeRenameInput
               ref={renameInputRef}
-              className="h-5 min-w-32 flex-1 rounded border border-sky-500 bg-white px-1 text-[13px] text-slate-950 outline-none"
               value={renameDraft}
               onBlur={handleRenameBlur}
               onChange={(event) => onRenameDraftChange(event.currentTarget.value)}
@@ -1883,11 +1865,10 @@ function ProjectObjectTreeNode({
           </div>
         )}
 
-        <button
+        <TreeIconButton
           aria-label={node.locked ? `Unlock ${node.name}` : `Lock ${node.name}`}
-          className="ml-2 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900"
+          className="ml-2"
           title={node.locked ? "Unlock object" : "Lock object"}
-          type="button"
           onClick={(event) => {
             event.stopPropagation();
             onToggleObjectLocked(node.id, node.locked !== true);
@@ -1895,12 +1876,10 @@ function ProjectObjectTreeNode({
           onPointerDown={(event) => event.stopPropagation()}
         >
           {node.locked ? <Lock size={15} /> : <LockOpen size={15} />}
-        </button>
-        <button
+        </TreeIconButton>
+        <TreeIconButton
           aria-label={node.visible ? `Hide ${node.name}` : `Show ${node.name}`}
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-200 hover:text-slate-900"
           title={node.visible ? "Hide object" : "Show object"}
-          type="button"
           onClick={(event) => {
             event.stopPropagation();
             onToggleObjectVisibility(node.id, !node.visible);
@@ -1908,7 +1887,7 @@ function ProjectObjectTreeNode({
           onPointerDown={(event) => event.stopPropagation()}
         >
           {node.visible ? <Eye size={15} /> : <EyeOff size={15} />}
-        </button>
+        </TreeIconButton>
       </div>
     </div>
   );
@@ -2321,8 +2300,4 @@ function getObjectDropIntent(
   }
 
   return "inside";
-}
-
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
 }

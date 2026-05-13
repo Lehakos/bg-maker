@@ -21,5 +21,4 @@ export const stickyModalStyles = {
 
 export const stickyModalFormClassName = "flex min-h-0 flex-1 flex-col";
 export const stickyModalBodyClassName = "min-h-0 flex-1 overflow-y-auto px-6 py-4";
-export const stickyModalFooterClassName =
-  "shrink-0 border-t border-slate-200 bg-white px-6 py-4";
+export const stickyModalFooterClassName = "shrink-0 border-t border-slate-200 bg-white px-6 py-4";
