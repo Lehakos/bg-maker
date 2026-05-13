@@ -23,6 +23,8 @@ import {
 } from "../project-objects/project-object-tree";
 import {
   getPlaytestCommandTargetName,
+  getPlaytestItemBoundCounterValue,
+  getPlaytestItemBoundScoreTrackMarkers,
   type PlaytestAction,
   type PlaytestCommandPreviewRequest,
   type PlaytestItem,
@@ -68,12 +70,19 @@ export function ProjectPlaytestPanel({
   const selectedCanFlip = selectedObject ? hasProjectObjectSides(selectedObject.kind) : false;
   const selectedCounter =
     selectedIsCounter && selectedObject ? getProjectObjectNodeCounter(selectedObject) : null;
+  const selectedBoundCounterValue =
+    session && selectedItem ? getPlaytestItemBoundCounterValue(session, selectedItem) : null;
   const selectedDie =
     selectedIsDie && selectedObject ? getProjectObjectNodeDie(selectedObject) : null;
   const selectedScoreTrack =
     selectedIsScoreTrack && selectedObject ? getProjectObjectNodeScoreTrack(selectedObject) : null;
+  const selectedBoundScoreTrackMarkers =
+    session && selectedItem ? getPlaytestItemBoundScoreTrackMarkers(session, selectedItem) : null;
   const selectedScoreTrackMarkers =
-    selectedItem?.scoreTrackMarkers ?? selectedScoreTrack?.markers ?? [];
+    selectedBoundScoreTrackMarkers ??
+    selectedItem?.scoreTrackMarkers ??
+    selectedScoreTrack?.markers ??
+    [];
   const selectedInteractable = selectedItem?.behavior.interaction?.interactableInPlaytest !== false;
   const selectedRotatable = selectedItem?.behavior.rotation?.rotatableInPlaytest !== false;
   const selectedRotationStep = selectedItem?.behavior.rotation?.rotationStep ?? 90;
@@ -99,6 +108,7 @@ export function ProjectPlaytestPanel({
           selectedRotatable,
           selectedRotationStep,
           selectedInteractable,
+          selectedCounterBound: Boolean(selectedItem.gameBinding?.counterId),
           selectedItem,
           selectedObjectKind: selectedObject.kind,
           session
@@ -182,6 +192,25 @@ export function ProjectPlaytestPanel({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {session?.gameConfigSnapshot.players.length ? (
+            <select
+              aria-label="Active player"
+              className="h-8 max-w-36 rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+              value={session.activePlayerId ?? ""}
+              onChange={(event) =>
+                onAction({
+                  playerId: event.currentTarget.value,
+                  type: "setActivePlayer"
+                })
+              }
+            >
+              {session.gameConfigSnapshot.players.map((player) => (
+                <option key={player.id} value={player.id}>
+                  {player.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <PlaytestIconButton
             disabled={!canUndo}
             icon={<Undo2 size={15} />}
@@ -228,7 +257,10 @@ export function ProjectPlaytestPanel({
               </p>
             ) : selectedCounter ? (
               <p className="mt-0.5 text-xs font-medium text-slate-500">
-                Value {selectedItem.counterValue ?? selectedCounter.defaultValue}
+                Value{" "}
+                {selectedBoundCounterValue ??
+                  selectedItem.counterValue ??
+                  selectedCounter.defaultValue}
               </p>
             ) : selectedDie ? (
               <p className="mt-0.5 text-xs font-medium text-slate-500">
@@ -251,9 +283,7 @@ export function ProjectPlaytestPanel({
                 label={action.label}
                 subtitle={action.subtitle}
                 title={action.title}
-                onPreviewEnd={
-                  action.preview ? () => onCommandPreviewChange?.(null) : undefined
-                }
+                onPreviewEnd={action.preview ? () => onCommandPreviewChange?.(null) : undefined}
                 onPreviewStart={
                   action.preview
                     ? () => onCommandPreviewChange?.(action.preview ?? null)
@@ -262,7 +292,10 @@ export function ProjectPlaytestPanel({
                 onClick={action.onClick}
               />
             ))}
-            {selectedItem && selectedScoreTrack && selectedInteractable ? (
+            {selectedItem &&
+            selectedScoreTrack &&
+            selectedInteractable &&
+            !selectedBoundScoreTrackMarkers ? (
               <ScoreTrackMarkerControls
                 itemId={selectedItem.id}
                 markers={selectedScoreTrackMarkers}
@@ -505,6 +538,7 @@ function getAvailablePlaytestActions({
   selectedRotatable,
   selectedRotationStep,
   selectedInteractable,
+  selectedCounterBound,
   selectedItem,
   selectedObjectKind,
   session
@@ -519,6 +553,7 @@ function getAvailablePlaytestActions({
   selectedRotatable: boolean;
   selectedRotationStep: number;
   selectedInteractable: boolean;
+  selectedCounterBound: boolean;
   selectedItem: PlaytestItem;
   selectedObjectKind: PlaytestItem["baseObject"]["kind"];
   session: PlaytestSession;
@@ -527,6 +562,15 @@ function getAvailablePlaytestActions({
 
   if (!selectedInteractable) {
     return actions;
+  }
+
+  for (const rule of selectedItem.rules?.playCards ?? []) {
+    actions.push({
+      icon: <Play size={17} />,
+      label: rule.label,
+      title: rule.label,
+      onClick: () => onAction({ itemId: selectedItem.id, ruleId: rule.id, type: "playCard" })
+    });
   }
 
   for (const command of selectedCommands) {
@@ -549,7 +593,7 @@ function getAvailablePlaytestActions({
           <RefreshCw size={17} />
         ) : (
           <Play size={17} />
-      ),
+        ),
       label: command.label,
       preview: getCommandPreviewRequest(selectedItem.id, command),
       subtitle,
@@ -636,7 +680,7 @@ function getAvailablePlaytestActions({
     });
   }
 
-  if (selectedIsCounter) {
+  if (selectedIsCounter && !selectedCounterBound) {
     actions.push(
       {
         compact: true,

@@ -1,5 +1,6 @@
 import type {
   ProjectFileNode,
+  ProjectGameConfig,
   ProjectObjectAppearance,
   ProjectObjectBag,
   ProjectObjectCard,
@@ -18,6 +19,8 @@ import type {
   ProjectObjectShapePoint,
   ProjectObjectSide,
   ProjectObjectTemplate,
+  ProjectObjectRules,
+  ProjectObjectPlayCardRule,
   ProjectObjectStackDisplay,
   ProjectObjectText,
   ProjectObjectVariableBindingTarget,
@@ -28,6 +31,7 @@ import type {
   ProjectTableSetupItemCommand,
   ProjectTableSetupItemBehavior,
   ProjectTableSetupItemContainerDrawOrder,
+  ProjectTableSetupItemGameBinding,
   ProjectTableSetupItemZoneSideOnEnter,
   ProjectTableSetupItemZoneSlotOccupancy,
   ProjectTableSetupItem,
@@ -108,6 +112,12 @@ import {
   setProjectObjectNodeZone,
   updateProjectFileNodeObjectTree
 } from "../project-objects/project-object-tree";
+import {
+  cloneProjectObjectRules,
+  createProjectObjectPlayCardRule,
+  getProjectObjectFileEffectiveRules,
+  getProjectObjectRulesWithPlayCardRules
+} from "../project-objects/project-object-rules";
 import {
   createRectTransformDraft,
   createAppearanceDraft,
@@ -247,6 +257,7 @@ import {
   ProjectObjectDoubleSidedSection,
   ProjectObjectScoreTrackSection
 } from "./ProjectObjectMechanicsSections";
+import { ProjectObjectRulesSection } from "./ProjectObjectRulesSection";
 import {
   ProjectObjectBagSection,
   ProjectObjectCardSection,
@@ -269,6 +280,7 @@ import {
   ProjectTableSetupBehaviorSection,
   type ProjectTableSetupCommandTargetOption
 } from "./ProjectTableSetupBehaviorSection";
+import { ProjectTableSetupGameBindingSection } from "./ProjectTableSetupGameBindingSection";
 import {
   InspectorBehaviorNumberField,
   InspectorColorField,
@@ -282,11 +294,16 @@ import {
   getProjectTableSetupWithLinkedItemValues
 } from "../project-table-setup/project-table-setup";
 import { getProjectTableSetupItemBehavior } from "../project-table-setup/project-table-setup-behavior";
+import {
+  getProjectTableSetupWithItemGameBinding,
+  projectTableSetupRolePresets
+} from "../project-table-setup/project-table-setup-game-binding";
 
 type ProjectObjectInspectorPanelProps = {
   className?: string;
   contentFileNode: ProjectFileNode | null;
   fileTree: ProjectFileNode[];
+  gameConfig: ProjectGameConfig;
   objectTree?: ProjectObjectNode[];
   projectId: string;
   selectedObject: ProjectObjectNode | null;
@@ -294,6 +311,7 @@ type ProjectObjectInspectorPanelProps = {
   tableSetup?: ProjectTableSetup | null;
   onFileTreeChange: (fileTree: ProjectFileNode[]) => void;
   onObjectTreeChange: (fileNodeId: string, objectTree: ProjectObjectNode[]) => void;
+  onOpenGameSettings?: () => void;
   onOpenLinkedObjectSource?: () => void;
   onTableSetupChange?: (tableSetup: ProjectTableSetup, label?: string) => void;
 };
@@ -377,6 +395,7 @@ export function ProjectObjectInspectorPanel({
   className,
   contentFileNode,
   fileTree,
+  gameConfig,
   objectTree: resolvedObjectTree,
   projectId,
   selectedObject,
@@ -384,6 +403,7 @@ export function ProjectObjectInspectorPanel({
   tableSetup = null,
   onFileTreeChange,
   onObjectTreeChange,
+  onOpenGameSettings,
   onOpenLinkedObjectSource,
   onTableSetupChange
 }: ProjectObjectInspectorPanelProps) {
@@ -426,6 +446,12 @@ export function ProjectObjectInspectorPanel({
         : {},
     [contentFileNode?.sourceRef, sourceObjectTemplate]
   );
+  const effectiveContentRules = useMemo(
+    () => getProjectObjectFileEffectiveRules(fileTree, contentFileNode),
+    [contentFileNode, fileTree]
+  );
+  const ruleRoleOptions = useMemo(() => getProjectRuleRoleOptions(fileTree), [fileTree]);
+  const contentRulesCustomized = Boolean(contentFileNode?.rules);
   const selectedLinkedTableSetupItem =
     selectedTableSetupItem?.type === "linkedObject" ? selectedTableSetupItem : null;
   const linkedTableSourceObjectFileNode = useMemo(
@@ -894,6 +920,51 @@ export function ProjectObjectInspectorPanel({
     }));
   }
 
+  function updateCurrentObjectRules(rules: ProjectObjectRules | undefined) {
+    updateCurrentObjectFile((node) => ({
+      ...node,
+      ...(rules?.playCards.length ? { rules } : { rules: undefined })
+    }));
+  }
+
+  function customizeCurrentObjectRules() {
+    const nextRules = cloneProjectObjectRules(effectiveContentRules);
+
+    updateCurrentObjectRules(
+      nextRules.playCards.length ? nextRules : { playCards: [createProjectObjectPlayCardRule()] }
+    );
+  }
+
+  function resetCurrentObjectRules() {
+    updateCurrentObjectRules(undefined);
+  }
+
+  function updatePlayCardRules(playCards: ProjectObjectPlayCardRule[]) {
+    updateCurrentObjectRules(
+      getProjectObjectRulesWithPlayCardRules(contentFileNode?.rules, playCards)
+    );
+  }
+
+  function addPlayCardRule() {
+    const playCards = contentFileNode?.rules?.playCards ?? effectiveContentRules?.playCards ?? [];
+
+    updatePlayCardRules([...playCards, createProjectObjectPlayCardRule()]);
+  }
+
+  function updatePlayCardRule(rule: ProjectObjectPlayCardRule) {
+    const playCards = contentFileNode?.rules?.playCards ?? effectiveContentRules?.playCards ?? [];
+
+    updatePlayCardRules(
+      playCards.map((candidate) => (candidate.id === rule.id ? rule : candidate))
+    );
+  }
+
+  function removePlayCardRule(ruleId: string) {
+    const playCards = contentFileNode?.rules?.playCards ?? effectiveContentRules?.playCards ?? [];
+
+    updatePlayCardRules(playCards.filter((candidate) => candidate.id !== ruleId));
+  }
+
   function addTemplateVariable() {
     updateCurrentObjectTemplate(
       getProjectObjectTemplateWithAddedVariable(objectTemplate ?? undefined)
@@ -1234,6 +1305,22 @@ export function ProjectObjectInspectorPanel({
     );
 
     onTableSetupChange?.(nextTableSetup, "Update playtest behavior");
+  }
+
+  function updateTableSetupItemGameBinding(
+    gameBinding: ProjectTableSetupItemGameBinding | undefined
+  ) {
+    if (!tableSetup || !selectedTableSetupItem) {
+      return;
+    }
+
+    const nextTableSetup = getProjectTableSetupWithItemGameBinding(
+      tableSetup,
+      getProjectTableSetupItemId(selectedTableSetupItem),
+      gameBinding
+    );
+
+    onTableSetupChange?.(nextTableSetup, "Update game binding");
   }
 
   function updateTableSetupItemMovementBehavior(movableInPlaytest: boolean) {
@@ -2677,6 +2764,29 @@ export function ProjectObjectInspectorPanel({
   const imageAssetBinding = getVariableBindingField("image.assetId");
   const textColorBinding = getVariableBindingField("text.color");
   const textContentBinding = getVariableBindingField("text.content");
+  const selectedObjectIsFileRoot = Boolean(
+    contentFileNode?.kind === "object" &&
+    selectedObject &&
+    objectTree.length === 1 &&
+    objectTree[0]?.id === selectedObject.id
+  );
+  const objectRulesSection =
+    contentFileNode?.kind === "object" ? (
+      <ProjectObjectRulesSection
+        customized={contentRulesCustomized}
+        gameConfig={gameConfig}
+        inherited={Boolean(contentFileNode.sourceRef && !contentRulesCustomized)}
+        playCards={effectiveContentRules?.playCards ?? []}
+        roleOptions={ruleRoleOptions}
+        onAddPlayCard={addPlayCardRule}
+        onCustomize={customizeCurrentObjectRules}
+        onOpenGameSettings={onOpenGameSettings}
+        onPlayCardChange={updatePlayCardRule}
+        onPlayCardRemove={removePlayCardRule}
+        onReset={resetCurrentObjectRules}
+      />
+    ) : null;
+
   return (
     <aside
       className={cx(
@@ -2769,6 +2879,12 @@ export function ProjectObjectInspectorPanel({
                   }
                 />
               ) : null}
+              <ProjectTableSetupGameBindingSection
+                gameBinding={selectedLinkedTableSetupItem.gameBinding}
+                gameConfig={gameConfig}
+                objectKind={selectedTableSetupItemObject?.kind}
+                onChange={updateTableSetupItemGameBinding}
+              />
               {linkedTableSourceTemplate ? (
                 <ProjectObjectLinkedObjectSection
                   imageAssets={imageAssets}
@@ -2800,20 +2916,25 @@ export function ProjectObjectInspectorPanel({
               uploadingVariableId={uploadingPropertyImageVariableId}
               values={linkedObjectValues}
               onImageUpload={uploadLinkedObjectVariableImageValue}
+              onOpenSource={onOpenLinkedObjectSource}
               onValueChange={updateLinkedObjectVariableValue}
             />
           ) : null}
+          {contentFileNode.sourceRef ? objectRulesSection : null}
 
           {!contentFileNode.sourceRef ? (
             <>
               <ProjectObjectHeaderSection
                 nameDraft={nameDraft}
                 selectedObject={selectedObject}
+                showVisibility={!selectedObjectIsFileRoot}
                 onNameBlur={commitName}
                 onNameChange={setNameDraft}
                 onNameKeyDown={handleNameKeyDown}
                 onVisibilityChange={handleVisibilityChange}
               />
+
+              {objectRulesSection}
 
               {selectedTableSetupItemBehavior ? (
                 <ProjectTableSetupBehaviorSection
@@ -2852,6 +2973,15 @@ export function ProjectObjectInspectorPanel({
                   onZoneSlotOccupancyChange={(value) =>
                     updateTableSetupItemZoneBehavior("slotOccupancy", value)
                   }
+                />
+              ) : null}
+
+              {selectedTableSetupItem ? (
+                <ProjectTableSetupGameBindingSection
+                  gameBinding={selectedTableSetupItem.gameBinding}
+                  gameConfig={gameConfig}
+                  objectKind={selectedTableSetupItemObject?.kind}
+                  onChange={updateTableSetupItemGameBinding}
                 />
               ) : null}
 
@@ -3394,6 +3524,52 @@ function getFallbackLayoutDraftValue(): ProjectObjectLayout {
     justifyContent: "start",
     mode: "free"
   };
+}
+
+function getProjectRuleRoleOptions(fileTree: readonly ProjectFileNode[]) {
+  const roles: string[] = [];
+  const seen = new Set<string>();
+
+  for (const preset of projectTableSetupRolePresets) {
+    addProjectRuleRoleOption(roles, seen, preset);
+  }
+
+  collectProjectRuleRoleOptions(fileTree, roles, seen);
+
+  return roles;
+}
+
+function collectProjectRuleRoleOptions(
+  fileTree: readonly ProjectFileNode[],
+  roles: string[],
+  seen: Set<string>
+) {
+  for (const node of fileTree) {
+    if (node.type === "folder") {
+      collectProjectRuleRoleOptions(node.children ?? [], roles, seen);
+      continue;
+    }
+
+    if (node.kind !== "tableSetup") {
+      continue;
+    }
+
+    for (const item of node.tableSetup?.items ?? []) {
+      addProjectRuleRoleOption(roles, seen, item.gameBinding?.role);
+    }
+  }
+}
+
+function addProjectRuleRoleOption(roles: string[], seen: Set<string>, role: string | undefined) {
+  const trimmedRole = role?.trim();
+  const key = trimmedRole?.toLowerCase();
+
+  if (!trimmedRole || !key || seen.has(key)) {
+    return;
+  }
+
+  seen.add(key);
+  roles.push(trimmedRole);
 }
 
 function getContainerObjectFileOptions(

@@ -9,6 +9,8 @@ import {
   type ProjectSummary,
   type UpdateProjectFileTreeRequest,
   type UpdateProjectFileTreeResponse,
+  type UpdateProjectGameConfigRequest,
+  type UpdateProjectGameConfigResponse,
   type UploadProjectImageAssetResponse
 } from "@bg-maker/shared";
 import { apiRequest } from "../../lib/api-client";
@@ -40,6 +42,21 @@ export async function updateProjectFileTree(
 ): Promise<Project> {
   const response = await apiRequest<UpdateProjectFileTreeResponse>(
     apiPaths.projectFileTree(projectId),
+    {
+      method: "PATCH",
+      body: JSON.stringify(request)
+    }
+  );
+
+  return response.project;
+}
+
+export async function updateProjectGameConfig(
+  projectId: string,
+  request: UpdateProjectGameConfigRequest
+): Promise<Project> {
+  const response = await apiRequest<UpdateProjectGameConfigResponse>(
+    apiPaths.projectGameConfig(projectId),
     {
       method: "PATCH",
       body: JSON.stringify(request)

@@ -2,7 +2,17 @@ import type {
   Project,
   ProjectFileKind,
   ProjectFileNode,
+  ProjectGameConfig,
+  ProjectGameCounter,
+  ProjectGameCounterScope,
+  ProjectObjectPlayCardRule,
   ProjectObjectKind,
+  ProjectObjectRuleCondition,
+  ProjectObjectRuleConditionConnector,
+  ProjectObjectRuleCounterOperator,
+  ProjectObjectRuleEffect,
+  ProjectObjectRulePlayerTarget,
+  ProjectObjectRules,
   ProjectObjectSourceRef,
   ProjectObjectTemplate,
   ProjectObjectVariableDefinition,
@@ -15,14 +25,25 @@ import type {
   ProjectTableSetupItem,
   ProjectTableSetupItemBehavior,
   ProjectTableSetupItemContainerDrawOrder,
+  ProjectTableSetupItemGameBinding,
+  ProjectTableSetupGameBindingOwner,
   ProjectTableSetupItemTransform
 } from "@bg-maker/shared";
 import {
+  getDefaultProjectGameConfig,
   getDefaultProjectTableSetup,
   getDefaultProjectTableSetupGrid,
   getDefaultProjectTableSetupItemTransform,
   getDefaultProjectObjectVariableValue,
+  projectGameCounterLabelMaxLength,
+  projectGameCounterStepLimits,
+  projectGameCounterValueLimits,
+  projectGamePlayerNameMaxLength,
   projectObjectContainerEntryQuantityLimits,
+  projectObjectRuleAtomCountLimits,
+  projectObjectRuleDrawCountLimits,
+  projectObjectRuleLabelMaxLength,
+  projectObjectRuleRoleMaxLength,
   projectAssetsFolderId,
   projectAssetsFolderName,
   projectObjectKinds,
@@ -54,6 +75,20 @@ const maxProjectTableSetupItemCount = 1000;
 const maxProjectTableSetupItemCommandCount = 100;
 const maxProjectTableSetupItemCommandLabelLength = 80;
 const projectFileKinds = new Set<ProjectFileKind>(["tableSetup", "object", "image", "document"]);
+const projectGameCounterScopes = new Set<ProjectGameCounterScope>(["player", "shared"]);
+const projectObjectRuleConditionConnectors = new Set<ProjectObjectRuleConditionConnector>([
+  "and",
+  "or"
+]);
+const projectObjectRulePlayerTargets = new Set<ProjectObjectRulePlayerTarget>([
+  "activePlayer",
+  "shared"
+]);
+const projectObjectRuleCounterOperators = new Set<ProjectObjectRuleCounterOperator>([
+  "atLeast",
+  "atMost",
+  "equals"
+]);
 const projectObjectKindSet = new Set<ProjectObjectKind>(projectObjectKinds);
 const projectObjectVariableTypeSet = new Set<ProjectObjectVariableType>(projectObjectVariableTypes);
 const projectTableSetupContainerDrawOrderSet = new Set<ProjectTableSetupItemContainerDrawOrder>([
@@ -87,6 +122,7 @@ export function normalizeStoredProject(value: unknown): Project | null {
     objectsCount,
     playtestsCount,
     notes,
+    gameConfig,
     fileTree
   } = project;
 
@@ -114,6 +150,7 @@ export function normalizeStoredProject(value: unknown): Project | null {
     tableSetupsCount,
     objectsCount,
     playtestsCount,
+    gameConfig: normalizeProjectGameConfig(gameConfig),
     notes,
     fileTree: Array.isArray(fileTree)
       ? normalizeStoredProjectFileTree(fileTree)
@@ -142,6 +179,80 @@ export function createDefaultProjectFileTree(): ProjectFileNode[] {
       children: []
     }
   ];
+}
+
+export function normalizeProjectGameConfig(value: unknown): ProjectGameConfig {
+  const defaultConfig = getDefaultProjectGameConfig();
+  const record = getRecord(value);
+  const players = normalizeProjectGamePlayers(record.players, defaultConfig.players);
+  const counters = normalizeProjectGameCounters(record.counters);
+
+  return {
+    counters,
+    players: players.length ? players : defaultConfig.players
+  };
+}
+
+function normalizeProjectGamePlayers(value: unknown, fallback: ProjectGameConfig["players"]) {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const ids = new Set<string>();
+  const players: ProjectGameConfig["players"] = [];
+
+  for (const [index, player] of value.slice(0, 12).entries()) {
+    const record = getRecord(player);
+    const fallbackPlayer = fallback[index] ?? fallback[index % fallback.length]!;
+    const id = normalizeUniqueId(record.id, `player-${index + 1}`, ids);
+    const name = normalizeLabel(record.name, fallbackPlayer.name, projectGamePlayerNameMaxLength);
+
+    players.push({
+      color: normalizeHexColor(record.color, fallbackPlayer.color),
+      id,
+      name
+    });
+    ids.add(id);
+  }
+
+  return players;
+}
+
+function normalizeProjectGameCounters(value: unknown): ProjectGameCounter[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const ids = new Set<string>();
+  const counters: ProjectGameCounter[] = [];
+
+  for (const [index, counter] of value.slice(0, 100).entries()) {
+    const record = getRecord(counter);
+    const id = normalizeUniqueId(record.id, `counter-${index + 1}`, ids);
+    const minValue = normalizeFiniteNumber(record.minValue, 0, projectGameCounterValueLimits);
+    const maxValue = Math.max(
+      minValue,
+      normalizeFiniteNumber(record.maxValue, 999, projectGameCounterValueLimits)
+    );
+
+    counters.push({
+      defaultValue: normalizeFiniteNumber(record.defaultValue, minValue, {
+        max: maxValue,
+        min: minValue
+      }),
+      id,
+      label: normalizeLabel(record.label, `Counter ${index + 1}`, projectGameCounterLabelMaxLength),
+      maxValue,
+      minValue,
+      scope: projectGameCounterScopes.has(record.scope as ProjectGameCounterScope)
+        ? (record.scope as ProjectGameCounterScope)
+        : "player",
+      step: normalizeFiniteNumber(record.step, 1, projectGameCounterStepLimits)
+    });
+    ids.add(id);
+  }
+
+  return counters;
 }
 
 export function normalizeProjectFileTree(value: unknown): ProjectFileNode[] {
@@ -281,6 +392,7 @@ function normalizeProjectFileNode(
     ? (record.kind as ProjectFileKind)
     : "document";
   const sourceRef = kind === "object" ? normalizeProjectObjectSourceRef(record.sourceRef) : null;
+  const rules = kind === "object" ? normalizeProjectObjectRulesField(record.rules) : {};
   const objectTree =
     kind === "tableSetup"
       ? {
@@ -288,6 +400,7 @@ function normalizeProjectFileNode(
         }
       : kind === "object" && sourceRef
         ? {
+            ...rules,
             sourceRef
           }
         : kind === "object"
@@ -299,6 +412,7 @@ function normalizeProjectFileNode(
                 id,
                 name
               ),
+              ...rules,
               ...normalizeProjectObjectTemplateField(record.template)
             }
           : {};
@@ -383,9 +497,11 @@ function normalizeProjectTableSetupItem(value: unknown): ProjectTableSetupItem |
     }
 
     const behavior = normalizeProjectTableSetupItemBehavior(record.behavior);
+    const gameBinding = normalizeProjectTableSetupItemGameBinding(record.gameBinding);
 
     return {
       ...(behavior ? { behavior } : {}),
+      ...(gameBinding ? { gameBinding } : {}),
       id,
       name: name || "Linked object",
       sourceObjectFileNodeId,
@@ -402,14 +518,58 @@ function normalizeProjectTableSetupItem(value: unknown): ProjectTableSetupItem |
       const objectTree = normalizeProjectObjectTree([record.object]);
       const object = objectTree[0];
       const behavior = normalizeProjectTableSetupItemBehavior(record.behavior);
+      const gameBinding = normalizeProjectTableSetupItemGameBinding(record.gameBinding);
 
-      return object ? { ...(behavior ? { behavior } : {}), object, type: "localObject" } : null;
+      return object
+        ? {
+            ...(behavior ? { behavior } : {}),
+            ...(gameBinding ? { gameBinding } : {}),
+            object,
+            type: "localObject"
+          }
+        : null;
     } catch {
       return null;
     }
   }
 
   return null;
+}
+
+function normalizeProjectTableSetupItemGameBinding(
+  value: unknown
+): ProjectTableSetupItemGameBinding | undefined {
+  const record = getRecord(value);
+  const role = normalizeOptionalText(record.role, projectObjectRuleRoleMaxLength);
+  const owner = normalizeProjectTableSetupGameBindingOwner(record.owner);
+  const counterId = normalizeOptionalText(record.counterId, 120);
+  const counterOwner = normalizeProjectTableSetupGameBindingOwner(record.counterOwner);
+  const binding: ProjectTableSetupItemGameBinding = {
+    ...(role ? { role } : {}),
+    ...(owner ? { owner } : {}),
+    ...(counterId ? { counterId } : {}),
+    ...(counterOwner ? { counterOwner } : {})
+  };
+
+  return Object.keys(binding).length ? binding : undefined;
+}
+
+function normalizeProjectTableSetupGameBindingOwner(
+  value: unknown
+): ProjectTableSetupGameBindingOwner | undefined {
+  const record = getRecord(value);
+
+  if (record.type === "shared") {
+    return { type: "shared" };
+  }
+
+  if (record.type === "player") {
+    const playerId = normalizeOptionalText(record.playerId, 120);
+
+    return playerId ? { type: "player", playerId } : undefined;
+  }
+
+  return undefined;
 }
 
 function normalizeProjectTableSetupItemBehavior(
@@ -471,10 +631,7 @@ function normalizeProjectTableSetupItemBehavior(
   }
 
   if (hasOwnRecordKey(record, "commands")) {
-    behavior.commands = normalizeProjectTableSetupItemCommands(
-      record.commands,
-      behavior.container
-    );
+    behavior.commands = normalizeProjectTableSetupItemCommands(record.commands, behavior.container);
   }
 
   if (hasOwnRecordKey(record, "zone")) {
@@ -671,7 +828,9 @@ function normalizeProjectTableSetupItemCommandDrawOrder(
   value: unknown,
   fallback: ProjectTableSetupItemContainerDrawOrder
 ): ProjectTableSetupItemContainerDrawOrder {
-  return projectTableSetupContainerDrawOrderSet.has(value as ProjectTableSetupItemContainerDrawOrder)
+  return projectTableSetupContainerDrawOrderSet.has(
+    value as ProjectTableSetupItemContainerDrawOrder
+  )
     ? (value as ProjectTableSetupItemContainerDrawOrder)
     : fallback;
 }
@@ -732,6 +891,32 @@ function getRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
+function normalizeOptionalText(value: unknown, maxLength: number) {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function normalizeLabel(value: unknown, fallback: string, maxLength: number) {
+  return normalizeOptionalText(value, maxLength) || fallback;
+}
+
+function normalizeUniqueId(value: unknown, fallback: string, usedIds: ReadonlySet<string>) {
+  const baseId = normalizeOptionalText(value, 120) || fallback;
+
+  if (!usedIds.has(baseId)) {
+    return baseId;
+  }
+
+  let suffix = 2;
+  let nextId = `${baseId}-${suffix}`;
+
+  while (usedIds.has(nextId)) {
+    suffix += 1;
+    nextId = `${baseId}-${suffix}`;
+  }
+
+  return nextId;
+}
+
 function normalizeProjectTableSetupItemTransform(value: unknown): ProjectTableSetupItemTransform {
   const defaultTransform = getDefaultProjectTableSetupItemTransform();
   const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -766,6 +951,213 @@ function normalizeProjectObjectTemplateField(value: unknown): {
   const template = normalizeProjectObjectTemplate(value);
 
   return template.variables.length ? { template } : {};
+}
+
+function normalizeProjectObjectRulesField(value: unknown): {
+  rules?: ProjectObjectRules;
+} {
+  const rules = normalizeProjectObjectRules(value);
+
+  return rules.playCards.length ? { rules } : {};
+}
+
+function normalizeProjectObjectRules(value: unknown): ProjectObjectRules {
+  const record = getRecord(value);
+
+  return {
+    playCards: normalizeProjectObjectPlayCardRules(record.playCards)
+  };
+}
+
+function normalizeProjectObjectPlayCardRules(value: unknown): ProjectObjectPlayCardRule[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const rules: ProjectObjectPlayCardRule[] = [];
+  const ids = new Set<string>();
+
+  for (const [index, rule] of value.slice(0, projectObjectRuleAtomCountLimits.max).entries()) {
+    const normalizedRule = normalizeProjectObjectPlayCardRule(rule, index, ids);
+
+    if (normalizedRule) {
+      rules.push(normalizedRule);
+      ids.add(normalizedRule.id);
+    }
+  }
+
+  return rules;
+}
+
+function normalizeProjectObjectPlayCardRule(
+  value: unknown,
+  index: number,
+  usedIds: ReadonlySet<string>
+): ProjectObjectPlayCardRule | null {
+  const record = getRecord(value);
+  const id = normalizeUniqueId(record.id, `play-card-${index + 1}`, usedIds);
+  const conditions = normalizeProjectObjectRuleConditions(record.conditions);
+  const effects = normalizeProjectObjectRuleEffects(record.effects);
+
+  if (!conditions.length && !effects.length && !hasOwnRecordKey(record, "label")) {
+    return null;
+  }
+
+  return {
+    conditions,
+    effects,
+    id,
+    label: normalizeLabel(record.label, "Play card", projectObjectRuleLabelMaxLength)
+  };
+}
+
+function normalizeProjectObjectRuleConditions(value: unknown): ProjectObjectRuleCondition[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const conditions: ProjectObjectRuleCondition[] = [];
+  const ids = new Set<string>();
+
+  for (const [index, condition] of value.slice(0, projectObjectRuleAtomCountLimits.max).entries()) {
+    const record = getRecord(condition);
+    const id = normalizeUniqueId(record.id, `condition-${index + 1}`, ids);
+
+    if (record.type === "cardInZoneRole") {
+      const role = normalizeOptionalText(record.role, projectObjectRuleRoleMaxLength);
+
+      if (!role) {
+        continue;
+      }
+
+      conditions.push({
+        ...normalizeProjectObjectRuleConditionConnectorField(record.connector, conditions.length),
+        id,
+        owner: normalizeProjectObjectRulePlayerTarget(record.owner),
+        role,
+        type: "cardInZoneRole"
+      });
+      ids.add(id);
+      continue;
+    }
+
+    if (record.type === "counter") {
+      const counterId = normalizeOptionalText(record.counterId, 120) ?? "";
+
+      conditions.push({
+        ...normalizeProjectObjectRuleConditionConnectorField(record.connector, conditions.length),
+        counterId,
+        id,
+        operator: projectObjectRuleCounterOperators.has(
+          record.operator as ProjectObjectRuleCounterOperator
+        )
+          ? (record.operator as ProjectObjectRuleCounterOperator)
+          : "atLeast",
+        target: normalizeProjectObjectRulePlayerTarget(record.target),
+        type: "counter",
+        value: normalizeFiniteNumber(record.value, 0, projectGameCounterValueLimits)
+      });
+      ids.add(id);
+    }
+  }
+
+  return conditions;
+}
+
+function normalizeProjectObjectRuleConditionConnectorField(
+  value: unknown,
+  currentConditionCount: number
+): {
+  connector?: ProjectObjectRuleConditionConnector;
+} {
+  if (currentConditionCount === 0) {
+    return {};
+  }
+
+  return {
+    connector: projectObjectRuleConditionConnectors.has(
+      value as ProjectObjectRuleConditionConnector
+    )
+      ? (value as ProjectObjectRuleConditionConnector)
+      : "and"
+  };
+}
+
+function normalizeProjectObjectRuleEffects(value: unknown): ProjectObjectRuleEffect[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const effects: ProjectObjectRuleEffect[] = [];
+  const ids = new Set<string>();
+
+  for (const [index, effect] of value.slice(0, projectObjectRuleAtomCountLimits.max).entries()) {
+    const record = getRecord(effect);
+    const id = normalizeUniqueId(record.id, `effect-${index + 1}`, ids);
+
+    if (record.type === "modifyCounter") {
+      const counterId = normalizeOptionalText(record.counterId, 120) ?? "";
+
+      effects.push({
+        amount: normalizeFiniteNumber(record.amount, 1, projectGameCounterValueLimits),
+        counterId,
+        id,
+        target: normalizeProjectObjectRulePlayerTarget(record.target),
+        type: "modifyCounter"
+      });
+      ids.add(id);
+      continue;
+    }
+
+    if (record.type === "moveThisCardToZoneRole") {
+      const role = normalizeOptionalText(record.role, projectObjectRuleRoleMaxLength);
+
+      if (!role) {
+        continue;
+      }
+
+      effects.push({
+        id,
+        owner: normalizeProjectObjectRulePlayerTarget(record.owner),
+        role,
+        side: record.side === "back" ? "back" : "front",
+        type: "moveThisCardToZoneRole"
+      });
+      ids.add(id);
+      continue;
+    }
+
+    if (record.type === "drawCards") {
+      const sourceRole = normalizeOptionalText(record.sourceRole, projectObjectRuleRoleMaxLength);
+      const targetRole = normalizeOptionalText(record.targetRole, projectObjectRuleRoleMaxLength);
+
+      if (!sourceRole || !targetRole) {
+        continue;
+      }
+
+      effects.push({
+        count: normalizeIntegerNumber(
+          record.count,
+          projectObjectRuleDrawCountLimits.min,
+          projectObjectRuleDrawCountLimits
+        ),
+        id,
+        owner: normalizeProjectObjectRulePlayerTarget(record.owner),
+        sourceRole,
+        targetRole,
+        type: "drawCards"
+      });
+      ids.add(id);
+    }
+  }
+
+  return effects;
+}
+
+function normalizeProjectObjectRulePlayerTarget(value: unknown): ProjectObjectRulePlayerTarget {
+  return projectObjectRulePlayerTargets.has(value as ProjectObjectRulePlayerTarget)
+    ? (value as ProjectObjectRulePlayerTarget)
+    : "activePlayer";
 }
 
 function normalizeProjectObjectTemplate(value: unknown): ProjectObjectTemplate {

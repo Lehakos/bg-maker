@@ -5,7 +5,7 @@ import type {
   ProjectObjectVariableValue
 } from "@bg-maker/shared";
 import { projectObjectVariableTypes } from "@bg-maker/shared";
-import { Link2, Plus, Trash2, Variable } from "lucide-react";
+import { ExternalLink, Link2, Plus, Trash2, Variable } from "lucide-react";
 import type { ChangeEvent, DragEvent } from "react";
 import { cx } from "./class-names";
 import { InspectorSection, InspectorSelectField } from "./inspector-ui";
@@ -101,6 +101,7 @@ type ProjectObjectLinkedObjectSectionProps = {
   uploadErrors: Readonly<Record<string, string>>;
   uploadingVariableId: string | null;
   onImageUpload: (variable: ProjectObjectVariableDefinition, file: File) => void;
+  onOpenSource?: () => void;
   onValueChange: (variable: ProjectObjectVariableDefinition, value: string) => void;
 };
 
@@ -112,12 +113,24 @@ export function ProjectObjectLinkedObjectSection({
   uploadErrors,
   uploadingVariableId,
   onImageUpload,
+  onOpenSource,
   onValueChange
 }: ProjectObjectLinkedObjectSectionProps) {
   return (
     <InspectorSection icon={<Link2 size={15} />} title="Based on">
-      <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-xs text-slate-600">
-        <p className="font-semibold text-slate-800">{sourceName}</p>
+      <div className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
+        <p className="min-w-0 truncate font-semibold text-slate-800">{sourceName}</p>
+        {onOpenSource ? (
+          <button
+            aria-label="Open template"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-800"
+            title="Open template"
+            type="button"
+            onClick={onOpenSource}
+          >
+            <ExternalLink size={13} />
+          </button>
+        ) : null}
       </div>
       {template.variables.length ? (
         <div className="space-y-1.5">

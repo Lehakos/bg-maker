@@ -1,10 +1,11 @@
 import type {
   ProjectFileNode,
+  ProjectGameConfig,
   ProjectObjectNode,
   ProjectTableSetup,
   ProjectTableSetupItem
 } from "@bg-maker/shared";
-import { getProjectTableSetupItemId } from "@bg-maker/shared";
+import { getDefaultProjectGameConfig, getProjectTableSetupItemId } from "@bg-maker/shared";
 import { resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import {
@@ -108,6 +109,7 @@ export type ProjectWorkspaceStoreState = {
   executePlaytestAction: (action: PlaytestAction) => PlaytestActionResult | null;
   executeCommand: (command: ProjectEditorCommand) => void;
   fileTree: ProjectFileNode[];
+  gameConfig: ProjectGameConfig;
   objectSideSelections: ProjectObjectSideSelections;
   openObjectForEditing: (options: { fileNodeId: string; objectId?: string | null }) => void;
   openTabIds: string[];
@@ -129,6 +131,7 @@ export type ProjectWorkspaceStoreState = {
   setActiveTool: (tool: WorkspaceTool) => void;
   setCanvasScale: (scale: number) => void;
   setClipboard: (clipboard: ProjectWorkspaceClipboard) => void;
+  setGameConfig: (gameConfig: ProjectGameConfig) => void;
   setResizeAspectLocked: (locked: boolean) => void;
   setSaveFileTree: (saveFileTree: (fileTree: ProjectFileNode[]) => void) => void;
   setSelectedNodeId: (nodeId: string | null) => void;
@@ -144,16 +147,19 @@ export type ProjectWorkspaceStore = StoreApi<ProjectWorkspaceStoreState>;
 
 type CreateProjectWorkspaceStoreOptions = {
   initialFileTree: ProjectFileNode[];
+  initialGameConfig?: ProjectGameConfig;
   projectId: string;
   saveFileTree: (fileTree: ProjectFileNode[]) => void;
 };
 
 export function createProjectWorkspaceStore({
   initialFileTree,
+  initialGameConfig,
   projectId,
   saveFileTree
 }: CreateProjectWorkspaceStoreOptions): ProjectWorkspaceStore {
   const fileTree = sortProjectFileTree(initialFileTree);
+  const gameConfig = initialGameConfig ?? getDefaultProjectGameConfig();
   const storedOpenTabIds = readProjectWorkspaceOpenTabIds(projectId, fileTree);
   const initialPlaytestSession = readProjectWorkspacePlaytestSession(projectId, fileTree);
   const initialOpenTabIds = initialPlaytestSession
@@ -304,6 +310,7 @@ export function createProjectWorkspaceStore({
       });
     },
     fileTree,
+    gameConfig,
     objectSideSelections: {},
     openObjectForEditing: ({ fileNodeId, objectId = null }) => {
       const state = get();
@@ -570,6 +577,7 @@ export function createProjectWorkspaceStore({
     setActiveTool: (activeTool) => set({ activeTool }),
     setCanvasScale: (canvasScale) => set({ canvasScale: normalizeCanvasScale(canvasScale) }),
     setClipboard: (clipboard) => set({ clipboard }),
+    setGameConfig: (gameConfig) => set({ gameConfig }),
     setResizeAspectLocked: (resizeAspectLocked) => set({ resizeAspectLocked }),
     setSaveFileTree: (nextSaveFileTree) => set({ saveFileTree: nextSaveFileTree }),
     setSelectedNodeId: (nodeId) => get().openWorkspaceNode(nodeId),
@@ -583,6 +591,7 @@ export function createProjectWorkspaceStore({
 
       const session = createPlaytestSession({
         fileTree: state.fileTree,
+        gameConfig: state.gameConfig,
         projectId: state.projectId,
         tableSetupFileNode
       });
@@ -1078,7 +1087,10 @@ function isValidStoredPlaytestSession(
   if (
     !session ||
     session.projectId !== projectId ||
-    typeof session.tableSetupFileNodeId !== "string"
+    typeof session.tableSetupFileNodeId !== "string" ||
+    !session.gameConfigSnapshot ||
+    !session.gameState ||
+    typeof session.gameState.counterValues !== "object"
   ) {
     return false;
   }

@@ -17,6 +17,7 @@ export type InspectorFieldDefinition<TFieldKey extends string> = {
 export type RectTransformFieldDefinition = InspectorFieldDefinition<RectTransformFieldKey>;
 
 type InspectorSectionProps = {
+  action?: ReactNode;
   children: ReactNode;
   icon?: ReactNode;
   info?: ReactNode;
@@ -25,6 +26,7 @@ type InspectorSectionProps = {
 };
 
 export function InspectorSection({
+  action,
   children,
   icon,
   info,
@@ -37,6 +39,7 @@ export function InspectorSection({
         {icon}
         <span>{title}</span>
         {info ? <InfoTip align={infoAlign}>{info}</InfoTip> : null}
+        {action ? <span className="ml-auto">{action}</span> : null}
       </div>
       <div className="space-y-2">{children}</div>
     </section>

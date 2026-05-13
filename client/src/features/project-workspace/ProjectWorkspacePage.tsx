@@ -9,7 +9,16 @@ import type {
 import { getProjectTableSetupItemId, resolveProjectObjectFileObjectTree } from "@bg-maker/shared";
 import { Alert, Button, Center, Loader } from "@mantine/core";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { AlertCircle, ArrowLeft, Boxes, Copy, CopyPlus, Trash2, Unlink } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Boxes,
+  Copy,
+  CopyPlus,
+  Settings,
+  Trash2,
+  Unlink
+} from "lucide-react";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppHeaderContent } from "../../app/app-header-context";
 import { ContextMenu, type ContextMenuAction } from "../../components/ContextMenu";
@@ -29,7 +38,7 @@ import {
   createUpdateProjectObjectTreeCommand,
   createUpdateProjectTableSetupCommand
 } from "./project-editor-commands";
-import { useProject, useUpdateProjectFileTree } from "./project-hooks";
+import { useProject, useUpdateProjectFileTree, useUpdateProjectGameConfig } from "./project-hooks";
 import { findProjectFileNode } from "../project-files/project-file-tree";
 import { formatProjectDate } from "../project-catalog/project-format";
 import {
@@ -61,6 +70,7 @@ import {
 } from "../project-table-setup/project-table-setup";
 import { ReusableObjectNameModal } from "../project-variants/ReusableObjectNameModal";
 import { ProjectPlaytestWorkspace } from "../project-playtest/ProjectPlaytestWorkspace";
+import { ProjectGameSettingsModal } from "./ProjectGameSettingsModal";
 import {
   createReusableObjectFromSelection,
   detachLinkedObjectFile,
@@ -183,6 +193,7 @@ function LoadedProjectWorkspace({
     <ProjectWorkspaceProvider
       key={project.id}
       initialFileTree={project.fileTree}
+      initialGameConfig={project.gameConfig}
       projectId={project.id}
       saveFileTree={saveFileTree}
     >
@@ -205,6 +216,9 @@ function ProjectWorkspaceContent({
   onBack
 }: ProjectWorkspaceContentProps) {
   const fileTree = useProjectWorkspaceStore((state) => state.fileTree);
+  const gameConfig = useProjectWorkspaceStore((state) => state.gameConfig);
+  const setGameConfig = useProjectWorkspaceStore((state) => state.setGameConfig);
+  const updateGameConfig = useUpdateProjectGameConfig(project.id);
   const canRedo = useProjectWorkspaceStore((state) => state.canRedo);
   const canUndo = useProjectWorkspaceStore((state) => state.canUndo);
   const closeAllWorkspaceTabs = useProjectWorkspaceStore((state) => state.closeAllWorkspaceTabs);
@@ -278,6 +292,10 @@ function ProjectWorkspaceContent({
     useState<WorkspaceContextMenuState | null>(null);
   const [workspaceReusableRequest, setWorkspaceReusableRequest] =
     useState<WorkspaceReusableObjectRequest | null>(null);
+  const [gameSettingsOpen, setGameSettingsOpen] = useState(false);
+  useEffect(() => {
+    setGameConfig(project.gameConfig);
+  }, [project.gameConfig, setGameConfig]);
   const headerContent = useMemo(
     () => (
       <ProjectWorkspaceHeader
@@ -285,6 +303,7 @@ function ProjectWorkspaceContent({
         project={project}
         workspaceMode={workspaceMode}
         onBack={onBack}
+        onOpenGameSettings={() => setGameSettingsOpen(true)}
       />
     ),
     [onBack, playtestActive, playtestSession?.tableSetupName, project, workspaceMode]
@@ -692,7 +711,10 @@ function ProjectWorkspaceContent({
       return;
     }
 
-    if (selectedContentFileNode?.kind === "tableSetup" && selectedTableSetupItem?.type === "localObject") {
+    if (
+      selectedContentFileNode?.kind === "tableSetup" &&
+      selectedTableSetupItem?.type === "localObject"
+    ) {
       setWorkspaceReusableRequest({
         initialName: selectedTableSetupItem.object.name,
         itemId: getProjectTableSetupItemId(selectedTableSetupItem),
@@ -1128,11 +1150,16 @@ function ProjectWorkspaceContent({
   }
 
   function handleOpenSelectedLinkedObjectSource() {
-    if (selectedTableSetupItem?.type !== "linkedObject") {
+    if (selectedTableSetupItem?.type === "linkedObject") {
+      openObjectForEditing({ fileNodeId: selectedTableSetupItem.sourceObjectFileNodeId });
       return;
     }
 
-    openObjectForEditing({ fileNodeId: selectedTableSetupItem.sourceObjectFileNodeId });
+    if (selectedContentFileNode?.kind === "object" && selectedContentFileNode.sourceRef) {
+      openObjectForEditing({
+        fileNodeId: selectedContentFileNode.sourceRef.sourceObjectFileNodeId
+      });
+    }
   }
 
   async function handleExportPng() {
@@ -1228,8 +1255,8 @@ function ProjectWorkspaceContent({
   const canPrint = getPrintableObjectFileNodes(fileTree, selectedFileNode).length > 0 || canExport;
   const workspaceContextObjectIsRoot = Boolean(
     selectedObjectId &&
-      selectedContentFileNode?.kind === "object" &&
-      isSingleObjectFileRoot(selectedContentFileNode.objectTree ?? [], selectedObjectId)
+    selectedContentFileNode?.kind === "object" &&
+    isSingleObjectFileRoot(selectedContentFileNode.objectTree ?? [], selectedObjectId)
   );
   const workspaceContextMenuActions = createWorkspaceContextMenuActions({
     canCopy: Boolean(selectedProjectObject || selectedTableSetupItem),
@@ -1237,27 +1264,27 @@ function ProjectWorkspaceContent({
       (selectedContentFileNode?.kind === "object" &&
         !selectedContentFileNode.sourceRef &&
         selectedProjectObject) ||
-        (selectedContentFileNode?.kind === "tableSetup" &&
-          selectedTableSetupItem?.type === "localObject")
+      (selectedContentFileNode?.kind === "tableSetup" &&
+        selectedTableSetupItem?.type === "localObject")
     ),
     canDelete: Boolean(
       (selectedContentFileNode?.kind === "object" &&
         !selectedContentFileNode.sourceRef &&
         selectedObjectId &&
         !workspaceContextObjectIsRoot) ||
-        (selectedContentFileNode?.kind === "tableSetup" && selectedObjectIds.length > 0)
+      (selectedContentFileNode?.kind === "tableSetup" && selectedObjectIds.length > 0)
     ),
     canDuplicate: Boolean(
       (selectedContentFileNode?.kind === "object" &&
         !selectedContentFileNode.sourceRef &&
         selectedObjectId &&
         !workspaceContextObjectIsRoot) ||
-        (selectedContentFileNode?.kind === "tableSetup" && selectedObjectIds.length > 0)
+      (selectedContentFileNode?.kind === "tableSetup" && selectedObjectIds.length > 0)
     ),
     canMakeIndependent: Boolean(
       (selectedContentFileNode?.kind === "object" && selectedContentFileNode.sourceRef) ||
-        (selectedContentFileNode?.kind === "tableSetup" &&
-          selectedTableSetupItem?.type === "linkedObject")
+      (selectedContentFileNode?.kind === "tableSetup" &&
+        selectedTableSetupItem?.type === "linkedObject")
     ),
     onCopy: () => {
       setWorkspaceContextMenu(null);
@@ -1406,12 +1433,14 @@ function ProjectWorkspaceContent({
             className="h-full"
             contentFileNode={selectedContentFileNode}
             fileTree={fileTree}
+            gameConfig={gameConfig}
             objectTree={selectedContentObjectTree}
             projectId={project.id}
             selectedObject={selectedProjectObject}
             selectedTableSetupItem={selectedTableSetupItem}
             tableSetup={selectedTableSetup}
             onFileTreeChange={persistFileTree}
+            onOpenGameSettings={() => setGameSettingsOpen(true)}
             onObjectTreeChange={persistObjectTree}
             onOpenLinkedObjectSource={handleOpenSelectedLinkedObjectSource}
             onTableSetupChange={(tableSetup, label) =>
@@ -1482,6 +1511,16 @@ function ProjectWorkspaceContent({
           onCreate={handleCreateWorkspaceReusableObject}
         />
       ) : null}
+      <ProjectGameSettingsModal
+        gameConfig={gameConfig}
+        open={gameSettingsOpen}
+        saving={updateGameConfig.isPending}
+        onChange={(gameConfig) => {
+          setGameConfig(gameConfig);
+          updateGameConfig.mutate(gameConfig);
+        }}
+        onClose={() => setGameSettingsOpen(false)}
+      />
     </section>
   );
 }
@@ -1536,13 +1575,15 @@ type ProjectWorkspaceHeaderProps = {
   project: Project;
   workspaceMode: "edit" | "playtest";
   onBack: () => void;
+  onOpenGameSettings: () => void;
 };
 
 function ProjectWorkspaceHeader({
   activePlaytestName = null,
   project,
   workspaceMode,
-  onBack
+  onBack,
+  onOpenGameSettings
 }: ProjectWorkspaceHeaderProps) {
   const playtestActive = workspaceMode === "playtest";
 
@@ -1568,9 +1609,19 @@ function ProjectWorkspaceHeader({
           </p>
         </div>
       </div>
-      <p className="hidden shrink-0 text-sm text-slate-500 sm:block">
-        Updated {formatProjectDate(project.updatedAt)}
-      </p>
+      <div className="flex shrink-0 items-center gap-2">
+        <p className="hidden text-sm text-slate-500 sm:block">
+          Updated {formatProjectDate(project.updatedAt)}
+        </p>
+        <button
+          className="inline-flex h-9 w-9 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800"
+          title="Game settings"
+          type="button"
+          onClick={onOpenGameSettings}
+        >
+          <Settings size={17} />
+        </button>
+      </div>
     </div>
   );
 }

@@ -2,12 +2,14 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import {
   type CreateProjectRequest,
+  getDefaultProjectGameConfig,
   type Project,
   type ProjectImageAsset,
   type ProjectSummary
 } from "@bg-maker/shared";
 import {
   createDefaultProjectFileTree,
+  normalizeProjectGameConfig,
   normalizeProjectFileTree
 } from "./project-file-tree-normalizer.js";
 import {
@@ -78,6 +80,7 @@ export class ProjectService {
       tableSetupsCount: 0,
       objectsCount: 0,
       playtestsCount: 0,
+      gameConfig: getDefaultProjectGameConfig(),
       notes: "",
       fileTree: createDefaultProjectFileTree()
     };
@@ -118,6 +121,32 @@ export class ProjectService {
         this.imageAssetFileStore.removeProjectImageAsset(project.id, assetId)
       )
     );
+
+    return updatedProject;
+  }
+
+  async updateProjectGameConfig(
+    projectId: string,
+    gameConfig: unknown
+  ): Promise<Project | null> {
+    const normalizedGameConfig = normalizeProjectGameConfig(gameConfig);
+    const store = await this.store.read();
+    const projectIndex = store.projects.findIndex((project) => project.id === projectId);
+
+    if (projectIndex === -1) {
+      return null;
+    }
+
+    const project = store.projects[projectIndex];
+    const updatedProject: Project = {
+      ...project,
+      gameConfig: normalizedGameConfig,
+      updatedAt: new Date().toISOString()
+    };
+    const projects = [...store.projects];
+    projects[projectIndex] = updatedProject;
+
+    await this.store.write({ projects });
 
     return updatedProject;
   }

@@ -1,5 +1,6 @@
 import type {
   ProjectFileNode,
+  ProjectGameConfig,
   ProjectObjectCounter,
   ProjectObjectZoneMode,
   ProjectTableSetup,
@@ -132,6 +133,305 @@ describe("project playtest runtime", () => {
     expect(redone.tableItemIds).toContain(drawnItemId);
   });
 
+  it("plays card rules against active-player counters and bound zones", () => {
+    const fileTree = createPlaytestFileTree();
+    const tableSetup = fileTree[1]?.type === "file" ? fileTree[1].tableSetup : null;
+    const objectsFolder = fileTree[0]?.type === "folder" ? fileTree[0] : null;
+    const cardFile = objectsFolder?.children?.find((node) => node.id === "card-file");
+
+    if (!tableSetup || !objectsFolder || cardFile?.type !== "file") {
+      throw new Error("Expected playtest fixtures");
+    }
+
+    const discard = createDefaultProjectObjectNode("discard-root", "zone", "Discard");
+    const gameConfig: ProjectGameConfig = {
+      counters: [
+        {
+          defaultValue: 0,
+          id: "vp",
+          label: "Victory points",
+          maxValue: 99,
+          minValue: 0,
+          scope: "player",
+          step: 1
+        }
+      ],
+      players: [{ color: "#dc2626", id: "red", name: "Red" }]
+    };
+
+    cardFile.rules = {
+      playCards: [
+        {
+          conditions: [],
+          effects: [
+            {
+              amount: 2,
+              counterId: "vp",
+              id: "effect-score",
+              target: "activePlayer",
+              type: "modifyCounter"
+            },
+            {
+              id: "effect-discard",
+              owner: "activePlayer",
+              role: "Discard",
+              side: "back",
+              type: "moveThisCardToZoneRole"
+            }
+          ],
+          id: "play-card",
+          label: "Score card"
+        }
+      ]
+    };
+    objectsFolder.children = [
+      ...(objectsFolder.children ?? []),
+      { id: "discard-file", kind: "object", name: "Discard", objectTree: [discard], type: "file" }
+    ];
+    tableSetup.items = [
+      ...tableSetup.items.map((item) =>
+        item.type === "linkedObject" && item.id === "counter-item"
+          ? {
+              ...item,
+              gameBinding: {
+                counterId: "vp",
+                counterOwner: { type: "player" as const, playerId: "red" }
+              }
+            }
+          : item
+      ),
+      {
+        gameBinding: {
+          owner: { type: "player", playerId: "red" },
+          role: "Discard"
+        },
+        id: "discard-item",
+        name: "Discard",
+        sourceObjectFileNodeId: "discard-file",
+        transform: { rotation: 0, scaleX: 1, scaleY: 1, x: 420, y: 0 },
+        type: "linkedObject",
+        values: {},
+        visible: true
+      }
+    ];
+
+    const session = createPlaytestSession({
+      createId: createDeterministicId(),
+      fileTree,
+      gameConfig,
+      now: () => "2026-05-05T00:00:00.000Z",
+      projectId: "project-1",
+      tableSetupFileNode: fileTree[1]!
+    });
+    const result = executePlaytestAction(session!, {
+      itemId: "card-item",
+      ruleId: "play-card",
+      type: "playCard"
+    });
+
+    expect(result.status).toBe("applied");
+    expect(result.session.gameState.counterValues["player:red:vp"]).toBe(2);
+    expect(result.session.itemsById["card-item"]?.zonePlacement).toMatchObject({
+      zoneItemId: "discard-item"
+    });
+    expect(result.session.itemsById["card-item"]?.activeSide).toBe("back");
+    expect(
+      getPlaytestRenderedObject(
+        result.session.itemsById["counter-item"]!,
+        result.session.itemsById,
+        result.session
+      ).components?.counter?.defaultValue
+    ).toBe(2);
+
+    const undone = undoPlaytestSession(result.session);
+    expect(undone.gameState.counterValues["player:red:vp"]).toBe(0);
+    expect(undone.itemsById["card-item"]?.zonePlacement).toBeUndefined();
+    expect(undone.itemsById["card-item"]?.activeSide).toBe("front");
+  });
+
+  it("blocks play card rules when conditions fail and preserves game state", () => {
+    const fileTree = createPlaytestFileTree();
+    const objectsFolder = fileTree[0]?.type === "folder" ? fileTree[0] : null;
+    const cardFile = objectsFolder?.children?.find((node) => node.id === "card-file");
+    const gameConfig: ProjectGameConfig = {
+      counters: [
+        {
+          defaultValue: 0,
+          id: "energy",
+          label: "Energy",
+          maxValue: 10,
+          minValue: 0,
+          scope: "player",
+          step: 1
+        }
+      ],
+      players: [{ color: "#dc2626", id: "red", name: "Red" }]
+    };
+
+    if (cardFile?.type !== "file") {
+      throw new Error("Expected playtest fixtures");
+    }
+
+    cardFile.rules = {
+      playCards: [
+        {
+          conditions: [
+            {
+              counterId: "energy",
+              id: "condition-energy",
+              operator: "atLeast",
+              target: "activePlayer",
+              type: "counter",
+              value: 1
+            }
+          ],
+          effects: [
+            {
+              amount: 2,
+              counterId: "energy",
+              id: "effect-energy",
+              target: "activePlayer",
+              type: "modifyCounter"
+            }
+          ],
+          id: "play-card",
+          label: "Spend energy"
+        }
+      ]
+    };
+
+    const session = createPlaytestSession({
+      createId: createDeterministicId(),
+      fileTree,
+      gameConfig,
+      now: () => "2026-05-05T00:00:00.000Z",
+      projectId: "project-1",
+      tableSetupFileNode: fileTree[1]!
+    });
+    const result = executePlaytestAction(session!, {
+      itemId: "card-item",
+      ruleId: "play-card",
+      type: "playCard"
+    });
+
+    expect(result).toMatchObject({
+      reason: "conditionFailed",
+      session,
+      status: "blocked"
+    });
+    expect(session?.gameState.counterValues["player:red:energy"]).toBe(0);
+    expect(session?.undoStack).toHaveLength(0);
+  });
+
+  it("selects a play card rule by id and evaluates condition connectors", () => {
+    const fileTree = createPlaytestFileTree();
+    const objectsFolder = fileTree[0]?.type === "folder" ? fileTree[0] : null;
+    const cardFile = objectsFolder?.children?.find((node) => node.id === "card-file");
+    const gameConfig: ProjectGameConfig = {
+      counters: [
+        {
+          defaultValue: 0,
+          id: "energy",
+          label: "Energy",
+          maxValue: 10,
+          minValue: 0,
+          scope: "player",
+          step: 1
+        }
+      ],
+      players: [{ color: "#dc2626", id: "red", name: "Red" }]
+    };
+
+    if (cardFile?.type !== "file") {
+      throw new Error("Expected playtest fixtures");
+    }
+
+    const failingCondition = {
+      counterId: "energy",
+      id: "condition-energy-at-least-one",
+      operator: "atLeast" as const,
+      target: "activePlayer" as const,
+      type: "counter" as const,
+      value: 1
+    };
+    const passingCondition = {
+      connector: "or" as const,
+      counterId: "energy",
+      id: "condition-energy-zero",
+      operator: "equals" as const,
+      target: "activePlayer" as const,
+      type: "counter" as const,
+      value: 0
+    };
+
+    cardFile.rules = {
+      playCards: [
+        {
+          conditions: [
+            failingCondition,
+            {
+              ...passingCondition,
+              connector: "and"
+            }
+          ],
+          effects: [
+            {
+              amount: 1,
+              counterId: "energy",
+              id: "effect-blocked",
+              target: "activePlayer",
+              type: "modifyCounter"
+            }
+          ],
+          id: "blocked-and-rule",
+          label: "Blocked by and"
+        },
+        {
+          conditions: [failingCondition, passingCondition],
+          effects: [
+            {
+              amount: 3,
+              counterId: "energy",
+              id: "effect-allowed",
+              target: "activePlayer",
+              type: "modifyCounter"
+            }
+          ],
+          id: "allowed-or-rule",
+          label: "Allowed by or"
+        }
+      ]
+    };
+
+    const session = createPlaytestSession({
+      createId: createDeterministicId(),
+      fileTree,
+      gameConfig,
+      now: () => "2026-05-05T00:00:00.000Z",
+      projectId: "project-1",
+      tableSetupFileNode: fileTree[1]!
+    });
+
+    const blocked = executePlaytestAction(session!, {
+      itemId: "card-item",
+      ruleId: "blocked-and-rule",
+      type: "playCard"
+    });
+    const allowed = executePlaytestAction(session!, {
+      itemId: "card-item",
+      ruleId: "allowed-or-rule",
+      type: "playCard"
+    });
+
+    expect(blocked).toMatchObject({
+      reason: "conditionFailed",
+      session,
+      status: "blocked"
+    });
+    expect(allowed.status).toBe("applied");
+    expect(allowed.session.gameState.counterValues["player:red:energy"]).toBe(3);
+  });
+
   it("shuffles, flips, hides, reveals, rolls, and increments runtime values", () => {
     const session = createSession();
     const deckContents = session.itemsById["deck-item"]?.contents ?? [];
@@ -145,7 +445,10 @@ describe("project playtest runtime", () => {
 
     expect(shuffledSession.itemsById["deck-item"]?.contents).toEqual([...deckContents].reverse());
 
-    const flipped = executePlaytestAction(shuffledSession, { itemId: "card-item", type: "flipItem" });
+    const flipped = executePlaytestAction(shuffledSession, {
+      itemId: "card-item",
+      type: "flipItem"
+    });
     expect(flipped.status).toBe("applied");
     const flippedSession = flipped.session;
     expect(flippedSession.itemsById["card-item"]?.activeSide).toBe("back");
@@ -155,7 +458,10 @@ describe("project playtest runtime", () => {
     const hiddenSession = hidden.session;
     expect(hiddenSession.itemsById["deck-item"]).toMatchObject({ hidden: true, revealed: false });
 
-    const revealed = executePlaytestAction(hiddenSession, { itemId: "deck-item", type: "revealItem" });
+    const revealed = executePlaytestAction(hiddenSession, {
+      itemId: "deck-item",
+      type: "revealItem"
+    });
     expect(revealed.status).toBe("applied");
     const revealedSession = revealed.session;
     expect(revealedSession.itemsById["deck-item"]).toMatchObject({ hidden: false, revealed: true });
@@ -195,7 +501,10 @@ describe("project playtest runtime", () => {
       nextSession.itemsById["counter-item"]!,
       nextSession.itemsById
     );
-    const die = getPlaytestRenderedObject(nextSession.itemsById["die-item"]!, nextSession.itemsById);
+    const die = getPlaytestRenderedObject(
+      nextSession.itemsById["die-item"]!,
+      nextSession.itemsById
+    );
 
     expect(counter.components?.counter?.defaultValue).toBe(1);
     expect(die.components?.die?.activeFace).toBe(6);

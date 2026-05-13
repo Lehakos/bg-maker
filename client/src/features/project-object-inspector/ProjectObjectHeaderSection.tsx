@@ -11,6 +11,7 @@ import { InspectorSwitchField, InspectorTextField } from "./inspector-ui";
 type ProjectObjectHeaderSectionProps = {
   nameDraft: string;
   selectedObject: ProjectObjectNode;
+  showVisibility?: boolean;
   onNameBlur: (value: string) => void;
   onNameChange: (value: string) => void;
   onNameKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
@@ -20,6 +21,7 @@ type ProjectObjectHeaderSectionProps = {
 export function ProjectObjectHeaderSection({
   nameDraft,
   selectedObject,
+  showVisibility = true,
   onNameBlur,
   onNameChange,
   onNameKeyDown,
@@ -49,18 +51,20 @@ export function ProjectObjectHeaderSection({
         onKeyDown={onNameKeyDown}
       />
 
-      <InspectorSwitchField
-        checked={selectedObject.visible}
-        icon={
-          selectedObject.visible ? (
-            <Eye className="shrink-0" size={15} />
-          ) : (
-            <EyeOff className="shrink-0" size={15} />
-          )
-        }
-        label="Visible"
-        onChange={onVisibilityChange}
-      />
+      {showVisibility ? (
+        <InspectorSwitchField
+          checked={selectedObject.visible}
+          icon={
+            selectedObject.visible ? (
+              <Eye className="shrink-0" size={15} />
+            ) : (
+              <EyeOff className="shrink-0" size={15} />
+            )
+          }
+          label="Visible"
+          onChange={onVisibilityChange}
+        />
+      ) : null}
     </section>
   );
 }

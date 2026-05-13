@@ -1,8 +1,13 @@
 import type {
   ProjectFileNode,
+  ProjectGameConfig,
+  ProjectGameCounter,
   ProjectObjectCounter,
   ProjectObjectNode,
   ProjectObjectRectTransform,
+  ProjectObjectRuleCondition,
+  ProjectObjectRulePlayerTarget,
+  ProjectObjectRules,
   ProjectObjectScoreTrackMarker,
   ProjectObjectSide,
   ProjectTableSetup,
@@ -11,13 +16,16 @@ import type {
   ProjectTableSetupItemDrawFromContainerToTargetZoneCommand,
   ProjectTableSetupItemRefillTargetZoneFromContainerCommand,
   ProjectTableSetupItem,
-  ProjectTableSetupItemBehavior
+  ProjectTableSetupItemBehavior,
+  ProjectTableSetupItemGameBinding
 } from "@bg-maker/shared";
 import {
+  getDefaultProjectGameConfig,
   getProjectObjectContainerTotalCount,
   getProjectTableSetupItemId,
   hasProjectObjectSides,
   normalizeProjectObjectDieActiveFace,
+  resolveProjectObjectFileRulesById,
   resolveProjectObjectFileObjectTreeById
 } from "@bg-maker/shared";
 import {
@@ -57,11 +65,13 @@ export type PlaytestItem = {
   contents: string[];
   counterValue?: number;
   dieFace?: number;
+  gameBinding?: ProjectTableSetupItemGameBinding;
   hidden: boolean;
   id: string;
   name: string;
   rectTransform: ProjectObjectRectTransform;
   revealed: boolean;
+  rules?: ProjectObjectRules;
   scoreTrackMarkers?: ProjectObjectScoreTrackMarker[];
   sourceObjectFileNodeId?: string;
   visible: boolean;
@@ -75,10 +85,16 @@ export type PlaytestZonePlacement = {
 };
 
 export type PlaytestRuntimeState = {
+  activePlayerId: string | null;
+  gameState: PlaytestGameState;
   itemsById: Record<string, PlaytestItem>;
   selectedItemId: string | null;
   selectedItemIds: string[];
   tableItemIds: string[];
+};
+
+export type PlaytestGameState = {
+  counterValues: Record<string, number>;
 };
 
 export type PlaytestHistoryEntry = {
@@ -98,6 +114,7 @@ export type PlaytestLogEntry = {
 export type PlaytestSession = PlaytestRuntimeState & {
   actionLog: PlaytestLogEntry[];
   createdAt: string;
+  gameConfigSnapshot: ProjectGameConfig;
   id: string;
   projectId: string;
   redoStack: PlaytestHistoryEntry[];
@@ -108,13 +125,18 @@ export type PlaytestSession = PlaytestRuntimeState & {
 };
 
 export type PlaytestActionResultReason =
+  | "conditionFailed"
+  | "counterMissing"
   | "emptySource"
+  | "invalidActivePlayer"
   | "missingSourceOrTarget"
   | "noChange"
   | "notInteractable"
   | "notMovable"
+  | "ruleMissing"
   | "removeBlocked"
   | "slotOccupied"
+  | "targetUnavailable"
   | "zoneFull"
   | "zoneRejectedItem";
 
@@ -135,6 +157,7 @@ export type PlaytestActionResult =
 export type PlaytestCreateOptions = {
   createId?: () => string;
   now?: () => string;
+  gameConfig?: ProjectGameConfig;
   projectId: string;
   random?: () => number;
   tableSetupFileNode: ProjectFileNode;
@@ -150,6 +173,15 @@ export type PlaytestAction =
       commandId: string;
       itemId: string;
       type: "executeCommand";
+    }
+  | {
+      itemId: string;
+      ruleId: string;
+      type: "playCard";
+    }
+  | {
+      playerId: string;
+      type: "setActivePlayer";
     }
   | {
       direction: -1 | 1;
@@ -233,6 +265,7 @@ export type PlaytestItemMovePreview =
 export function createPlaytestSession({
   createId = createPlaytestId,
   fileTree,
+  gameConfig = getDefaultProjectGameConfig(),
   now = createPlaytestTimestamp,
   projectId,
   random = Math.random,
@@ -251,6 +284,7 @@ export function createPlaytestSession({
   const itemsById: Record<string, PlaytestItem> = {};
   const tableItemIds: string[] = [];
   const tableSetupItemIds = tableSetup.items.map(getProjectTableSetupItemId);
+  const gameConfigSnapshot = cloneProjectGameConfig(gameConfig);
 
   for (const item of tableSetup.items) {
     const runtimeItem = createPlaytestItemFromTableSetupItem({
@@ -275,8 +309,11 @@ export function createPlaytestSession({
   }
 
   const createdAt = now();
+  const activePlayerId = gameConfigSnapshot.players[0]?.id ?? null;
   const startupResult = getRuntimeWithStartupContainerShuffles(
     {
+      activePlayerId,
+      gameState: createInitialPlaytestGameState(gameConfigSnapshot),
       itemsById,
       selectedItemId: null,
       selectedItemIds: [],
@@ -299,6 +336,7 @@ export function createPlaytestSession({
       }))
     ],
     createdAt,
+    gameConfigSnapshot,
     id: createId(),
     ...startupResult.runtime,
     projectId,
@@ -334,7 +372,7 @@ export function executePlaytestAction(
   }
 
   const before = getPlaytestRuntimeState(session);
-  const runtimeResult = reducePlaytestAction(before, action, context);
+  const runtimeResult = reducePlaytestAction(before, action, context, session.gameConfigSnapshot);
 
   if (runtimeResult.status !== "applied") {
     return createPlaytestActionResult(session, runtimeResult.status, runtimeResult.reason);
@@ -489,7 +527,8 @@ export function selectPlaytestItems(
 
 export function getPlaytestRenderedObject(
   item: PlaytestItem,
-  itemsById: Record<string, PlaytestItem> = {}
+  itemsById: Record<string, PlaytestItem> = {},
+  session?: PlaytestSession | null
 ): ProjectObjectNode {
   let object =
     setProjectObjectNodeRectTransform(
@@ -513,12 +552,21 @@ export function getPlaytestRenderedObject(
     );
   }
 
-  if (object.kind === "counter" && typeof item.counterValue === "number") {
+  const boundCounter = session ? getPlaytestItemBoundCounter(session, item) : null;
+  const boundCounterValue = session ? getPlaytestItemBoundCounterValue(session, item) : null;
+
+  if (
+    object.kind === "counter" &&
+    (typeof item.counterValue === "number" || typeof boundCounterValue === "number")
+  ) {
     const counter = getProjectObjectNodeCounter(object);
     object =
       setProjectObjectNodeCounter([object], object.id, {
         ...counter,
-        defaultValue: item.counterValue
+        defaultValue:
+          typeof boundCounterValue === "number"
+            ? boundCounterValue
+            : (item.counterValue ?? counter.defaultValue)
       })[0] ?? object;
   }
 
@@ -531,12 +579,13 @@ export function getPlaytestRenderedObject(
       })[0] ?? object;
   }
 
-  if (object.kind === "scoreTrack" && item.scoreTrackMarkers) {
+  if (object.kind === "scoreTrack" && (item.scoreTrackMarkers || boundCounter)) {
     const scoreTrack = getProjectObjectNodeScoreTrack(object);
+    const boundMarkers = session ? getPlaytestItemBoundScoreTrackMarkers(session, item) : null;
     object =
       setProjectObjectNodeScoreTrack([object], object.id, {
         ...scoreTrack,
-        markers: item.scoreTrackMarkers
+        markers: boundMarkers ?? item.scoreTrackMarkers ?? scoreTrack.markers
       })[0] ?? object;
   }
 
@@ -563,6 +612,42 @@ export function getPlaytestRenderedObject(
   return object;
 }
 
+export function getPlaytestItemBoundCounterValue(
+  session: PlaytestSession,
+  item: PlaytestItem
+): number | null {
+  const boundCounter = getPlaytestItemBoundCounter(session, item);
+  const boundCounterKey = boundCounter
+    ? getPlaytestCounterValueKeyForBinding(boundCounter, item.gameBinding)
+    : null;
+
+  if (!boundCounter || !boundCounterKey) {
+    return null;
+  }
+
+  return session.gameState.counterValues[boundCounterKey] ?? boundCounter.defaultValue;
+}
+
+export function getPlaytestItemBoundScoreTrackMarkers(
+  session: PlaytestSession,
+  item: PlaytestItem
+): ProjectObjectScoreTrackMarker[] | null {
+  const boundCounter = getPlaytestItemBoundCounter(session, item);
+
+  if (boundCounter?.scope !== "player") {
+    return null;
+  }
+
+  return session.gameConfigSnapshot.players.map((player) => ({
+    color: player.color,
+    id: player.id,
+    label: player.name,
+    value:
+      session.gameState.counterValues[getPlayerCounterValueKey(player.id, boundCounter.id)] ??
+      boundCounter.defaultValue
+  }));
+}
+
 export function getPlaytestSelectedItem(session: PlaytestSession | null): PlaytestItem | null {
   if (!session?.selectedItemId) {
     return null;
@@ -573,6 +658,8 @@ export function getPlaytestSelectedItem(session: PlaytestSession | null): Playte
 
 export function getPlaytestRuntimeState(session: PlaytestSession): PlaytestRuntimeState {
   return {
+    activePlayerId: session.activePlayerId,
+    gameState: session.gameState,
     itemsById: session.itemsById,
     selectedItemId: session.selectedItemId,
     selectedItemIds: session.selectedItemIds,
@@ -688,11 +775,196 @@ export function getScoreTrackMarkerValueWithStep(
   return Math.min(scoreTrack.maxValue, Math.max(scoreTrack.minValue, nextValue));
 }
 
+function getRuntimeWithPlayedCard(
+  runtime: PlaytestRuntimeState,
+  itemId: string,
+  ruleId: string,
+  gameConfig: ProjectGameConfig,
+  random: () => number
+): PlaytestRuntimeActionResult {
+  const item = runtime.itemsById[itemId];
+  const rule = item?.rules?.playCards.find((candidate) => candidate.id === ruleId);
+
+  if (!item || !rule) {
+    return createRuntimeActionResult(
+      runtime,
+      "noop",
+      item ? "ruleMissing" : "missingSourceOrTarget"
+    );
+  }
+
+  const conditionResult = getPlayCardRuleConditionsResult(runtime, item, rule, gameConfig);
+
+  if (!conditionResult.ok) {
+    return createRuntimeActionResult(runtime, "blocked", conditionResult.reason);
+  }
+
+  let nextRuntime = runtime;
+
+  for (const effect of rule.effects) {
+    if (effect.type === "modifyCounter") {
+      const counter = gameConfig.counters.find((candidate) => candidate.id === effect.counterId);
+      const key = counter
+        ? getPlaytestCounterValueKeyForRule(counter, effect.target, nextRuntime.activePlayerId)
+        : null;
+
+      if (!counter || !key) {
+        return createRuntimeActionResult(runtime, "blocked", "counterMissing");
+      }
+
+      nextRuntime = getRuntimeWithGameCounterValue(nextRuntime, key, (value) =>
+        clampCounterValue(counter, value + effect.amount)
+      );
+      continue;
+    }
+
+    if (effect.type === "moveThisCardToZoneRole") {
+      const currentItem = nextRuntime.itemsById[itemId];
+      const targetZone = currentItem
+        ? findPlaytestZoneByRole(nextRuntime, effect.role, effect.owner)
+        : null;
+
+      if (!currentItem || !targetZone) {
+        return createRuntimeActionResult(runtime, "blocked", "targetUnavailable");
+      }
+
+      const moveResult = getRuntimeWithItemMovedToZone(
+        nextRuntime,
+        currentItem,
+        targetZone,
+        effect.side
+      );
+
+      if (moveResult.status !== "applied") {
+        return moveResult;
+      }
+
+      nextRuntime = moveResult.runtime;
+      continue;
+    }
+
+    const sourceContainer = findPlaytestContainerByRole(
+      nextRuntime,
+      effect.sourceRole,
+      effect.owner
+    );
+    const targetZone = findPlaytestZoneByRole(nextRuntime, effect.targetRole, effect.owner);
+
+    if (!sourceContainer || !targetZone) {
+      return createRuntimeActionResult(runtime, "blocked", "targetUnavailable");
+    }
+
+    for (let index = 0; index < effect.count; index += 1) {
+      const currentSource = nextRuntime.itemsById[sourceContainer.id];
+      const result =
+        currentSource && targetZone
+          ? getNextRuntimeWithDrawnContainerItemToTargetZone({
+              containerItemId: currentSource.id,
+              drawOrder: currentSource.behavior.container?.drawOrder ?? "top",
+              drawnItemSide: currentSource.behavior.container?.drawnItemSide ?? "front",
+              random,
+              runtime: nextRuntime,
+              tableInsertOffset: index,
+              targetItemId: targetZone.id
+            })
+          : createRuntimeActionResult(nextRuntime, "blocked", "targetUnavailable");
+
+      if (result.status !== "applied") {
+        return result;
+      }
+
+      nextRuntime = result.runtime;
+    }
+  }
+
+  return nextRuntime === runtime || arePlaytestRuntimeStatesEqual(runtime, nextRuntime)
+    ? createRuntimeActionResult(runtime, "noop", "noChange")
+    : createRuntimeAppliedResult(nextRuntime);
+}
+
+function getPlayCardRuleConditionsResult(
+  runtime: PlaytestRuntimeState,
+  item: PlaytestItem,
+  rule: ProjectObjectRules["playCards"][number],
+  gameConfig: ProjectGameConfig
+): { ok: true } | { ok: false; reason: PlaytestActionResultReason } {
+  if (!rule.conditions.length) {
+    return { ok: true };
+  }
+
+  let firstFailure: PlaytestActionResultReason = "conditionFailed";
+  let ok = true;
+
+  for (const [index, condition] of rule.conditions.entries()) {
+    const result = getPlayCardRuleConditionResult(runtime, item, condition, gameConfig);
+
+    if (!result.ok && firstFailure === "conditionFailed") {
+      firstFailure = result.reason;
+    }
+
+    if (index === 0) {
+      ok = result.ok;
+      continue;
+    }
+
+    ok = condition.connector === "or" ? ok || result.ok : ok && result.ok;
+  }
+
+  return ok ? { ok: true } : { ok: false, reason: firstFailure };
+}
+
+function getPlayCardRuleConditionResult(
+  runtime: PlaytestRuntimeState,
+  item: PlaytestItem,
+  condition: ProjectObjectRuleCondition,
+  gameConfig: ProjectGameConfig
+): { ok: true } | { ok: false; reason: PlaytestActionResultReason } {
+  if (condition.type === "cardInZoneRole") {
+    const zone = findPlaytestZoneByRole(runtime, condition.role, condition.owner);
+
+    return zone && item.zonePlacement?.zoneItemId === zone.id
+      ? { ok: true }
+      : { ok: false, reason: zone ? "conditionFailed" : "targetUnavailable" };
+  }
+
+  const counter = gameConfig.counters.find((candidate) => candidate.id === condition.counterId);
+  const key = counter
+    ? getPlaytestCounterValueKeyForRule(counter, condition.target, runtime.activePlayerId)
+    : null;
+
+  if (!counter || !key) {
+    return { ok: false, reason: counter ? "invalidActivePlayer" : "counterMissing" };
+  }
+
+  const value = runtime.gameState.counterValues[key] ?? counter.defaultValue;
+
+  if (condition.operator === "atMost") {
+    return value <= condition.value ? { ok: true } : { ok: false, reason: "conditionFailed" };
+  }
+
+  if (condition.operator === "equals") {
+    return value === condition.value ? { ok: true } : { ok: false, reason: "conditionFailed" };
+  }
+
+  return value >= condition.value ? { ok: true } : { ok: false, reason: "conditionFailed" };
+}
+
 function reducePlaytestAction(
   runtime: PlaytestRuntimeState,
   action: Exclude<PlaytestAction, { type: "selectItem" | "selectItems" }>,
-  context: PlaytestActionContext
+  context: PlaytestActionContext,
+  gameConfig: ProjectGameConfig
 ): PlaytestRuntimeActionResult {
+  if (action.type === "setActivePlayer") {
+    if (!gameConfig.players.some((player) => player.id === action.playerId)) {
+      return createRuntimeActionResult(runtime, "blocked", "invalidActivePlayer");
+    }
+
+    return runtime.activePlayerId === action.playerId
+      ? createRuntimeActionResult(runtime, "noop", "noChange")
+      : createRuntimeAppliedResult({ ...runtime, activePlayerId: action.playerId });
+  }
+
   if (action.type === "moveItems") {
     return getRuntimeWithMovedItems(runtime, action.itemTransforms);
   }
@@ -787,6 +1059,10 @@ function reducePlaytestAction(
     return command
       ? getRuntimeWithExecutedCommand(runtime, item.id, command, context.random)
       : createRuntimeActionResult(runtime, "noop", "missingSourceOrTarget");
+  }
+
+  if (action.type === "playCard") {
+    return getRuntimeWithPlayedCard(runtime, item.id, action.ruleId, gameConfig, context.random);
   }
 
   if (action.type === "rollDie") {
@@ -887,9 +1163,14 @@ function createPlaytestItemFromTableSetupItem({
     }),
     createId,
     fileTree,
+    gameBinding: item.gameBinding,
     id: item.type === "linkedObject" ? item.id : object.id,
     name: item.type === "linkedObject" ? item.name : object.name,
     object,
+    rules:
+      item.type === "linkedObject"
+        ? resolveProjectObjectFileRulesById(fileTree, item.sourceObjectFileNodeId, new Set())
+        : undefined,
     sourceObjectFileNodeId: item.type === "linkedObject" ? item.sourceObjectFileNodeId : undefined
   });
 }
@@ -901,14 +1182,18 @@ function createPlaytestItemFromObject({
   name,
   object,
   behavior,
+  gameBinding,
+  rules,
   sourceObjectFileNodeId
 }: {
   behavior?: ProjectTableSetupItemBehavior;
   createId: () => string;
   fileTree: readonly ProjectFileNode[];
+  gameBinding?: ProjectTableSetupItemGameBinding;
   id?: string;
   name?: string;
   object: ProjectObjectNode;
+  rules?: ProjectObjectRules;
   sourceObjectFileNodeId?: string;
 }): PlaytestItem {
   const runtimeId = id ?? createId();
@@ -928,6 +1213,7 @@ function createPlaytestItemFromObject({
     contents: [],
     counterValue: counter?.defaultValue,
     dieFace: die?.activeFace,
+    gameBinding,
     hidden: initialHidden,
     id: runtimeId,
     name: name ?? object.name,
@@ -936,6 +1222,7 @@ function createPlaytestItemFromObject({
         ? getEffectiveProjectObjectRectTransform(object, fileTree)
         : getProjectObjectNodeRectTransform(object),
     revealed: !initialHidden,
+    rules,
     scoreTrackMarkers: scoreTrack?.markers.map((marker) => ({ ...marker })),
     sourceObjectFileNodeId,
     visible: true,
@@ -978,6 +1265,7 @@ function addContainerContents({
         createId,
         fileTree,
         object,
+        rules: resolveProjectObjectFileRulesById(fileTree, entry.objectFileNodeId, new Set()),
         sourceObjectFileNodeId: entry.objectFileNodeId
       });
 
@@ -1291,9 +1579,7 @@ function getPlaytestItemMoveResult(
     };
   }
 
-  if (
-    !canMoveItemOutOfCurrentZone(runtime, item, zoneItem.id)
-  ) {
+  if (!canMoveItemOutOfCurrentZone(runtime, item, zoneItem.id)) {
     return {
       accepted: false,
       reason: "removeBlocked",
@@ -1416,6 +1702,83 @@ function canMoveItemOutOfCurrentZone(
   return currentZoneItem?.behavior.zone?.allowRemove !== false;
 }
 
+function getRuntimeWithItemMovedToZone(
+  runtime: PlaytestRuntimeState,
+  item: PlaytestItem,
+  targetZone: PlaytestItem,
+  sideOnEnterOverride?: ProjectObjectSide
+): PlaytestRuntimeActionResult {
+  if (!canMoveItemOutOfCurrentZone(runtime, item, targetZone.id)) {
+    return createRuntimeActionResult(runtime, "blocked", "removeBlocked");
+  }
+
+  if (!doesZoneAcceptItem(targetZone, item)) {
+    return createRuntimeActionResult(runtime, "blocked", "zoneRejectedItem");
+  }
+
+  const placedItem = getItemForTargetZone(runtime, item, targetZone, sideOnEnterOverride);
+
+  if (!placedItem) {
+    return createRuntimeActionResult(runtime, "blocked", "zoneFull");
+  }
+
+  return createRuntimeAppliedResult(
+    getRuntimeWithItemPlacedAboveZone(
+      getRuntimeWithUpdatedItem(runtime, item.id, () => placedItem),
+      item.id,
+      targetZone.id
+    )
+  );
+}
+
+function getItemForTargetZone(
+  runtime: PlaytestRuntimeState,
+  item: PlaytestItem,
+  targetZone: PlaytestItem,
+  sideOnEnterOverride?: ProjectObjectSide
+): PlaytestItem | null {
+  if (targetZone.baseObject.kind !== "zone") {
+    return null;
+  }
+
+  const zone = getProjectObjectNodeZone(targetZone.baseObject);
+
+  if (zone.mode !== "slots") {
+    return getItemWithZonePlacement(
+      item,
+      targetZone,
+      {
+        ...item.rectTransform,
+        x: targetZone.rectTransform.x,
+        y: targetZone.rectTransform.y
+      },
+      { zoneItemId: targetZone.id },
+      sideOnEnterOverride
+    );
+  }
+
+  const slotIndex = getFirstEmptyZoneSlotIndex(runtime, targetZone);
+
+  if (slotIndex === null) {
+    return null;
+  }
+
+  const rectTransform = getZoneSlotRectTransform(targetZone, item.rectTransform, slotIndex);
+
+  return rectTransform
+    ? getItemWithZonePlacement(
+        item,
+        targetZone,
+        rectTransform,
+        {
+          slotIndex,
+          zoneItemId: targetZone.id
+        },
+        sideOnEnterOverride
+      )
+    : null;
+}
+
 function getNearestZoneSlotMove(
   zoneItem: PlaytestItem,
   rectTransform: ProjectObjectRectTransform
@@ -1495,17 +1858,22 @@ function getItemWithZonePlacement(
   item: PlaytestItem,
   zoneItem: PlaytestItem,
   rectTransform: ProjectObjectRectTransform,
-  zonePlacement: PlaytestZonePlacement
+  zonePlacement: PlaytestZonePlacement,
+  sideOnEnterOverride?: ProjectObjectSide
 ): PlaytestItem {
   const enteredZone = item.zonePlacement?.zoneItemId !== zoneItem.id;
-  const sideOnEnter = zoneItem.behavior.zone?.sideOnEnter ?? "preserve";
+  const sideOnEnter = sideOnEnterOverride ?? zoneItem.behavior.zone?.sideOnEnter ?? "preserve";
   const placedItem: PlaytestItem = {
     ...item,
     rectTransform,
     zonePlacement
   };
 
-  if (!enteredZone || sideOnEnter === "preserve" || !hasProjectObjectSides(item.baseObject.kind)) {
+  if (
+    (!enteredZone && !sideOnEnterOverride) ||
+    sideOnEnter === "preserve" ||
+    !hasProjectObjectSides(item.baseObject.kind)
+  ) {
     return placedItem;
   }
 
@@ -2119,6 +2487,10 @@ function getPlaytestActionLabel(
     return action.label ?? "Move item";
   }
 
+  if (action.type === "setActivePlayer") {
+    return "Change active player";
+  }
+
   const beforeItem = before.itemsById[action.itemId];
   const afterItem = after.itemsById[action.itemId];
   const itemName = beforeItem?.name ?? afterItem?.name ?? "Item";
@@ -2156,6 +2528,12 @@ function getPlaytestActionLabel(
     );
 
     return command?.label || `Run ${itemName}`;
+  }
+
+  if (action.type === "playCard") {
+    const rule = beforeItem?.rules?.playCards.find((candidate) => candidate.id === action.ruleId);
+
+    return rule?.label || `Play ${itemName}`;
   }
 
   if (action.type === "rollDie") {
@@ -2211,8 +2589,162 @@ function getRuntimeWithStartupContainerShuffles(
   return { labels, runtime: nextRuntime };
 }
 
+function createInitialPlaytestGameState(gameConfig: ProjectGameConfig): PlaytestGameState {
+  const counterValues: Record<string, number> = {};
+
+  for (const counter of gameConfig.counters) {
+    if (counter.scope === "shared") {
+      counterValues[getSharedCounterValueKey(counter.id)] = counter.defaultValue;
+      continue;
+    }
+
+    for (const player of gameConfig.players) {
+      counterValues[getPlayerCounterValueKey(player.id, counter.id)] = counter.defaultValue;
+    }
+  }
+
+  return { counterValues };
+}
+
+function getRuntimeWithGameCounterValue(
+  runtime: PlaytestRuntimeState,
+  key: string,
+  updateValue: (value: number) => number
+): PlaytestRuntimeState {
+  const currentValue = runtime.gameState.counterValues[key] ?? 0;
+  const nextValue = updateValue(currentValue);
+
+  if (nextValue === currentValue) {
+    return runtime;
+  }
+
+  return {
+    ...runtime,
+    gameState: {
+      ...runtime.gameState,
+      counterValues: {
+        ...runtime.gameState.counterValues,
+        [key]: nextValue
+      }
+    }
+  };
+}
+
+function getPlaytestCounterValueKeyForRule(
+  counter: ProjectGameCounter,
+  target: ProjectObjectRulePlayerTarget,
+  activePlayerId: string | null
+) {
+  if (counter.scope === "shared") {
+    return getSharedCounterValueKey(counter.id);
+  }
+
+  if (target === "shared") {
+    return null;
+  }
+
+  return activePlayerId ? getPlayerCounterValueKey(activePlayerId, counter.id) : null;
+}
+
+function getPlaytestCounterValueKeyForBinding(
+  counter: ProjectGameCounter,
+  binding: ProjectTableSetupItemGameBinding | undefined
+) {
+  if (counter.scope === "shared") {
+    return getSharedCounterValueKey(counter.id);
+  }
+
+  return binding?.counterOwner?.type === "player"
+    ? getPlayerCounterValueKey(binding.counterOwner.playerId, counter.id)
+    : null;
+}
+
+function getPlaytestItemBoundCounter(session: PlaytestSession, item: PlaytestItem) {
+  return item.gameBinding?.counterId
+    ? (session.gameConfigSnapshot.counters.find(
+        (counter) => counter.id === item.gameBinding?.counterId
+      ) ?? null)
+    : null;
+}
+
+function getSharedCounterValueKey(counterId: string) {
+  return `shared:${counterId}`;
+}
+
+function getPlayerCounterValueKey(playerId: string, counterId: string) {
+  return `player:${playerId}:${counterId}`;
+}
+
+function clampCounterValue(counter: ProjectGameCounter, value: number) {
+  return Math.min(counter.maxValue, Math.max(counter.minValue, value));
+}
+
+function cloneProjectGameConfig(gameConfig: ProjectGameConfig): ProjectGameConfig {
+  return {
+    counters: gameConfig.counters.map((counter) => ({ ...counter })),
+    players: gameConfig.players.map((player) => ({ ...player }))
+  };
+}
+
 function isRuntimeContainer(item: PlaytestItem) {
   return Boolean(item.baseObject.components?.container);
+}
+
+function findPlaytestZoneByRole(
+  runtime: PlaytestRuntimeState,
+  role: string,
+  owner: ProjectObjectRulePlayerTarget
+) {
+  return runtime.tableItemIds
+    .map((itemId) => runtime.itemsById[itemId])
+    .find(
+      (item) =>
+        item?.baseObject.kind === "zone" &&
+        doesGameBindingRoleMatch(item.gameBinding?.role, role) &&
+        doesGameBindingOwnerMatch(item.gameBinding?.owner, owner, runtime.activePlayerId)
+    );
+}
+
+function findPlaytestContainerByRole(
+  runtime: PlaytestRuntimeState,
+  role: string,
+  owner: ProjectObjectRulePlayerTarget
+) {
+  return runtime.tableItemIds
+    .map((itemId) => runtime.itemsById[itemId])
+    .find(
+      (item) =>
+        item &&
+        isRuntimeContainer(item) &&
+        doesGameBindingRoleMatch(item.gameBinding?.role, role) &&
+        doesGameBindingOwnerMatch(item.gameBinding?.owner, owner, runtime.activePlayerId)
+    );
+}
+
+function doesGameBindingRoleMatch(bindingRole: string | undefined, role: string) {
+  const normalizedRole = normalizeRole(role);
+
+  return Boolean(normalizedRole) && normalizeRole(bindingRole) === normalizedRole;
+}
+
+function normalizeRole(role: string | undefined) {
+  return (role ?? "").trim().toLowerCase();
+}
+
+function doesGameBindingOwnerMatch(
+  bindingOwner: ProjectTableSetupItemGameBinding["owner"] | undefined,
+  target: ProjectObjectRulePlayerTarget,
+  activePlayerId: string | null
+) {
+  if (target === "shared") {
+    return !bindingOwner || bindingOwner.type === "shared";
+  }
+
+  return (
+    Boolean(activePlayerId) &&
+    bindingOwner?.type === "player" &&
+    bindingOwner.playerId === activePlayerId
+  );
 }
 
 function getInitialActiveSide(
@@ -2269,6 +2801,8 @@ function shuffleItems<T>(items: readonly T[], random: () => number): T[] {
 
 function arePlaytestRuntimeStatesEqual(left: PlaytestRuntimeState, right: PlaytestRuntimeState) {
   return (
+    left.activePlayerId === right.activePlayerId &&
+    left.gameState === right.gameState &&
     left.itemsById === right.itemsById &&
     left.selectedItemId === right.selectedItemId &&
     left.selectedItemIds === right.selectedItemIds &&

@@ -4,6 +4,7 @@ import {
   type CreateProjectResponse,
   type GetProjectResponse,
   type ListProjectsResponse,
+  type UpdateProjectGameConfigResponse,
   type UpdateProjectFileTreeResponse,
   type UploadProjectImageAssetResponse
 } from "@bg-maker/shared";
@@ -15,6 +16,7 @@ import {
 } from "../projects/project-service.js";
 import { getProjectValidationErrorStatusCode } from "../projects/project-route-errors.js";
 import {
+  getProjectGameConfigPayload,
   getProjectFileTreePayload,
   toCreateProjectImageAssetRequest,
   toCreateProjectRequest
@@ -77,6 +79,34 @@ export function registerProjectsController(
         const project = await projectService.updateProjectFileTree(
           request.params.projectId,
           getProjectFileTreePayload(request.body)
+        );
+
+        if (!project) {
+          reply.code(404);
+
+          return { message: "Project not found" };
+        }
+
+        return { project };
+      } catch (error) {
+        if (error instanceof ProjectValidationError) {
+          reply.code(getProjectValidationErrorStatusCode(error));
+
+          return { message: error.message };
+        }
+
+        throw error;
+      }
+    }
+  );
+
+  app.patch<{ Params: ProjectRouteParams }>(
+    `${apiPaths.projects}/:projectId/game-config`,
+    async (request, reply): Promise<UpdateProjectGameConfigResponse | ApiErrorResponse> => {
+      try {
+        const project = await projectService.updateProjectGameConfig(
+          request.params.projectId,
+          getProjectGameConfigPayload(request.body)
         );
 
         if (!project) {

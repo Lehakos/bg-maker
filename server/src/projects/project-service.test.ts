@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  getDefaultProjectGameConfig,
   projectObjectContainerEntryQuantityLimits,
   projectObjectCounterAffixMaxLength,
   projectObjectDieFaceLabelMaxLength,
@@ -484,6 +485,58 @@ describe("ProjectService", () => {
       }
     });
     expect(linkedFile).not.toHaveProperty("objectTree");
+  });
+
+  it("keeps incomplete counter rules while the editor draft has no counters yet", async () => {
+    await writeStore([createStoredProject({ id: "project-1" })]);
+
+    const updatedProject = await projectService.updateProjectFileTree("project-1", [
+      {
+        id: "card-file",
+        kind: "object",
+        name: "Card",
+        objectTree: [],
+        rules: {
+          playCards: [
+            {
+              conditions: [
+                {
+                  counterId: "",
+                  id: "condition-1",
+                  operator: "atLeast",
+                  target: "activePlayer",
+                  type: "counter",
+                  value: 0
+                }
+              ],
+              effects: [
+                {
+                  amount: 1,
+                  counterId: "",
+                  id: "effect-1",
+                  target: "activePlayer",
+                  type: "modifyCounter"
+                }
+              ],
+              id: "play-card",
+              label: "Play card"
+            }
+          ]
+        },
+        type: "file"
+      }
+    ]);
+
+    expect(updatedProject?.fileTree[0]).toMatchObject({
+      rules: {
+        playCards: [
+          {
+            conditions: [{ counterId: "", type: "counter" }],
+            effects: [{ counterId: "", type: "modifyCounter" }]
+          }
+        ]
+      }
+    });
   });
 
   it("normalizes table setup metadata and items", async () => {
@@ -1866,6 +1919,7 @@ function createStoredProject(overrides: Partial<Project> = {}): Project {
     createdAt: "2026-01-01T00:00:00.000Z",
     description: "",
     fileTree: [],
+    gameConfig: getDefaultProjectGameConfig(),
     id: "project-1",
     name: "Project",
     notes: "",

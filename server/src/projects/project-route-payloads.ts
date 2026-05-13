@@ -32,6 +32,16 @@ export function getProjectFileTreePayload(body: unknown): unknown {
   return record.fileTree;
 }
 
+export function getProjectGameConfigPayload(body: unknown): unknown {
+  if (!body || typeof body !== "object") {
+    return undefined;
+  }
+
+  const record = body as Record<string, unknown>;
+
+  return record.gameConfig;
+}
+
 export function toCreateProjectImageAssetRequest(
   body: unknown,
   headers: ProjectImageAssetUploadHeaders

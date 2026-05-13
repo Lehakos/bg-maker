@@ -6,5 +6,7 @@ export const apiPaths = {
     `/api/projects/${encodeURIComponent(projectId)}/image-assets/${encodeURIComponent(assetId)}`,
   projectImageAssets: (projectId: string) =>
     `/api/projects/${encodeURIComponent(projectId)}/image-assets`,
+  projectGameConfig: (projectId: string) =>
+    `/api/projects/${encodeURIComponent(projectId)}/game-config`,
   projectFileTree: (projectId: string) => `/api/projects/${encodeURIComponent(projectId)}/file-tree`
 } as const;

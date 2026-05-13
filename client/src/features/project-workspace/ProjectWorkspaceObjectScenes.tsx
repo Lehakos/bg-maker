@@ -752,7 +752,7 @@ function TableSetupScene({
                     concealed:
                       item.hidden && !item.revealed && !hasProjectObjectSides(item.baseObject.kind),
                     id: item.id,
-                    object: getPlaytestRenderedObject(item, playtestSession.itemsById),
+                    object: getPlaytestRenderedObject(item, playtestSession.itemsById, playtestSession),
                     resizeMode: "size" as const
                   }
                 ]

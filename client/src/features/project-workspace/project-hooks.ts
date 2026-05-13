@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import type { CreateProjectRequest, ProjectFileNode } from "@bg-maker/shared";
-import { createProject, getProject, listProjects, updateProjectFileTree } from "./project-api";
+import type { CreateProjectRequest, ProjectFileNode, ProjectGameConfig } from "@bg-maker/shared";
+import {
+  createProject,
+  getProject,
+  listProjects,
+  updateProjectFileTree,
+  updateProjectGameConfig
+} from "./project-api";
 
 export const projectQueryKeys = {
   all: ["projects"] as const,
@@ -45,6 +51,19 @@ export function useUpdateProjectFileTree(projectId: string) {
 
   return useMutation({
     mutationFn: (fileTree: ProjectFileNode[]) => updateProjectFileTree(projectId, { fileTree }),
+    onSuccess: async (project) => {
+      queryClient.setQueryData(projectQueryKeys.detail(project.id), project);
+      await queryClient.invalidateQueries({ queryKey: projectQueryKeys.list() });
+    }
+  });
+}
+
+export function useUpdateProjectGameConfig(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (gameConfig: ProjectGameConfig) =>
+      updateProjectGameConfig(projectId, { gameConfig }),
     onSuccess: async (project) => {
       queryClient.setQueryData(projectQueryKeys.detail(project.id), project);
       await queryClient.invalidateQueries({ queryKey: projectQueryKeys.list() });
